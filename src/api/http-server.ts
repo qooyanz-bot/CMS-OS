@@ -5,6 +5,13 @@ import { URL } from "node:url";
 import { InMemoryAuthService } from "../domain/auth.js";
 import { getCategoryPolicy } from "../domain/catalog.js";
 import { PortalService, PortalServiceError } from "../application/portal-service.js";
+import {
+  ContentService,
+  ContentServiceError,
+  isContentAudience,
+  isContentType,
+  parseOptionalStringArray,
+} from "../application/content-service.js";
 import type { CategorySlug, PortalRole } from "../domain/types.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -71,11 +78,16 @@ function mcpText(value: unknown): { type: "text"; text: string } {
   return { type: "text", text: JSON.stringify(value) };
 }
 
+function serviceErrorStatus(error: unknown): number {
+  return error instanceof PortalServiceError || error instanceof ContentServiceError ? error.statusCode : 400;
+}
+
 async function handleMcp(
   request: IncomingMessage,
   response: ServerResponse,
   auth: InMemoryAuthService,
   portal: PortalService,
+  content: ContentService,
 ): Promise<void> {
   const body = await readJson(request);
   const id = body.id ?? null;
@@ -166,6 +178,55 @@ async function handleMcp(
             description: "リクルーター本人、または事業者自身の求人への応募一覧を取得します。",
             inputSchema: { type: "object", properties: {} },
           },
+          {
+            name: "content.propose",
+            description: "対象ポジションと検索意図に応じたコンテンツ企画案を作成します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                category: { enum: ["legal", "beauty"] },
+                contentType: { enum: ["company", "blog", "job", "pr", "ir"] },
+                audience: { enum: ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] },
+                topic: { type: "string" },
+                primaryKeyword: { type: "string" },
+                relatedKeywords: { type: "array", items: { type: "string" } },
+                sourceFacts: { type: "array", items: { type: "string" } },
+              },
+              required: ["category", "contentType", "audience", "topic"],
+            },
+          },
+          {
+            name: "content.list",
+            description: "事業者自身の企画案とコンテンツを一覧取得します。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "content.draft",
+            description: "企画案から対象ポジション向けの下書きを生成します。",
+            inputSchema: {
+              type: "object",
+              properties: { proposalId: { type: "string" } },
+              required: ["proposalId"],
+            },
+          },
+          {
+            name: "content.polish",
+            description: "事業者の下書きを清書し、読みやすさと表記を整えます。",
+            inputSchema: {
+              type: "object",
+              properties: { contentId: { type: "string" }, instructions: { type: "string" } },
+              required: ["contentId"],
+            },
+          },
+          {
+            name: "seo.audit",
+            description: "タイトル、説明文、見出し、キーワード、出典をSEO監査します。",
+            inputSchema: {
+              type: "object",
+              properties: { contentId: { type: "string" } },
+              required: ["contentId"],
+            },
+          },
         ],
       },
     });
@@ -253,6 +314,50 @@ async function handleMcp(
       return;
     }
 
+    if (name === "content.propose") {
+      if (!isCategorySlug(argumentsObject.category) || !isContentType(argumentsObject.contentType) || !isContentAudience(argumentsObject.audience) || typeof argumentsObject.topic !== "string") {
+        throw new Error("category、contentType、audience、topicが必要です。");
+      }
+      const result = content.createProposal(principal, {
+        category: argumentsObject.category,
+        contentType: argumentsObject.contentType,
+        audience: argumentsObject.audience,
+        topic: argumentsObject.topic,
+        primaryKeyword: typeof argumentsObject.primaryKeyword === "string" ? argumentsObject.primaryKeyword : undefined,
+        relatedKeywords: parseOptionalStringArray(argumentsObject.relatedKeywords, "relatedKeywords"),
+        sourceFacts: parseOptionalStringArray(argumentsObject.sourceFacts, "sourceFacts"),
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.list") {
+      const result = { proposals: content.listProposals(principal), items: content.listContent(principal) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.draft") {
+      if (typeof argumentsObject.proposalId !== "string") throw new Error("proposalIdが必要です。");
+      const result = content.createDraft(principal, argumentsObject.proposalId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.polish") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = content.polishContent(principal, argumentsObject.contentId, typeof argumentsObject.instructions === "string" ? argumentsObject.instructions : undefined);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "seo.audit") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = content.auditSeo(principal, argumentsObject.contentId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     writeJson(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: "未対応のMCPツールです。" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "MCP操作に失敗しました。";
@@ -260,7 +365,7 @@ async function handleMcp(
   }
 }
 
-export function createHttpServer(auth: InMemoryAuthService, portal: PortalService): Server {
+export function createHttpServer(auth: InMemoryAuthService, portal: PortalService, content = new ContentService(portal)): Server {
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     const token = getBearerToken(request);
@@ -362,6 +467,101 @@ export function createHttpServer(auth: InMemoryAuthService, portal: PortalServic
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/v1/content/proposals") {
+        const body = await readJson(request);
+        if (!isCategorySlug(body.category) || !isContentType(body.contentType) || !isContentAudience(body.audience) || typeof body.topic !== "string") {
+          writeJson(response, 400, { error: "category、contentType、audience、topicが必要です。" });
+          return;
+        }
+        try {
+          const item = content.createProposal(principal, {
+            category: body.category,
+            contentType: body.contentType,
+            audience: body.audience,
+            topic: body.topic,
+            primaryKeyword: typeof body.primaryKeyword === "string" ? body.primaryKeyword : undefined,
+            relatedKeywords: parseOptionalStringArray(body.relatedKeywords, "relatedKeywords"),
+            sourceFacts: parseOptionalStringArray(body.sourceFacts, "sourceFacts"),
+          });
+          writeJson(response, 201, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "企画案を作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/content/proposals") {
+        try {
+          writeJson(response, 200, { items: content.listProposals(principal) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "企画案を取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/content/drafts") {
+        const body = await readJson(request);
+        if (typeof body.proposalId !== "string") {
+          writeJson(response, 400, { error: "proposalIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 201, { item: content.createDraft(principal, body.proposalId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "下書きを作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/content") {
+        try {
+          writeJson(response, 200, { items: content.listContent(principal) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを取得できません。" });
+        }
+        return;
+      }
+
+      const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/(polish|seo-audit)$/);
+      if (request.method === "POST" && contentActionMatch) {
+        const contentId = contentActionMatch[1];
+        const action = contentActionMatch[2];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          if (action === "polish") {
+            const body = await readJson(request);
+            if (body.instructions !== undefined && typeof body.instructions !== "string") {
+              writeJson(response, 400, { error: "instructionsは文字列で指定してください。" });
+              return;
+            }
+            writeJson(response, 200, { item: content.polishContent(principal, contentId, typeof body.instructions === "string" ? body.instructions : undefined) });
+          } else {
+            writeJson(response, 200, { item: content.auditSeo(principal, contentId) });
+          }
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツ操作に失敗しました。" });
+        }
+        return;
+      }
+
+      const contentMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)$/);
+      if (request.method === "GET" && contentMatch) {
+        const contentId = contentMatch[1];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: content.getContent(principal, contentId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを取得できません。" });
+        }
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/v1/requests") {
         if (!principal) {
           writeJson(response, 401, { error: "ログインが必要です。" });
@@ -444,7 +644,7 @@ export function createHttpServer(auth: InMemoryAuthService, portal: PortalServic
       }
 
       if (request.method === "POST" && url.pathname === "/mcp") {
-        await handleMcp(request, response, auth, portal);
+        await handleMcp(request, response, auth, portal, content);
         return;
       }
 

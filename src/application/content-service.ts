@@ -1,0 +1,264 @@
+import type { PortalService } from "./portal-service.js";
+import { ContentStore } from "../domain/content-store.js";
+import {
+  contentAudiences,
+  contentTypes,
+  type AuthenticatedPrincipal,
+  type CategorySlug,
+  type ContentAudience,
+  type ContentJsonLdType,
+  type ContentProposal,
+  type ContentRecord,
+  type ContentType,
+  type SeoAuditResult,
+} from "../domain/types.js";
+
+export class ContentServiceError extends Error {
+  public constructor(public readonly statusCode: number, message: string) {
+    super(message);
+    this.name = "ContentServiceError";
+  }
+}
+
+const audienceLabels: Record<ContentAudience, string> = {
+  customer: "顧客・発注者",
+  candidate: "求職者・リクルーター",
+  media: "報道・メディア",
+  investor: "投資家・株主",
+  beginner: "初心者・導入検討者",
+  existingCustomer: "既存顧客",
+};
+
+const audienceIntents: Record<ContentAudience, string> = {
+  customer: "課題を比較検討し、問い合わせ・予約・依頼の判断につなげる",
+  candidate: "仕事内容、働き方、成長機会を理解し、応募判断につなげる",
+  media: "ニュースとしての要点、背景、社会的な意味を短時間で理解できるようにする",
+  investor: "事業の進捗、根拠、今後の見通しを確認できるようにする",
+  beginner: "前提知識がない読者でも概要、選び方、最初の一歩を理解できるようにする",
+  existingCustomer: "既存顧客が利用方法、変更点、次に取るべき行動を確認できるようにする",
+};
+
+const contentTypeLabels: Record<ContentType, string> = {
+  company: "企業情報",
+  blog: "Blog記事",
+  job: "求人情報",
+  pr: "プレスリリース",
+  ir: "IR情報",
+};
+
+const jsonLdTypes: Record<ContentType, ContentJsonLdType> = {
+  company: "Organization",
+  blog: "BlogPosting",
+  job: "JobPosting",
+  pr: "NewsArticle",
+  ir: "Article",
+};
+
+function trimList(values: string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))].slice(0, 20);
+}
+
+function limit(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
+}
+
+function createOutline(audience: ContentAudience): string[] {
+  const audienceSection: Record<ContentAudience, string> = {
+    customer: "サービス・料金・相談方法",
+    candidate: "仕事内容と成長機会",
+    media: "ニュースの要点と背景",
+    investor: "事業指標と今後の展望",
+    beginner: "まず知っておきたい基礎",
+    existingCustomer: "利用方法と次のアクション",
+  };
+  return [
+    `${audienceLabels[audience]}が知りたいこと`,
+    audienceSection[audience],
+    "選ばれる理由と具体例",
+    "利用・応募・問い合わせの流れ",
+    "よくある質問",
+  ];
+}
+
+function createBody(title: string, proposal: ContentProposal): string {
+  const sections = proposal.outline
+    .map((heading) => `## ${heading}\n\n${proposal.topic}について、${audienceIntents[proposal.audience]}ための情報を整理します。\n`)
+    .join("\n");
+  const facts = proposal.sourceFacts.length > 0
+    ? `\n## 確認済み情報\n\n${proposal.sourceFacts.map((fact) => `- ${fact}`).join("\n")}\n`
+    : "\n## 編集メモ\n\n公開前に、企業が保有する一次情報と出典を追加してください。\n";
+  return `# ${title}\n\n${proposal.rationale}\n\n${sections}${facts}`.trim();
+}
+
+export class ContentService {
+  public constructor(
+    private readonly portal: PortalService,
+    private readonly store = new ContentStore(),
+  ) {}
+
+  public createProposal(
+    principal: AuthenticatedPrincipal | null,
+    input: {
+      category: CategorySlug;
+      contentType: ContentType;
+      audience: ContentAudience;
+      topic: string;
+      primaryKeyword?: string | undefined;
+      relatedKeywords?: string[] | undefined;
+      sourceFacts?: string[] | undefined;
+    },
+  ): ContentProposal {
+    this.portal.assertAction(principal, input.category, "content.propose");
+    this.assertProvider(principal, input.category);
+    if (!principal || !principal.providerId) throw new ContentServiceError(403, "事業者情報が見つかりません。");
+
+    const topic = input.topic.trim();
+    if (topic.length < 3) throw new ContentServiceError(400, "topicは3文字以上で入力してください。");
+    const primaryKeyword = (input.primaryKeyword?.trim() || topic).slice(0, 80);
+    const sourceFacts = trimList(input.sourceFacts);
+    const relatedKeywords = trimList([...(input.relatedKeywords ?? []), topic, audienceLabels[input.audience]]);
+    const proposal: Omit<ContentProposal, "id" | "createdAt"> = {
+      category: input.category,
+      providerId: principal.providerId!,
+      contentType: input.contentType,
+      audience: input.audience,
+      topic,
+      searchIntent: audienceIntents[input.audience],
+      primaryKeyword,
+      relatedKeywords,
+      outline: createOutline(input.audience),
+      sourceFacts,
+      rationale: `${contentTypeLabels[input.contentType]}として、${audienceLabels[input.audience]}に向けて「${topic}」を伝える企画です。${audienceIntents[input.audience]}。`,
+    };
+    return this.store.createProposal(proposal);
+  }
+
+  public listProposals(principal: AuthenticatedPrincipal | null): ContentProposal[] {
+    this.assertProvider(principal, principal?.category);
+    return this.store.listProposals(principal!.category, principal!.providerId!);
+  }
+
+  public createDraft(principal: AuthenticatedPrincipal | null, proposalId: string): ContentRecord {
+    const proposal = this.getOwnedProposal(principal, proposalId);
+    this.portal.assertAction(principal, proposal.category, "content.draft");
+
+    const title = `${proposal.topic}｜${audienceLabels[proposal.audience]}向け${contentTypeLabels[proposal.contentType]}`;
+    const summary = limit(`${proposal.topic}について、${audienceIntents[proposal.audience]}ためのCMS-OS編集原稿です。`, 160);
+    const seoTitle = limit(title, 60);
+    const seoDescription = limit(summary, 160);
+    return this.store.createContent({
+      category: proposal.category,
+      providerId: proposal.providerId,
+      contentType: proposal.contentType,
+      audience: proposal.audience,
+      title,
+      slug: `content-${proposal.id.slice(-12)}`,
+      summary,
+      body: createBody(title, proposal),
+      seo: {
+        title: seoTitle,
+        description: seoDescription,
+        keywords: [proposal.primaryKeyword, ...proposal.relatedKeywords],
+        canonicalPath: `/content/content-${proposal.id.slice(-12)}`,
+        ogTitle: seoTitle,
+        ogDescription: seoDescription,
+        jsonLdType: jsonLdTypes[proposal.contentType],
+        faq: proposal.outline.slice(-1).map((question) => ({
+          question: `${question}は確認できますか？`,
+          answer: "公開前に一次情報と担当者の確認結果を反映します。",
+        })),
+      },
+      sourceFacts: proposal.sourceFacts,
+      proposalId: proposal.id,
+      status: "drafted",
+    });
+  }
+
+  public listContent(principal: AuthenticatedPrincipal | null): ContentRecord[] {
+    this.assertProvider(principal, principal?.category);
+    return this.store.listContent(principal!.category, principal!.providerId!);
+  }
+
+  public getContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
+    const content = this.store.getContent(contentId);
+    if (!content) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    this.assertProvider(principal, content.category);
+    if (content.providerId !== principal!.providerId) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return content;
+  }
+
+  public polishContent(principal: AuthenticatedPrincipal | null, contentId: string, instructions?: string): ContentRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.polish");
+    const normalizedBody = content.body
+      .replace(/\r\n/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    const instructionNote = instructions?.trim() ? `\n\n> 清書方針: ${instructions.trim()}` : "";
+    const updated = this.store.updateContent(content.id, {
+      body: `${normalizedBody}${instructionNote}`,
+      status: "polished",
+      seo: { ...content.seo, title: limit(content.seo.title.trim(), 60), description: limit(content.seo.description.trim(), 160) },
+    });
+    if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return updated;
+  }
+
+  public auditSeo(principal: AuthenticatedPrincipal | null, contentId: string): SeoAuditResult {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "seo.audit");
+    const issues: SeoAuditResult["issues"] = [];
+    const primaryKeyword = content.seo.keywords[0] ?? "";
+    if (content.seo.title.length < 10 || content.seo.title.length > 60) {
+      issues.push({ code: "SEO_TITLE_LENGTH", severity: "warning", field: "seo.title", message: "SEOタイトルは10〜60文字を目安にしてください。", recommendation: "検索意図を残しながらタイトルを調整してください。" });
+    }
+    if (content.seo.description.length < 50 || content.seo.description.length > 160) {
+      issues.push({ code: "SEO_DESCRIPTION_LENGTH", severity: "warning", field: "seo.description", message: "メタディスクリプションは50〜160文字を目安にしてください。", recommendation: "読者が得られる情報と次の行動を具体化してください。" });
+    }
+    if (primaryKeyword && !`${content.seo.title}\n${content.body}`.toLocaleLowerCase("ja-JP").includes(primaryKeyword.toLocaleLowerCase("ja-JP"))) {
+      issues.push({ code: "PRIMARY_KEYWORD_MISSING", severity: "warning", field: "seo.keywords", message: "主キーワードがタイトルまたは本文に含まれていません。", recommendation: "検索意図を損なわない範囲で自然に追加してください。" });
+    }
+    if (!content.body.match(/^# /m)) {
+      issues.push({ code: "H1_MISSING", severity: "error", field: "body", message: "本文にH1見出しがありません。", recommendation: "ページごとに主題を表すH1を1つ設定してください。" });
+    }
+    if (!content.seo.canonicalPath.startsWith("/")) {
+      issues.push({ code: "CANONICAL_INVALID", severity: "error", field: "seo.canonicalPath", message: "canonicalPathはサイト内パスで指定してください。", recommendation: "先頭にスラッシュを付けた正規URLパスを設定してください。" });
+    }
+    if (content.sourceFacts.length === 0) {
+      issues.push({ code: "SOURCE_FACTS_EMPTY", severity: "warning", field: "sourceFacts", message: "確認済みの一次情報が登録されていません。", recommendation: "公開前に出典、数値、日付、担当者を登録してください。" });
+    }
+    const score = Math.max(0, 100 - issues.reduce((total, issue) => total + (issue.severity === "error" ? 20 : issue.severity === "warning" ? 10 : 3), 0));
+    return { contentId, score, issues, auditedAt: new Date().toISOString() };
+  }
+
+  private getOwnedProposal(principal: AuthenticatedPrincipal | null, proposalId: string): ContentProposal {
+    const proposal = this.store.getProposal(proposalId);
+    if (!proposal) throw new ContentServiceError(404, "企画案が見つかりません。");
+    this.assertProvider(principal, proposal.category);
+    if (proposal.providerId !== principal!.providerId) throw new ContentServiceError(404, "企画案が見つかりません。");
+    return proposal;
+  }
+
+  private assertProvider(principal: AuthenticatedPrincipal | null, category: CategorySlug | undefined): void {
+    if (!principal) throw new ContentServiceError(401, "ログインが必要です。");
+    if (principal.role !== "provider" || !principal.providerId) throw new ContentServiceError(403, "事業者だけがコンテンツを管理できます。");
+    if (category && principal.category !== category) throw new ContentServiceError(403, "現在のカテゴリコンテキストが一致しません。");
+  }
+}
+
+export function isContentType(value: unknown): value is ContentType {
+  return typeof value === "string" && contentTypes.includes(value as ContentType);
+}
+
+export function isContentAudience(value: unknown): value is ContentAudience {
+  return typeof value === "string" && contentAudiences.includes(value as ContentAudience);
+}
+
+export function parseOptionalStringArray(value: unknown, fieldName: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new ContentServiceError(400, `${fieldName}は文字列配列で指定してください。`);
+  }
+  return value as string[];
+}

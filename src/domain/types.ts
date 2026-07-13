@@ -100,3 +100,75 @@ export interface JobApplication {
   status: ApplicationStatus;
   createdAt: string;
 }
+
+export const contentTypes = ["company", "blog", "job", "pr", "ir"] as const;
+export type ContentType = (typeof contentTypes)[number];
+
+export const contentAudiences = ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] as const;
+export type ContentAudience = (typeof contentAudiences)[number];
+
+export type ContentWorkflowStatus = "proposed" | "drafted" | "polished" | "seo_reviewed" | "approved" | "published";
+export type ContentJsonLdType = "Organization" | "Article" | "BlogPosting" | "JobPosting" | "NewsArticle" | "FAQPage";
+
+export interface ContentProposal {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  contentType: ContentType;
+  audience: ContentAudience;
+  topic: string;
+  searchIntent: string;
+  primaryKeyword: string;
+  relatedKeywords: string[];
+  outline: string[];
+  sourceFacts: string[];
+  rationale: string;
+  createdAt: string;
+}
+
+export interface ContentSeo {
+  title: string;
+  description: string;
+  keywords: string[];
+  canonicalPath: string;
+  ogTitle: string;
+  ogDescription: string;
+  jsonLdType: ContentJsonLdType;
+  faq: Array<{ question: string; answer: string }>;
+}
+
+export interface ContentRecord {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  contentType: ContentType;
+  audience: ContentAudience;
+  title: string;
+  slug: string;
+  summary: string;
+  body: string;
+  seo: ContentSeo;
+  sourceFacts: string[];
+  proposalId: string;
+  status: ContentWorkflowStatus;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SeoIssueSeverity = "error" | "warning" | "info";
+
+export interface SeoAuditIssue {
+  code: string;
+  severity: SeoIssueSeverity;
+  field: string;
+  message: string;
+  recommendation: string;
+}
+
+export interface SeoAuditResult {
+  contentId: string;
+  score: number;
+  issues: SeoAuditIssue[];
+  auditedAt: string;
+}
