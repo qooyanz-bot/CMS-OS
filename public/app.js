@@ -183,6 +183,8 @@ const elements = {
   mediaManagementPanel: document.querySelector("#media-management-panel"),
   mediaManagementForm: document.querySelector("#media-management-form"),
   mediaManagementMessage: document.querySelector("#media-management-message"),
+  mediaSeoAuditButton: document.querySelector("#media-seo-audit-button"),
+  mediaSeoAuditResult: document.querySelector("#media-seo-audit-result"),
   mediaList: document.querySelector("#media-list"),
 };
 
@@ -777,6 +779,8 @@ async function reloadMediaManagement() {
   elements.mediaManagementPanel.hidden = !visible;
   if (!visible) {
     elements.mediaList.innerHTML = "";
+    elements.mediaSeoAuditResult.hidden = true;
+    elements.mediaSeoAuditResult.textContent = "";
     return;
   }
   const requestVersion = beginListRequest("media", elements.mediaList);
@@ -787,6 +791,20 @@ async function reloadMediaManagement() {
     if (isLatestListRequest("media", requestVersion)) elements.mediaList.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
   } finally {
     finishListRequest("media", requestVersion, elements.mediaList);
+  }
+}
+
+async function runMediaSeoAudit() {
+  try {
+    const body = await api("/api/v1/media/seo-audit", { method: "POST", body: JSON.stringify({}) });
+    const issueSummary = body.item.issues.length === 0
+      ? "問題は検出されませんでした。"
+      : body.item.issues.map((issue) => `[${issue.severity}] ${issue.assetId ?? "asset"} ${issue.code}: ${issue.message}`).join("\n");
+    elements.mediaSeoAuditResult.hidden = false;
+    elements.mediaSeoAuditResult.textContent = `スコア: ${body.item.score} / 100\n対象アセット: ${body.item.assetCount}件\n${issueSummary}`;
+  } catch (error) {
+    elements.mediaSeoAuditResult.hidden = false;
+    elements.mediaSeoAuditResult.textContent = error.message;
   }
 }
 
@@ -1276,6 +1294,7 @@ elements.account.addEventListener("change", () => {
 });
 elements.logout.addEventListener("click", logout);
 elements.siteSeoAuditButton.addEventListener("click", () => void runSiteSeoAudit());
+elements.mediaSeoAuditButton.addEventListener("click", () => void runMediaSeoAudit());
 elements.requestForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(elements.requestForm);

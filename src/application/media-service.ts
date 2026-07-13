@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { PortalService, PortalServiceError, type PortalPage } from "./portal-service.js";
 import { MediaStore } from "../domain/media-store.js";
-import { mediaRightsStatuses, mediaStatuses, mediaTypes, type AuthenticatedPrincipal, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType } from "../domain/types.js";
+import { mediaRightsStatuses, mediaStatuses, mediaTypes, type AuthenticatedPrincipal, type MediaAsset, type MediaRightsStatus, type MediaSeoAuditIssue, type MediaSeoAuditResult, type MediaSiteSeoAuditResult, type MediaStatus, type MediaTransformSpec, type MediaType } from "../domain/types.js";
 
 export class MediaServiceError extends Error {
   public constructor(public readonly statusCode: number, message: string) {
@@ -190,6 +190,36 @@ export class MediaService {
     return archived;
   }
 
+  public auditAssetSeo(principal: AuthenticatedPrincipal | null, assetId: string): MediaSeoAuditResult {
+    this.assertProvider(principal, "media.read");
+    const asset = this.getOwnedAsset(principal, assetId);
+    if (!asset) throw new MediaServiceError(404, "メディアアセットが見つかりません。");
+    const result = this.createAssetSeoAudit(asset, new Date());
+    if (!this.store.saveSeoAudit(asset.id, result)) throw new MediaServiceError(500, "メディアSEO監査結果を保存できませんでした。");
+    return result;
+  }
+
+  public auditSiteSeo(principal: AuthenticatedPrincipal | null): MediaSiteSeoAuditResult {
+    this.assertProvider(principal, "media.read");
+    const assets = this.store.listAssets().filter((asset) => asset.category === principal.category && asset.providerId === principal.providerId);
+    const auditedAt = new Date();
+    const results = assets.map((asset) => {
+      const result = this.createAssetSeoAudit(asset, auditedAt);
+      this.store.saveSeoAudit(asset.id, result);
+      return result;
+    });
+    const issues = results.flatMap((result) => result.issues.map((issue) => ({ ...issue, assetId: result.assetId })));
+    const score = results.length === 0 ? 100 : Math.round(results.reduce((total, result) => total + result.score, 0) / results.length);
+    return this.store.saveSiteSeoAudit({
+      category: principal.category,
+      providerId: principal.providerId,
+      assetCount: assets.length,
+      score,
+      issues,
+      auditedAt: auditedAt.toISOString(),
+    });
+  }
+
   public transformAsset(principal: AuthenticatedPrincipal | null, assetId: string, input: MediaTransformInput): MediaAsset {
     this.assertProvider(principal, "media.manage");
     const source = this.getOwnedAsset(principal, assetId);
@@ -213,6 +243,61 @@ export class MediaService {
       : derived;
     if (!updated) throw new MediaServiceError(500, "変換アセットを保存できませんでした。");
     return updated;
+  }
+
+  private createAssetSeoAudit(asset: MediaAsset, auditedAt: Date): MediaSeoAuditResult {
+    const issues: MediaSeoAuditIssue[] = [];
+    const addIssue = (issue: MediaSeoAuditIssue): void => { issues.push(issue); };
+    const altText = asset.altText.trim();
+    const title = asset.title.trim();
+
+    if (asset.mediaType === "image" && !altText) {
+      addIssue({ code: "MEDIA_ALT_MISSING", severity: "error", field: "altText", message: "画像のaltTextが空です。", recommendation: "画像の内容と役割を具体的に説明してください。" });
+    } else if (altText.length > 0 && altText.length < 10) {
+      addIssue({ code: "MEDIA_ALT_TOO_SHORT", severity: "warning", field: "altText", message: "altTextが短く、検索エンジンや読み上げ利用者に文脈が伝わりにくい可能性があります。", recommendation: "対象・場所・用途が分かる自然な説明へ整えてください。" });
+    }
+    if (altText && altText.localeCompare(asset.name.trim(), "ja", { sensitivity: "base" }) === 0) {
+      addIssue({ code: "MEDIA_ALT_GENERIC", severity: "warning", field: "altText", message: "altTextがファイル名または表示名と同じです。", recommendation: "ファイル名ではなく、画像が伝える情報を記述してください。" });
+    }
+    if (title.length < 3) {
+      addIssue({ code: "MEDIA_TITLE_MISSING", severity: "warning", field: "title", message: "メディアタイトルが短すぎます。", recommendation: "検索結果やページ文脈で意味が伝わるタイトルを設定してください。" });
+    }
+    if (asset.status === "published" && !asset.publicUrl) {
+      addIssue({ code: "MEDIA_PUBLIC_URL_MISSING", severity: "warning", field: "publicUrl", message: "公開状態ですが配信URLがありません。", recommendation: "BuilderOS Adapterまたは接続ストレージで公開URLを確定してください。" });
+    }
+    if (asset.mediaType === "image" && asset.sizeBytes > 2 * 1024 * 1024) {
+      addIssue({ code: "MEDIA_IMAGE_TOO_LARGE", severity: "warning", field: "sizeBytes", message: "画像サイズが2MBを超えています。", recommendation: "WebPまたはAVIFへ変換し、表示用途に合わせて軽量化してください。" });
+    }
+    if (asset.mediaType === "video" && asset.sizeBytes > 10 * 1024 * 1024) {
+      addIssue({ code: "MEDIA_VIDEO_TOO_LARGE", severity: "warning", field: "sizeBytes", message: "動画サイズが10MBを超えています。", recommendation: "配信品質を保ちながら圧縮し、遅延読み込みを設定してください。" });
+    }
+    if ((asset.mediaType === "image" || asset.mediaType === "video") && (asset.width === undefined || asset.height === undefined)) {
+      addIssue({ code: "MEDIA_DIMENSIONS_MISSING", severity: "warning", field: "width,height", message: "表示寸法が未設定で、レイアウトシフトの原因になる可能性があります。", recommendation: "実寸または表示枠のwidthとheightを登録してください。" });
+    }
+    if (!this.mimeMatchesAsset(asset)) {
+      addIssue({ code: "MEDIA_MIME_MISMATCH", severity: "error", field: "mimeType", message: "mediaTypeとMIMEタイプが一致していません。", recommendation: "実体ファイルとメタデータの種別を揃えてください。" });
+    }
+    const licenseExpired = asset.rightsStatus === "expired" || (asset.licenseExpiresAt !== undefined && Date.parse(asset.licenseExpiresAt) <= auditedAt.getTime());
+    if (licenseExpired) {
+      addIssue({ code: "MEDIA_RIGHTS_EXPIRED", severity: "error", field: "rightsStatus,licenseExpiresAt", message: "メディアの利用権限が期限切れです。", recommendation: "公開を停止し、権利更新または代替アセットを確認してください。" });
+    } else if ((asset.rightsStatus === "owned" || asset.rightsStatus === "licensed") && !asset.rightsHolder?.trim()) {
+      addIssue({ code: "MEDIA_RIGHTS_HOLDER_MISSING", severity: "warning", field: "rightsHolder", message: "権利状態は確認済みですが権利者情報がありません。", recommendation: "権利者またはライセンス提供元を登録してください。" });
+    } else if (asset.status === "published" && asset.rightsStatus === "unknown") {
+      addIssue({ code: "MEDIA_RIGHTS_UNKNOWN", severity: "warning", field: "rightsStatus", message: "公開中メディアの権利状態が未確認です。", recommendation: "公開前に利用許諾と掲載範囲を確認してください。" });
+    }
+    if (Date.parse(asset.updatedAt) < auditedAt.getTime() - 180 * 24 * 60 * 60 * 1000) {
+      addIssue({ code: "MEDIA_METADATA_STALE", severity: "warning", field: "updatedAt", message: "メタデータが180日以上更新されていません。", recommendation: "公開URL、権利、altText、表示寸法を再確認してください。" });
+    }
+    if (asset.status === "archived") {
+      addIssue({ code: "MEDIA_ARCHIVED", severity: "info", field: "status", message: "アーカイブ済みアセットです。", recommendation: "公開ページから参照されていないことを確認し、不要なら保管期限を決めてください。" });
+    }
+
+    const score = Math.max(0, Math.min(100, 100 - issues.reduce((total, issue) => total + (issue.severity === "error" ? 25 : issue.severity === "warning" ? 10 : 2), 0)));
+    return { assetId: asset.id, category: asset.category, providerId: asset.providerId, score, issues, auditedAt: auditedAt.toISOString() };
+  }
+
+  private mimeMatchesAsset(asset: MediaAsset): boolean {
+    return mimeMatches(asset.mediaType, asset.mimeType.trim().toLowerCase());
   }
 
   private assertProvider(principal: AuthenticatedPrincipal | null, action: "media.read" | "media.manage"): asserts principal is AuthenticatedPrincipal & { role: "provider"; providerId: string } {

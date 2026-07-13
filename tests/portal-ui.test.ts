@@ -123,4 +123,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/media/);
   assert.match(scriptBody, /reloadMediaManagement/);
   assert.match(scriptBody, /media-transform-button/);
+  assert.match(body, /media-seo-audit-button/);
+  assert.match(body, /media-seo-audit-result/);
+  assert.match(scriptBody, /api\/v1\/media\/seo-audit/);
+  assert.match(scriptBody, /runMediaSeoAudit/);
 });

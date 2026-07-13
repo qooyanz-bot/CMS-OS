@@ -562,6 +562,16 @@ async function handleMcp(
             inputSchema: { type: "object", properties: { assetId: { type: "string" }, format: { type: "string" }, width: { type: "integer" }, height: { type: "integer" }, quality: { type: "integer", minimum: 1, maximum: 100 } }, required: ["assetId"] },
           },
           {
+            name: "media.seo_audit",
+            description: "現在の事業者が管理するメディア全体のSEO・アクセシビリティ監査を実行します。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "media.asset_seo_audit",
+            description: "指定したメディアアセットのSEO・アクセシビリティ監査を実行します。",
+            inputSchema: { type: "object", properties: { assetId: { type: "string" } }, required: ["assetId"] },
+          },
+          {
             name: "auth.login",
             description: "ログインします。",
             inputSchema: {
@@ -1429,6 +1439,19 @@ async function handleMcp(
       return;
     }
 
+    if (name === "media.seo_audit") {
+      const result = media.auditSiteSeo(principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "media.asset_seo_audit") {
+      if (typeof argumentsObject.assetId !== "string") throw new Error("assetIdを指定してください。");
+      const result = media.auditAssetSeo(principal, argumentsObject.assetId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "content.propose") {
       if (!isCategorySlug(argumentsObject.category) || !isContentType(argumentsObject.contentType) || !isContentAudience(argumentsObject.audience) || typeof argumentsObject.topic !== "string") {
         throw new Error("category、contentType、audience、topicが必要です。");
@@ -2082,6 +2105,32 @@ export function createHttpServer(
           writeJson(response, 201, { item });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "メディアを登録できませんでした。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/media/seo-audit") {
+        try {
+          const item = media.auditSiteSeo(principal);
+          writeJson(response, 200, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "メディア全体のSEO監査に失敗しました。" });
+        }
+        return;
+      }
+
+      const mediaSeoAuditMatch = url.pathname.match(/^\/api\/v1\/media\/([^/]+)\/seo-audit$/);
+      if (request.method === "POST" && mediaSeoAuditMatch) {
+        const assetId = mediaSeoAuditMatch[1];
+        if (!assetId) {
+          writeJson(response, 400, { error: "assetIdを指定してください。" });
+          return;
+        }
+        try {
+          const item = media.auditAssetSeo(principal, assetId);
+          writeJson(response, 200, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "メディアSEO監査に失敗しました。" });
         }
         return;
       }

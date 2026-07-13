@@ -82,6 +82,21 @@ describe("CMS-OSメディアアセット", () => {
     assert.equal(updated.status, 200);
     assert.equal(updated.body.item.title, "法律相談の事務所案内");
 
+    const assetAudit = await request(`/api/v1/media/${assetId}/seo-audit`, { method: "POST", body: JSON.stringify({}) });
+    assert.equal(assetAudit.status, 200);
+    assert.equal(assetAudit.body.item.assetId, assetId);
+    assert.ok(assetAudit.body.item.score < 100);
+    assert.ok(assetAudit.body.item.issues.some((issue: { code: string }) => issue.code === "MEDIA_DIMENSIONS_MISSING"));
+
+    const fetched = await request(`/api/v1/media/${assetId}`);
+    assert.equal(fetched.status, 200);
+    assert.equal(fetched.body.item.lastSeoAudit.assetId, assetId);
+
+    const siteAudit = await request("/api/v1/media/seo-audit", { method: "POST", body: JSON.stringify({}) });
+    assert.equal(siteAudit.status, 200);
+    assert.ok(siteAudit.body.item.assetCount >= 1);
+    assert.ok(siteAudit.body.item.issues.some((issue: { assetId?: string }) => issue.assetId === assetId));
+
     const archived = await request(`/api/v1/media/${assetId}`, { method: "DELETE" });
     assert.equal(archived.status, 200);
     assert.equal(archived.body.item.status, "archived");
@@ -126,6 +141,20 @@ describe("CMS-OSメディアアセット", () => {
     });
     assert.equal(listed.status, 200);
     assert.ok(listed.body.result.structuredContent.items.some((item: { name: string }) => item.name === "MCP PDF"));
+
+    const siteAudit = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "media.seo_audit", arguments: {} } }),
+    });
+    assert.equal(siteAudit.status, 200);
+    assert.ok(siteAudit.body.result.structuredContent.assetCount >= 1);
+    const assetId = registered.body.result.structuredContent.id as string;
+    const assetAudit = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "media.asset_seo_audit", arguments: { assetId } } }),
+    });
+    assert.equal(assetAudit.status, 200);
+    assert.equal(assetAudit.body.result.structuredContent.assetId, assetId);
   });
 });
 
@@ -138,7 +167,14 @@ describe("MediaStore永続化", () => {
     };
     const first = new MediaStore(stateStore);
     const item = first.createAsset({ category: "beauty", providerId: "provider-beauty-demo", name: "画像", storageKey: "beauty/a.jpg", mediaType: "image", mimeType: "image/jpeg", sizeBytes: 100, altText: "画像", title: "画像", tags: [], rightsStatus: "owned", status: "draft" });
+    const audit = { assetId: item.id, category: item.category, providerId: item.providerId, score: 90, issues: [{ code: "MEDIA_TEST", severity: "info" as const, field: "title", message: "テスト", recommendation: "テスト" }], auditedAt: new Date().toISOString() };
+    const auditIssue = audit.issues[0];
+    if (!auditIssue) throw new Error("テスト用監査項目がありません。");
+    first.saveSeoAudit(item.id, audit);
+    first.saveSiteSeoAudit({ category: item.category, providerId: item.providerId, assetCount: 1, score: 90, issues: [{ ...auditIssue, assetId: item.id }], auditedAt: audit.auditedAt });
     const second = new MediaStore(stateStore);
     assert.equal(second.getAsset(item.id)?.storageKey, "beauty/a.jpg");
+    assert.equal(second.getAsset(item.id)?.lastSeoAudit?.score, 90);
+    assert.equal(second.getLatestSiteSeoAudit(item.category, item.providerId)?.score, 90);
   });
 });

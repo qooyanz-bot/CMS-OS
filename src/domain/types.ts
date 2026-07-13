@@ -120,6 +120,34 @@ export interface MediaTransformSpec {
   quality?: number;
 }
 
+export type MediaSeoIssueSeverity = "error" | "warning" | "info";
+
+export interface MediaSeoAuditIssue {
+  code: string;
+  severity: MediaSeoIssueSeverity;
+  field: string;
+  message: string;
+  recommendation: string;
+}
+
+export interface MediaSeoAuditResult {
+  assetId: string;
+  category: CategorySlug;
+  providerId: string;
+  score: number;
+  issues: MediaSeoAuditIssue[];
+  auditedAt: string;
+}
+
+export interface MediaSiteSeoAuditResult {
+  category: CategorySlug;
+  providerId: string;
+  assetCount: number;
+  score: number;
+  issues: Array<MediaSeoAuditIssue & { assetId?: string }>;
+  auditedAt: string;
+}
+
 export interface MediaAsset {
   id: string;
   category: CategorySlug;
@@ -143,6 +171,7 @@ export interface MediaAsset {
   status: MediaStatus;
   derivedFromAssetId?: string;
   transform?: MediaTransformSpec;
+  lastSeoAudit?: MediaSeoAuditResult;
   createdAt: string;
   updatedAt: string;
 }
