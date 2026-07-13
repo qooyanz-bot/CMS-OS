@@ -1,0 +1,332 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CMS-OS API",
+    "version": "0.1.0",
+    "description": "CMS-OSのカテゴリ別ポータル、AI編集、SEO監査、承認、静的公開を操作するREST APIです。"
+  },
+  "servers": [
+    { "url": "http://localhost:8787", "description": "開発サーバー" }
+  ],
+  "tags": [
+    { "name": "Health", "description": "稼働確認" },
+    { "name": "Auth", "description": "ログインとカテゴリ・ロールコンテキスト" },
+    { "name": "Portal", "description": "カテゴリ別表示と事業者検索" },
+    { "name": "Content", "description": "AI企画、下書き、清書、事実確認、SEO、承認" },
+    { "name": "Publication", "description": "承認済みコンテンツの静的ビルド" },
+    { "name": "Requests", "description": "発注依頼" },
+    { "name": "Recruitment", "description": "求人と応募" },
+    { "name": "MCP", "description": "AIエージェント向けMCP JSON-RPC入口" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "health",
+        "summary": "稼働状態を取得",
+        "responses": { "200": { "description": "稼働中", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } } }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "login",
+        "summary": "デモまたは認証基盤のアカウントでログイン",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } } },
+        "responses": {
+          "200": { "description": "ログイン成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "logout",
+        "summary": "現在のセッションを破棄",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "ログアウト成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } } } }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "operationId": "getCurrentPrincipal",
+        "summary": "現在の主体と表示コンテキストを取得",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "主体", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MeResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/auth/context": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "switchContext",
+        "summary": "許可済みのカテゴリとロールへ切り替え",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContextRequest" } } } },
+        "responses": {
+          "200": { "description": "切り替え後の主体", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MeResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v1/categories": {
+      "get": {
+        "tags": ["Portal"],
+        "operationId": "listCategories",
+        "summary": "カテゴリ一覧を取得",
+        "responses": { "200": { "description": "カテゴリ一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryListResponse" } } } } }
+      }
+    },
+    "/api/v1/categories/{category}/experience": {
+      "get": {
+        "tags": ["Portal"],
+        "operationId": "resolveCategoryExperience",
+        "summary": "カテゴリとロールに応じた表示対象を取得",
+        "parameters": [{ "$ref": "#/components/parameters/CategoryPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "カテゴリ表示体験", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExperienceResponse" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/providers": {
+      "get": {
+        "tags": ["Portal"],
+        "operationId": "searchProviders",
+        "summary": "カテゴリ別に事業者を検索",
+        "parameters": [
+          { "$ref": "#/components/parameters/CategoryQuery" },
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "theme", "in": "query", "schema": { "type": "string" } },
+          { "name": "location", "in": "query", "schema": { "type": "string" } }
+        ],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "事業者一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/content/proposals": {
+      "post": {
+        "tags": ["Content"],
+        "operationId": "createContentProposal",
+        "summary": "対象ポジション別の企画案を作成",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentProposalRequest" } } } },
+        "responses": { "201": { "description": "企画案", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProposalResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "get": {
+        "tags": ["Content"],
+        "operationId": "listContentProposals",
+        "summary": "事業者自身の企画案一覧を取得",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "企画案一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProposalListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/content/drafts": {
+      "post": {
+        "tags": ["Content"],
+        "operationId": "createContentDraft",
+        "summary": "企画案から下書きを生成",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DraftRequest" } } } },
+        "responses": { "201": { "description": "下書き", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/content": {
+      "get": {
+        "tags": ["Content"],
+        "operationId": "listContents",
+        "summary": "事業者自身のコンテンツ一覧を取得",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "コンテンツ一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/content/{contentId}": {
+      "get": {
+        "tags": ["Content"],
+        "operationId": "getContent",
+        "summary": "コンテンツを取得",
+        "parameters": [{ "$ref": "#/components/parameters/ContentIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "コンテンツ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/content/{contentId}/polish": {
+      "post": {
+        "tags": ["Content"],
+        "operationId": "polishContent",
+        "summary": "コンテンツを清書",
+        "parameters": [{ "$ref": "#/components/parameters/ContentIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PolishRequest" } } } },
+        "responses": { "200": { "description": "清書済みコンテンツ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/content/{contentId}/seo-audit": {
+      "post": {
+        "tags": ["Content"],
+        "operationId": "auditContentSeo",
+        "summary": "コンテンツをSEO監査",
+        "parameters": [{ "$ref": "#/components/parameters/ContentIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "SEO監査結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SeoAuditResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/content/{contentId}/fact-check": {
+      "post": {
+        "tags": ["Content"],
+        "operationId": "factCheckContent",
+        "summary": "一次情報の登録状況を確認",
+        "parameters": [{ "$ref": "#/components/parameters/ContentIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "事実確認結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FactCheckResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/content/{contentId}/approve": {
+      "post": {
+        "tags": ["Content"],
+        "operationId": "approveContent",
+        "summary": "SEO監査済みコンテンツを人間承認",
+        "parameters": [{ "$ref": "#/components/parameters/ContentIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "承認済みコンテンツ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/v1/publications/build": {
+      "post": {
+        "tags": ["Publication"],
+        "operationId": "buildPublication",
+        "summary": "承認済みコンテンツから静的公開ファイルを生成",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationBuildRequest" } } } },
+        "responses": { "201": { "description": "静的ファイル集合", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/v1/requests": {
+      "post": {
+        "tags": ["Requests"],
+        "operationId": "createRequest",
+        "summary": "発注者として依頼を作成",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequestCreate" } } } },
+        "responses": { "201": { "description": "依頼", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequestResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "get": {
+        "tags": ["Requests"],
+        "operationId": "listRequests",
+        "summary": "自分の依頼または担当依頼を取得",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "依頼一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequestListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/jobs": {
+      "get": {
+        "tags": ["Recruitment"],
+        "operationId": "searchJobs",
+        "summary": "カテゴリ別の公開求人を取得",
+        "parameters": [{ "$ref": "#/components/parameters/CategoryQuery" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "求人一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/jobs/{jobId}/applications": {
+      "post": {
+        "tags": ["Recruitment"],
+        "operationId": "createApplication",
+        "summary": "リクルーターとして求人に応募",
+        "parameters": [{ "$ref": "#/components/parameters/JobIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationCreate" } } } },
+        "responses": { "201": { "description": "応募", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/v1/applications": {
+      "get": {
+        "tags": ["Recruitment"],
+        "operationId": "listApplications",
+        "summary": "本人または担当求人の応募一覧を取得",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "応募一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "tags": ["MCP"],
+        "operationId": "mcpJsonRpc",
+        "summary": "MCP JSON-RPCを実行",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["jsonrpc", "method"], "properties": { "jsonrpc": { "const": "2.0" }, "id": {}, "method": { "type": "string" }, "params": { "type": "object", "additionalProperties": true } }, "additionalProperties": false } } } },
+        "responses": { "200": { "description": "JSON-RPCレスポンス", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "opaque-session-token" }
+    },
+    "parameters": {
+      "CategoryPath": { "name": "category", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/CategorySlug" } },
+      "CategoryQuery": { "name": "category", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/CategorySlug" } },
+      "ContentIdPath": { "name": "contentId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "JobIdPath": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+    },
+    "responses": {
+      "BadRequest": { "description": "入力不正", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "Unauthorized": { "description": "ログインが必要", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "Forbidden": { "description": "権限不足", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "NotFound": { "description": "対象なし", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "Conflict": { "description": "状態競合", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+    },
+    "schemas": {
+      "CategorySlug": { "type": "string", "enum": ["legal", "beauty"] },
+      "PortalRole": { "type": "string", "enum": ["user", "orderer", "provider", "candidate"] },
+      "ContentType": { "type": "string", "enum": ["company", "blog", "job", "pr", "ir"] },
+      "ContentAudience": { "type": "string", "enum": ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] },
+      "HealthResponse": { "type": "object", "required": ["ok", "service"], "properties": { "ok": { "type": "boolean" }, "service": { "type": "string" } } },
+      "OkResponse": { "type": "object", "required": ["ok"], "properties": { "ok": { "type": "boolean" } } },
+      "ErrorResponse": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } } },
+      "LoginRequest": { "type": "object", "required": ["email", "password", "category"], "properties": { "email": { "type": "string", "format": "email" }, "password": { "type": "string", "minLength": 1 }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole", "default": "user" } }, "additionalProperties": false },
+      "ContextRequest": { "type": "object", "required": ["category", "role"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole" } }, "additionalProperties": false },
+      "Principal": { "type": "object", "required": ["accountId", "email", "displayName", "category", "role"], "properties": { "accountId": { "type": "string" }, "email": { "type": "string", "format": "email" }, "displayName": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole" }, "providerId": { "type": "string" } } },
+      "LoginResponse": { "type": "object", "required": ["accessToken", "principal", "expiresInSeconds"], "properties": { "accessToken": { "type": "string" }, "principal": { "$ref": "#/components/schemas/Principal" }, "expiresInSeconds": { "type": "integer" } } },
+      "MeResponse": { "type": "object", "required": ["principal", "experience"], "properties": { "principal": { "$ref": "#/components/schemas/Principal" }, "experience": { "$ref": "#/components/schemas/Experience" } } },
+      "Category": { "type": "object", "required": ["slug", "label", "navigation"], "properties": { "slug": { "$ref": "#/components/schemas/CategorySlug" }, "label": { "type": "string" }, "navigation": { "type": "array", "items": { "type": "object", "additionalProperties": true } } } },
+      "CategoryListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } } } },
+      "Experience": { "type": "object", "required": ["category", "categoryLabel", "role", "authenticated", "navigation", "visibleModules", "visibleFields", "allowedActions", "notices"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "categoryLabel": { "type": "string" }, "role": { "$ref": "#/components/schemas/PortalRole" }, "authenticated": { "type": "boolean" }, "navigation": { "type": "array", "items": { "type": "object", "additionalProperties": true } }, "visibleModules": { "type": "array", "items": { "type": "string" } }, "visibleFields": { "type": "array", "items": { "type": "string" } }, "allowedActions": { "type": "array", "items": { "type": "string" } }, "notices": { "type": "array", "items": { "type": "string" } } } },
+      "ExperienceResponse": { "type": "object", "required": ["experience"], "properties": { "experience": { "$ref": "#/components/schemas/Experience" } } },
+      "Provider": { "type": "object", "required": ["id", "category", "name", "themes", "location"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string" }, "themes": { "type": "array", "items": { "type": "string" } }, "location": { "type": "string" } }, "additionalProperties": true },
+      "ProviderListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Provider" } } } },
+      "ContentProposalRequest": { "type": "object", "required": ["category", "contentType", "audience", "topic"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "contentType": { "$ref": "#/components/schemas/ContentType" }, "audience": { "$ref": "#/components/schemas/ContentAudience" }, "topic": { "type": "string", "minLength": 3 }, "primaryKeyword": { "type": "string" }, "relatedKeywords": { "type": "array", "items": { "type": "string" } }, "sourceFacts": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": false },
+      "ContentProposal": { "type": "object", "required": ["id", "category", "providerId", "contentType", "audience", "topic", "searchIntent", "primaryKeyword", "relatedKeywords", "outline", "sourceFacts", "rationale", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "contentType": { "$ref": "#/components/schemas/ContentType" }, "audience": { "$ref": "#/components/schemas/ContentAudience" }, "topic": { "type": "string" }, "searchIntent": { "type": "string" }, "primaryKeyword": { "type": "string" }, "relatedKeywords": { "type": "array", "items": { "type": "string" } }, "outline": { "type": "array", "items": { "type": "string" } }, "sourceFacts": { "type": "array", "items": { "type": "string" } }, "rationale": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "ProposalResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/ContentProposal" } } },
+      "ProposalListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ContentProposal" } } } },
+      "DraftRequest": { "type": "object", "required": ["proposalId"], "properties": { "proposalId": { "type": "string", "minLength": 1 } }, "additionalProperties": false },
+      "PolishRequest": { "type": "object", "properties": { "instructions": { "type": "string" } }, "additionalProperties": false },
+      "ContentSeo": { "type": "object", "required": ["title", "description", "keywords", "canonicalPath", "ogTitle", "ogDescription", "jsonLdType", "faq"], "properties": { "title": { "type": "string" }, "description": { "type": "string" }, "keywords": { "type": "array", "items": { "type": "string" } }, "canonicalPath": { "type": "string" }, "ogTitle": { "type": "string" }, "ogDescription": { "type": "string" }, "jsonLdType": { "type": "string" }, "faq": { "type": "array", "items": { "type": "object", "additionalProperties": true } } } },
+      "Content": { "type": "object", "required": ["id", "category", "providerId", "contentType", "audience", "title", "slug", "summary", "body", "seo", "sourceFacts", "proposalId", "status", "version", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "contentType": { "$ref": "#/components/schemas/ContentType" }, "audience": { "$ref": "#/components/schemas/ContentAudience" }, "title": { "type": "string" }, "slug": { "type": "string" }, "summary": { "type": "string" }, "body": { "type": "string" }, "seo": { "$ref": "#/components/schemas/ContentSeo" }, "sourceFacts": { "type": "array", "items": { "type": "string" } }, "proposalId": { "type": "string" }, "status": { "type": "string" }, "version": { "type": "integer" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "ContentResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Content" } } },
+      "ContentListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Content" } } } },
+      "SeoAuditResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["contentId", "score", "issues", "auditedAt"], "properties": { "contentId": { "type": "string" }, "score": { "type": "integer" }, "issues": { "type": "array", "items": { "type": "object", "additionalProperties": true } }, "auditedAt": { "type": "string", "format": "date-time" } } } } },
+      "FactCheckResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["contentId", "passed", "scope", "items", "issues", "checkedAt"], "properties": { "contentId": { "type": "string" }, "passed": { "type": "boolean" }, "scope": { "type": "string" }, "items": { "type": "array", "items": { "type": "object", "additionalProperties": true } }, "issues": { "type": "array", "items": { "type": "string" } }, "checkedAt": { "type": "string", "format": "date-time" } } } } },
+      "PublicationBuildRequest": { "type": "object", "properties": { "contentIds": { "type": "array", "items": { "type": "string" } }, "baseUrl": { "type": "string", "format": "uri" } }, "additionalProperties": false },
+      "PublicationResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publicationId", "baseUrl", "contentIds", "generatedAt", "files"], "properties": { "publicationId": { "type": "string" }, "baseUrl": { "type": "string", "format": "uri" }, "contentIds": { "type": "array", "items": { "type": "string" } }, "generatedAt": { "type": "string", "format": "date-time" }, "files": { "type": "array", "items": { "type": "object", "required": ["path", "contentType", "content"], "properties": { "path": { "type": "string" }, "contentType": { "type": "string" }, "content": { "type": "string" } } } } } } } },
+      "RequestCreate": { "type": "object", "required": ["category", "providerId", "title", "description"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "title": { "type": "string", "minLength": 3 }, "description": { "type": "string", "minLength": 10 } }, "additionalProperties": false },
+      "ServiceRequest": { "type": "object", "required": ["id", "category", "ordererId", "providerId", "title", "description", "status", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "ordererId": { "type": "string" }, "providerId": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "status": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "RequestResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/ServiceRequest" } } },
+      "RequestListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ServiceRequest" } } } },
+      "Job": { "type": "object", "required": ["id", "category", "providerId", "title", "employmentType", "location", "description", "status"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "title": { "type": "string" }, "employmentType": { "type": "string" }, "location": { "type": "string" }, "description": { "type": "string" }, "status": { "type": "string" } } },
+      "JobListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } } } },
+      "ApplicationCreate": { "type": "object", "required": ["message"], "properties": { "message": { "type": "string", "minLength": 10 } }, "additionalProperties": false },
+      "Application": { "type": "object", "required": ["id", "category", "jobId", "providerId", "candidateId", "message", "status", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "jobId": { "type": "string" }, "providerId": { "type": "string" }, "candidateId": { "type": "string" }, "message": { "type": "string" }, "status": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "ApplicationResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Application" } } },
+      "ApplicationListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Application" } } } }
+    }
+  }
+}

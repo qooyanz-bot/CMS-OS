@@ -4,6 +4,8 @@
 
 CMS-OSの全操作を、管理画面に依存せずAPIまたはMCPから実行可能にする。AIエージェント、BuilderOS Adapter、外部システム、CLI、管理画面は、共通のドメインサービスを利用する。
 
+REST APIの契約正本は[OpenAPI 3.1定義](openapi.json)です。実装、管理画面、BuilderOS Adapter、外部クライアントはこの定義を基準にします。
+
 ## 操作面の構成
 
 ```text
