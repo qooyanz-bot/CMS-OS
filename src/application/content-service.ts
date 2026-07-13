@@ -205,6 +205,17 @@ export class ContentService {
     return updated;
   }
 
+  public approveContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "workflow.approve");
+    if (content.status !== "seo_reviewed") {
+      throw new ContentServiceError(409, "SEO監査済みのコンテンツだけを公開承認できます。");
+    }
+    const updated = this.store.updateContent(content.id, { status: "approved" });
+    if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return updated;
+  }
+
   public auditSeo(principal: AuthenticatedPrincipal | null, contentId: string): SeoAuditResult {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "seo.audit");
@@ -229,6 +240,9 @@ export class ContentService {
       issues.push({ code: "SOURCE_FACTS_EMPTY", severity: "warning", field: "sourceFacts", message: "確認済みの一次情報が登録されていません。", recommendation: "公開前に出典、数値、日付、担当者を登録してください。" });
     }
     const score = Math.max(0, 100 - issues.reduce((total, issue) => total + (issue.severity === "error" ? 20 : issue.severity === "warning" ? 10 : 3), 0));
+    if (content.status !== "seo_reviewed") {
+      this.store.updateContent(content.id, { status: "seo_reviewed" });
+    }
     return { contentId, score, issues, auditedAt: new Date().toISOString() };
   }
 

@@ -172,3 +172,17 @@ export interface SeoAuditResult {
   issues: SeoAuditIssue[];
   auditedAt: string;
 }
+
+export interface PublicationFile {
+  path: string;
+  contentType: string;
+  content: string;
+}
+
+export interface PublicationBuildResult {
+  publicationId: string;
+  baseUrl: string;
+  contentIds: string[];
+  generatedAt: string;
+  files: PublicationFile[];
+}

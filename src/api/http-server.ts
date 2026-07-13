@@ -12,6 +12,7 @@ import {
   isContentType,
   parseOptionalStringArray,
 } from "../application/content-service.js";
+import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
 import type { CategorySlug, PortalRole } from "../domain/types.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -79,7 +80,7 @@ function mcpText(value: unknown): { type: "text"; text: string } {
 }
 
 function serviceErrorStatus(error: unknown): number {
-  return error instanceof PortalServiceError || error instanceof ContentServiceError ? error.statusCode : 400;
+  return error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError ? error.statusCode : 400;
 }
 
 async function handleMcp(
@@ -88,6 +89,7 @@ async function handleMcp(
   auth: InMemoryAuthService,
   portal: PortalService,
   content: ContentService,
+  publication: PublicationService,
 ): Promise<void> {
   const body = await readJson(request);
   const id = body.id ?? null;
@@ -227,6 +229,27 @@ async function handleMcp(
               required: ["contentId"],
             },
           },
+          {
+            name: "workflow.approve",
+            description: "清書済みコンテンツを人間の確認済み状態へ進めます。",
+            inputSchema: {
+              type: "object",
+              properties: { contentId: { type: "string" } },
+              required: ["contentId"],
+            },
+          },
+          {
+            name: "publication.build",
+            description: "承認済みコンテンツからCloudflare Pages向け静的ファイルを生成します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                contentIds: { type: "array", items: { type: "string" } },
+                baseUrl: { type: "string" },
+              },
+              required: [],
+            },
+          },
         ],
       },
     });
@@ -358,6 +381,23 @@ async function handleMcp(
       return;
     }
 
+    if (name === "workflow.approve") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = content.approveContent(principal, argumentsObject.contentId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "publication.build") {
+      const result = publication.build(
+        principal,
+        parseOptionalStringArray(argumentsObject.contentIds, "contentIds"),
+        typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
+      );
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     writeJson(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: "未対応のMCPツールです。" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "MCP操作に失敗しました。";
@@ -365,7 +405,12 @@ async function handleMcp(
   }
 }
 
-export function createHttpServer(auth: InMemoryAuthService, portal: PortalService, content = new ContentService(portal)): Server {
+export function createHttpServer(
+  auth: InMemoryAuthService,
+  portal: PortalService,
+  content = new ContentService(portal),
+  publication = new PublicationService(portal, content),
+): Server {
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     const token = getBearerToken(request);
@@ -522,7 +567,7 @@ export function createHttpServer(auth: InMemoryAuthService, portal: PortalServic
         return;
       }
 
-      const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/(polish|seo-audit)$/);
+      const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/(polish|seo-audit|approve)$/);
       if (request.method === "POST" && contentActionMatch) {
         const contentId = contentActionMatch[1];
         const action = contentActionMatch[2];
@@ -538,11 +583,36 @@ export function createHttpServer(auth: InMemoryAuthService, portal: PortalServic
               return;
             }
             writeJson(response, 200, { item: content.polishContent(principal, contentId, typeof body.instructions === "string" ? body.instructions : undefined) });
-          } else {
+          } else if (action === "seo-audit") {
             writeJson(response, 200, { item: content.auditSeo(principal, contentId) });
+          } else {
+            writeJson(response, 200, { item: content.approveContent(principal, contentId) });
           }
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツ操作に失敗しました。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/publications/build") {
+        const body = await readJson(request);
+        if (body.contentIds !== undefined && (!Array.isArray(body.contentIds) || body.contentIds.some((item) => typeof item !== "string"))) {
+          writeJson(response, 400, { error: "contentIdsは文字列配列で指定してください。" });
+          return;
+        }
+        if (body.baseUrl !== undefined && typeof body.baseUrl !== "string") {
+          writeJson(response, 400, { error: "baseUrlは文字列で指定してください。" });
+          return;
+        }
+        try {
+          const result = publication.build(
+            principal,
+            Array.isArray(body.contentIds) ? body.contentIds as string[] : undefined,
+            typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+          );
+          writeJson(response, 201, { item: result });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "静的公開ファイルを生成できません。" });
         }
         return;
       }
@@ -644,7 +714,7 @@ export function createHttpServer(auth: InMemoryAuthService, portal: PortalServic
       }
 
       if (request.method === "POST" && url.pathname === "/mcp") {
-        await handleMcp(request, response, auth, portal, content);
+        await handleMcp(request, response, auth, portal, content, publication);
         return;
       }
 
