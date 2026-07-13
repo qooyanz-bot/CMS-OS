@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PortalService } from "./portal-service.js";
 import { ContentStore } from "../domain/content-store.js";
 import {
+  categorySlugs,
   contentAudiences,
   contentTypes,
   type AuthenticatedPrincipal,
@@ -73,6 +74,11 @@ function normalizeSeoPath(value: string): string {
   if (!path.startsWith("/")) return "";
   const normalized = path.replace(/\/{2,}/g, "/").replace(/\/+$/, "");
   return normalized || "/";
+}
+
+function providerSeoPath(category: CategorySlug, providerId: string): string {
+  const safeId = providerId.replace(/[^a-zA-Z0-9._~-]/g, "-");
+  return `/categories/${category}/providers/${safeId}`;
 }
 
 function createOutline(audience: ContentAudience): string[] {
@@ -483,6 +489,7 @@ export class ContentService {
     const canonicalOwners = new Map<string, ContentRecord[]>();
     const titleOwners = new Map<string, ContentRecord[]>();
     const knownPaths = new Set<string>();
+    knownPaths.add("/");
 
     const addIssue = (
       issue: Omit<SeoSiteAuditResult["issues"][number], "contentId"> & { contentId?: string },
@@ -498,6 +505,14 @@ export class ContentService {
         message: "公開対象のコンテンツがまだありません。",
         recommendation: "承認済みコンテンツを公開対象に追加してください。",
       });
+    }
+
+    for (const categorySlug of categorySlugs) {
+      knownPaths.add(`/categories/${categorySlug}`);
+      knownPaths.add(`/categories/${categorySlug}/providers`);
+      for (const provider of this.portal.searchProviders(categorySlug, null, {})) {
+        knownPaths.add(providerSeoPath(categorySlug, provider.id));
+      }
     }
 
     for (const content of publicContents) {

@@ -75,7 +75,7 @@ describe("CMS-OS承認済み静的公開", () => {
     const polished = await request(`/api/v1/content/${draft.body.item.id}/polish`, {
       method: "POST",
       headers: authHeaders,
-      body: JSON.stringify({ instructions: "\n\n| 比較項目 | 選択肢A | 選択肢B |\n| --- | --- | --- |\n| 対象 | 顧客 | 求職者 |" }),
+      body: JSON.stringify({ instructions: "\n\n| 比較項目 | 選択肢A | 選択肢B |\n| --- | --- | --- |\n| 対象 | 顧客 | 求職者 |\n\n[関連情報](/categories/legal/)" }),
     });
     assert.equal(polished.body.item.status, "polished");
 
@@ -127,6 +127,7 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(fileMap.has("categories/ai-business/providers/provider-ai-business-demo/index.html"));
     assert.match(fileMap.get(pagePath) ?? "", /application\/ld\+json/);
     assert.match(fileMap.get(pagePath) ?? "", /<table>/);
+    assert.match(fileMap.get(pagePath) ?? "", /<a href="\/categories\/legal\/">関連情報<\/a>/);
     assert.match(fileMap.get(pagePath) ?? "", /FAQPage/);
     assert.match(fileMap.get(pagePath) ?? "", /BreadcrumbList/);
     assert.match(fileMap.get(pagePath) ?? "", /<link rel="canonical"/);

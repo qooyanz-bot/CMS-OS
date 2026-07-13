@@ -35,9 +35,39 @@ function isTableRow(line: string): boolean {
   return line.includes("|") && tableCells(line).length >= 2;
 }
 
+function normalizeMarkdownHref(value: string): string | undefined {
+  const href = value.trim();
+  if (href.startsWith("/") && !href.startsWith("//")) return href;
+  if (href.startsWith("#")) return href;
+  try {
+    const parsed = new URL(href);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function renderInlineMarkdown(value: string): string {
+  const pattern = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  let output = "";
+  let cursor = 0;
+  for (const match of value.matchAll(pattern)) {
+    const fullMatch = match[0] ?? "";
+    const label = match[1] ?? "";
+    const href = normalizeMarkdownHref(match[2] ?? "");
+    const matchIndex = match.index ?? 0;
+    output += escapeHtml(value.slice(cursor, matchIndex));
+    output += href
+      ? `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`
+      : escapeHtml(fullMatch);
+    cursor = matchIndex + fullMatch.length;
+  }
+  return `${output}${escapeHtml(value.slice(cursor))}`;
+}
+
 function renderTable(header: string, rows: string[]): string {
-  const headerCells = tableCells(header).map((cell) => `<th scope="col">${escapeHtml(cell)}</th>`).join("");
-  const bodyRows = rows.map((row) => `<tr>${tableCells(row).map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("");
+  const headerCells = tableCells(header).map((cell) => `<th scope="col">${renderInlineMarkdown(cell)}</th>`).join("");
+  const bodyRows = rows.map((row) => `<tr>${tableCells(row).map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join("")}</tr>`).join("");
   return `<div class="table-wrap"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
 }
 
@@ -49,13 +79,13 @@ function renderMarkdown(markdown: string): string {
 
   const flushParagraph = (): void => {
     if (paragraph.length > 0) {
-      output.push(`<p>${paragraph.map((line) => escapeHtml(line)).join("<br>")}</p>`);
+      output.push(`<p>${paragraph.map((line) => renderInlineMarkdown(line)).join("<br>")}</p>`);
       paragraph = [];
     }
   };
   const flushList = (): void => {
     if (list.length > 0) {
-      output.push(`<ul>${list.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`);
+      output.push(`<ul>${list.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ul>`);
       list = [];
     }
   };
@@ -84,14 +114,14 @@ function renderMarkdown(markdown: string): string {
       flushParagraph();
       flushList();
       const level = Math.min(heading[1].length + 1, 4);
-      output.push(`<h${level}>${escapeHtml(heading[2])}</h${level}>`);
+      output.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
     } else if (item && item[1]) {
       flushParagraph();
       list.push(item[1]);
     } else if (quote && quote[1]) {
       flushParagraph();
       flushList();
-      output.push(`<blockquote>${escapeHtml(quote[1])}</blockquote>`);
+      output.push(`<blockquote>${renderInlineMarkdown(quote[1])}</blockquote>`);
     } else if (line.trim() === "") {
       flushParagraph();
       flushList();
@@ -419,7 +449,7 @@ function providerDetailHtml(category: PublishedCategory, provider: VisibleProvid
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(provider.name)} | ${escapeHtml(category.label)} | CMS-OS</title><meta name="description" content="${escapeHtml(provider.name)}の${escapeHtml(category.label)}に関する公開プロフィール、対応テーマ、地域情報です。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><meta property="og:type" content="profile"><meta property="og:title" content="${escapeHtml(provider.name)}"><meta property="og:description" content="${escapeHtml(provider.themes.join("・"))}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li aria-current="page">${escapeHtml(provider.name)}</li></ol></nav><p class="eyebrow">CMS-OS / Provider profile</p><h1>${escapeHtml(provider.name)}</h1><p class="lead-answer">${escapeHtml(provider.name)}は${escapeHtml(category.label)}カテゴリに掲載されている事業者です。対応テーマと公開情報を確認できます。</p><dl class="provider-facts"><dt>対応テーマ</dt><dd>${escapeHtml(provider.themes.join("・"))}</dd><dt>地域</dt><dd>${escapeHtml(provider.location)}</dd></dl>${visibleProviderFields(provider) ? `<h2>公開情報</h2><ul class="provider-facts-list">${visibleProviderFields(provider)}</ul>` : ""}</main></body></html>`;
 }
 
-const css = `:root{color-scheme:light;--ink:#17202a;--muted:#64748b;--line:#dbe3ea;--accent:#0f766e}*{box-sizing:border-box}body{margin:0;background:#f8fafc;color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.8}.page-shell{max-width:860px;margin:0 auto;padding:48px 24px}.eyebrow{color:var(--accent);font-size:.8rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.breadcrumbs{color:var(--muted);font-size:.82rem;margin-bottom:28px}.breadcrumbs ol{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}.breadcrumbs li:not(:last-child)::after{content:"/";margin-left:8px;color:#94a3b8}.breadcrumbs a{color:var(--accent)}.article-header{border-bottom:1px solid var(--line);margin-bottom:32px;padding-bottom:24px}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.2;margin:0 0 16px}h2{margin-top:40px;line-height:1.3}.lead-answer{background:#ecfdf5;border-left:4px solid var(--accent);margin:20px 0;padding:16px 18px}.summary{color:#334155;font-size:1.12rem}.meta{color:var(--muted);font-size:.86rem}.article-body h2{border-left:4px solid var(--accent);padding-left:12px;margin-top:40px}.article-body h3{margin-top:28px}.article-body blockquote{border-left:3px solid var(--line);color:var(--muted);margin:24px 0;padding-left:16px}.article-body li{margin:6px 0}.table-wrap{overflow-x:auto;margin:24px 0}.article-body table{border-collapse:collapse;min-width:620px;width:100%}.article-body th,.article-body td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}.article-body th{background:#ecfdf5}.content-index{list-style:none;margin:20px 0;padding:0}.content-index li{border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px;padding:18px 0}.content-index a{color:var(--accent);font-size:1.15rem;font-weight:700}.content-index span{color:var(--muted)}.related-section,.faq-section{border-top:1px solid var(--line);margin-top:40px;padding-top:10px}.faq-item{border-bottom:1px solid var(--line);padding:8px 0}.faq-item h3{font-size:1.05rem}.faq-item p{color:#334155}.directory-link{color:var(--accent);font-weight:700}.provider-facts{background:#fff;border:1px solid var(--line);display:grid;gap:8px;grid-template-columns:10rem 1fr;padding:18px}.provider-facts dt{color:var(--muted);font-weight:700}.provider-facts dd{margin:0}.provider-facts-list{list-style:none;padding:0}.provider-facts-list li{border-bottom:1px solid var(--line);padding:10px 0}`;
+const css = `:root{color-scheme:light;--ink:#17202a;--muted:#64748b;--line:#dbe3ea;--accent:#0f766e}*{box-sizing:border-box}body{margin:0;background:#f8fafc;color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.8}.page-shell{max-width:860px;margin:0 auto;padding:48px 24px}.eyebrow{color:var(--accent);font-size:.8rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.breadcrumbs{color:var(--muted);font-size:.82rem;margin-bottom:28px}.breadcrumbs ol{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}.breadcrumbs li:not(:last-child)::after{content:"/";margin-left:8px;color:#94a3b8}.breadcrumbs a{color:var(--accent)}.article-header{border-bottom:1px solid var(--line);margin-bottom:32px;padding-bottom:24px}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.2;margin:0 0 16px}h2{margin-top:40px;line-height:1.3}.lead-answer{background:#ecfdf5;border-left:4px solid var(--accent);margin:20px 0;padding:16px 18px}.summary{color:#334155;font-size:1.12rem}.meta{color:var(--muted);font-size:.86rem}.article-body h2{border-left:4px solid var(--accent);padding-left:12px;margin-top:40px}.article-body h3{margin-top:28px}.article-body a{color:var(--accent);text-decoration:underline;text-underline-offset:.15em}.article-body blockquote{border-left:3px solid var(--line);color:var(--muted);margin:24px 0;padding-left:16px}.article-body li{margin:6px 0}.table-wrap{overflow-x:auto;margin:24px 0}.article-body table{border-collapse:collapse;min-width:620px;width:100%}.article-body th,.article-body td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}.article-body th{background:#ecfdf5}.content-index{list-style:none;margin:20px 0;padding:0}.content-index li{border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px;padding:18px 0}.content-index a{color:var(--accent);font-size:1.15rem;font-weight:700}.content-index span{color:var(--muted)}.related-section,.faq-section{border-top:1px solid var(--line);margin-top:40px;padding-top:10px}.faq-item{border-bottom:1px solid var(--line);padding:8px 0}.faq-item h3{font-size:1.05rem}.faq-item p{color:#334155}.directory-link{color:var(--accent);font-weight:700}.provider-facts{background:#fff;border:1px solid var(--line);display:grid;gap:8px;grid-template-columns:10rem 1fr;padding:18px}.provider-facts dt{color:var(--muted);font-weight:700}.provider-facts dd{margin:0}.provider-facts-list{list-style:none;padding:0}.provider-facts-list li{border-bottom:1px solid var(--line);padding:10px 0}`;
 
 function sitemapXml(
   contents: ContentRecord[],
