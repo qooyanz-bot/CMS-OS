@@ -96,6 +96,8 @@ POST /api/v1/jobs
 PATCH /api/v1/jobs/{jobId}
 ```
 
+コンテンツの`GET`応答には、実行済みであれば`lastSeoAudit`と`lastFactCheck`が含まれます。各結果の`contentVersion`が現在のコンテンツ`version`と一致しない場合、その結果は古い証跡として扱われ、承認には利用できません。`approve`は、最新版のファクトチェックが合格し、SEO監査に重大なエラーがない場合だけ成功します。
+
 ## 事業者掲載情報と求人管理
 
 - `GET /api/v1/providers/{providerId}` は、未ログインを含む現在のカテゴリ・ロールに応じて掲載情報を投影します。

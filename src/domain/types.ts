@@ -242,6 +242,8 @@ export interface ContentRecord {
   sourceFacts: string[];
   proposalId: string;
   status: ContentWorkflowStatus;
+  lastSeoAudit?: SeoAuditResult;
+  lastFactCheck?: FactCheckResult;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -259,6 +261,7 @@ export interface SeoAuditIssue {
 
 export interface SeoAuditResult {
   contentId: string;
+  contentVersion: number;
   score: number;
   issues: SeoAuditIssue[];
   auditedAt: string;
@@ -274,6 +277,7 @@ export interface FactCheckItem {
 
 export interface FactCheckResult {
   contentId: string;
+  contentVersion: number;
   passed: boolean;
   scope: "source_presence_only";
   items: FactCheckItem[];

@@ -111,6 +111,38 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(typeof audit.body.item.score, "number");
     assert.ok(Array.isArray(audit.body.item.issues));
 
+    const changedAfterAudit = await request(`/api/v1/content/${draft.body.item.id}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({ summary: "監査後に更新された候補者向け紹介文です。" }),
+    });
+    assert.equal(changedAfterAudit.status, 200);
+
+    const refreshedAudit = await request(`/api/v1/content/${draft.body.item.id}/seo-audit`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(refreshedAudit.status, 200);
+
+    const staleFactCheckApproval = await request(`/api/v1/content/${draft.body.item.id}/approve`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(staleFactCheckApproval.status, 409);
+
+    const refreshedFactCheck = await request(`/api/v1/content/${draft.body.item.id}/fact-check`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(refreshedFactCheck.status, 200);
+
+    const approved = await request(`/api/v1/content/${draft.body.item.id}/approve`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.item.status, "approved");
+
     const duplicate = await request(`/api/v1/content/${draft.body.item.id}/duplicate`, {
       method: "POST",
       headers: { authorization: `Bearer ${providerToken}` },

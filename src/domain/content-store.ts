@@ -52,10 +52,15 @@ export class ContentStore {
     return this.contents.find((content) => content.id === contentId);
   }
 
-  public updateContent(contentId: string, patch: Partial<ContentRecord>): ContentRecord | undefined {
+  public updateContent(
+    contentId: string,
+    patch: Partial<ContentRecord>,
+    options: { incrementVersion?: boolean } = {},
+  ): ContentRecord | undefined {
     const content = this.getContent(contentId);
     if (!content) return undefined;
-    Object.assign(content, patch, { version: content.version + 1, updatedAt: new Date().toISOString() });
+    const versionPatch = options.incrementVersion === false ? {} : { version: content.version + 1 };
+    Object.assign(content, patch, versionPatch, { updatedAt: new Date().toISOString() });
     this.stateStore?.save("content-records.json", this.contents);
     return content;
   }

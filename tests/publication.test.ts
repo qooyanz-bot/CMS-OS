@@ -85,6 +85,19 @@ describe("CMS-OS承認済み静的公開", () => {
     });
     assert.equal(audited.status, 200);
 
+    const missingFactCheck = await request(`/api/v1/content/${draft.body.item.id}/approve`, {
+      method: "POST",
+      headers: authHeaders,
+    });
+    assert.equal(missingFactCheck.status, 409);
+
+    const factChecked = await request(`/api/v1/content/${draft.body.item.id}/fact-check`, {
+      method: "POST",
+      headers: authHeaders,
+    });
+    assert.equal(factChecked.status, 200);
+    assert.equal(factChecked.body.item.contentVersion, audited.body.item.contentVersion);
+
     const approved = await request(`/api/v1/content/${draft.body.item.id}/approve`, {
       method: "POST",
       headers: authHeaders,
@@ -206,6 +219,7 @@ describe("CMS-OS承認済み静的公開", () => {
     const draft = content.createDraft(login.principal, proposal.id);
     content.polishContent(login.principal, draft.id);
     content.auditSeo(login.principal, draft.id);
+    content.factCheck(login.principal, draft.id);
     content.approveContent(login.principal, draft.id);
 
     const result = await publication.publish(login.principal, [draft.id], "https://www.example.com");

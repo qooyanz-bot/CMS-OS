@@ -12,6 +12,7 @@ import {
   type ContentRecord,
   type ContentSeo,
   type ContentType,
+  type FactCheckResult,
   type SeoAuditResult,
 } from "../domain/types.js";
 
@@ -301,6 +302,18 @@ export class ContentService {
     if (content.status !== "seo_reviewed") {
       throw new ContentServiceError(409, "SEO監査済みのコンテンツだけを公開承認できます。");
     }
+    if (!content.lastFactCheck || content.lastFactCheck.contentVersion !== content.version) {
+      throw new ContentServiceError(409, "最新バージョンのファクトチェックを完了してから承認してください。");
+    }
+    if (!content.lastFactCheck.passed) {
+      throw new ContentServiceError(409, "ファクトチェックに未解決の問題があるため承認できません。");
+    }
+    if (!content.lastSeoAudit || content.lastSeoAudit.contentVersion !== content.version) {
+      throw new ContentServiceError(409, "最新バージョンのSEO監査を完了してから承認してください。");
+    }
+    if (content.lastSeoAudit.issues.some((issue) => issue.severity === "error")) {
+      throw new ContentServiceError(409, "SEO監査に重大な問題があるため承認できません。");
+    }
     const updated = this.store.updateContent(content.id, { status: "approved" });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return updated;
@@ -309,6 +322,9 @@ export class ContentService {
   public auditSeo(principal: AuthenticatedPrincipal | null, contentId: string): SeoAuditResult {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "seo.audit");
+    if (content.status === "approved" || content.status === "published") {
+      throw new ContentServiceError(409, "承認済みコンテンツのSEO監査をやり直す場合は、複製して編集してください。");
+    }
     const issues: SeoAuditResult["issues"] = [];
     const primaryKeyword = content.seo.keywords[0] ?? "";
     if (content.seo.title.length < 10 || content.seo.title.length > 60) {
@@ -329,14 +345,23 @@ export class ContentService {
     if (content.sourceFacts.length === 0) {
       issues.push({ code: "SOURCE_FACTS_EMPTY", severity: "warning", field: "sourceFacts", message: "確認済みの一次情報が登録されていません。", recommendation: "公開前に出典、数値、日付、担当者を登録してください。" });
     }
-    const score = Math.max(0, 100 - issues.reduce((total, issue) => total + (issue.severity === "error" ? 20 : issue.severity === "warning" ? 10 : 3), 0));
-    if (content.status !== "seo_reviewed") {
-      this.store.updateContent(content.id, { status: "seo_reviewed" });
+    const result: SeoAuditResult = {
+      contentId,
+      contentVersion: content.version,
+      score: Math.max(0, 100 - issues.reduce((total, issue) => total + (issue.severity === "error" ? 20 : issue.severity === "warning" ? 10 : 3), 0)),
+      issues,
+      auditedAt: new Date().toISOString(),
+    };
+    const patch: Partial<ContentRecord> = { lastSeoAudit: result };
+    if (!issues.some((issue) => issue.severity === "error") && content.status !== "seo_reviewed") {
+      patch.status = "seo_reviewed";
     }
-    return { contentId, score, issues, auditedAt: new Date().toISOString() };
+    const updated = this.store.updateContent(content.id, patch, { incrementVersion: false });
+    if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return result;
   }
 
-  public factCheck(principal: AuthenticatedPrincipal | null, contentId: string): import("../domain/types.js").FactCheckResult {
+  public factCheck(principal: AuthenticatedPrincipal | null, contentId: string): FactCheckResult {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "content.fact_check");
     const sourceFacts = content.sourceFacts.filter(Boolean);
@@ -344,14 +369,18 @@ export class ContentService {
       ? sourceFacts.map((claim) => ({ claim, status: "source_registered" as const, note: "事業者が一次情報として登録しています。外部検証は本番アダプターで実行します。" }))
       : [{ claim: "本文に含まれる企業固有情報", status: "source_missing" as const, note: "出典または確認済み情報が登録されていません。" }];
     const issues = sourceFacts.length > 0 ? [] : ["確認済みの一次情報がありません。公開前に出典を登録してください。"];
-    return {
+    const result: FactCheckResult = {
       contentId,
+      contentVersion: content.version,
       passed: issues.length === 0,
       scope: "source_presence_only",
       items,
       issues,
       checkedAt: new Date().toISOString(),
     };
+    const updated = this.store.updateContent(content.id, { lastFactCheck: result }, { incrementVersion: false });
+    if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return result;
   }
 
   private getOwnedProposal(principal: AuthenticatedPrincipal | null, proposalId: string): ContentProposal {
