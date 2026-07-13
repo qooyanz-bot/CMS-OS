@@ -89,6 +89,8 @@ PATCH /api/v1/jobs/{jobId}
 POST /api/v1/jobs/{jobId}/applications
 GET  /api/v1/applications
 PATCH /api/v1/applications/{applicationId}
+GET  /api/v1/notifications?limit=50&cursor=0
+PATCH /api/v1/notifications/{notificationId}
 POST /mcp
 ```
 
@@ -110,6 +112,8 @@ POST /mcp
 問い合わせは `POST /api/v1/inquiries` またはMCPの `inquiry.create` で作成します。送信者は自分の問い合わせ、事業者は自社宛ての問い合わせだけを取得できます。状態は `open`（受付中）→ `responded`（返信済み）→ `closed`（終了）で、RESTとMCPは同じ状態遷移・所有者検証を利用します。
 
 問い合わせの作成・返信・終了、掲載審査の送信・結果を通知として保存します。`GET /api/v1/notifications` はログイン中の本人または自社事業者の通知だけを返し、`limit` と `cursor` によるページングに対応します。通知は本人の操作で既読・未読を切り替えられます。
+
+依頼、求人、応募の一覧も `{ items, page }` 形式で返します。`limit` は1〜100、`cursor` は次ページ取得位置です。依頼の作成・状態変更、応募の作成・状態変更は、対象の事業者、発注者、リクルーターへ通知されます。
 
 運営は `GET /api/v1/provider-listing-reviews` またはMCPの `provider.listing_review_queue` で審査待ち掲載情報を取得できます。カテゴリ、掲載状態、limit、cursorで絞り込みます。運営キーはブラウザUIへ渡さず、API/MCP連携側で管理します。
 

@@ -399,7 +399,7 @@ async function handleMcp(
           {
             name: "request.list",
             description: "発注者自身の依頼、または事業者に割り当てられた依頼を取得します。",
-            inputSchema: { type: "object", properties: {} },
+            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
           },
           {
             name: "request.update_status",
@@ -438,7 +438,7 @@ async function handleMcp(
           {
             name: "job.search",
             description: "カテゴリ別の公開求人を検索します。",
-            inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
+            inputSchema: { type: "object", properties: { category: { enum: categoryEnum }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: ["category"] },
           },
           {
             name: "job.create",
@@ -484,7 +484,7 @@ async function handleMcp(
           {
             name: "application.list",
             description: "リクルーター本人、または事業者自身の求人への応募一覧を取得します。",
-            inputSchema: { type: "object", properties: {} },
+            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
           },
           {
             name: "application.update_status",
@@ -827,7 +827,7 @@ async function handleMcp(
     }
 
     if (name === "request.list") {
-      const result = portal.listRequests(principal);
+      const result = portal.listRequestsPage(principal, parsePaginationArguments(argumentsObject));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -887,7 +887,7 @@ async function handleMcp(
 
     if (name === "job.search") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
-      const result = portal.listJobs(argumentsObject.category, principal);
+      const result = portal.listJobsPage(argumentsObject.category, principal, parsePaginationArguments(argumentsObject));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -937,7 +937,7 @@ async function handleMcp(
     }
 
     if (name === "application.list") {
-      const result = portal.listApplications(principal);
+      const result = portal.listApplicationsPage(principal, parsePaginationArguments(argumentsObject));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1656,7 +1656,7 @@ export function createHttpServer(
 
       if (request.method === "GET" && url.pathname === "/api/v1/requests") {
         try {
-          writeJson(response, 200, { items: portal.listRequests(principal) });
+          writeJson(response, 200, { ...portal.listRequestsPage(principal, parsePaginationQuery(url)) });
         } catch (error) {
           const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
           writeJson(response, statusCode, { error: error instanceof Error ? error.message : "依頼を取得できません。" });
@@ -1800,7 +1800,11 @@ export function createHttpServer(
           writeJson(response, 400, { error: "categoryが有効なカテゴリである必要があります。" });
           return;
         }
-        writeJson(response, 200, { items: portal.listJobs(category, principal) });
+        try {
+          writeJson(response, 200, { ...portal.listJobsPage(category, principal, parsePaginationQuery(url)) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "求人を取得できません。" });
+        }
         return;
       }
 
@@ -1876,7 +1880,7 @@ export function createHttpServer(
 
       if (request.method === "GET" && url.pathname === "/api/v1/applications") {
         try {
-          writeJson(response, 200, { items: portal.listApplications(principal) });
+          writeJson(response, 200, { ...portal.listApplicationsPage(principal, parsePaginationQuery(url)) });
         } catch (error) {
           const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
           writeJson(response, statusCode, { error: error instanceof Error ? error.message : "応募情報を取得できません。" });

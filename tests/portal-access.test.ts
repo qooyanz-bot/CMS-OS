@@ -212,6 +212,23 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(created.status, 201);
 
+    const providerNotifications = await request("/api/v1/notifications?limit=10", {
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+    });
+    assert.ok(providerNotifications.body.items.some((item: { resourceId: string; type: string }) => item.resourceId === created.body.item.id && item.type === "request_received"));
+
+    const mcpRequests = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${ordererLogin.body.accessToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 7,
+        method: "tools/call",
+        params: { name: "request.list", arguments: { limit: 1 } },
+      }),
+    });
+    assert.equal(mcpRequests.body.result.structuredContent.page.limit, 1);
+
     const userLogin = await request("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({ email: "user@example.com", password: "demo-password", category: "legal", role: "user" }),
@@ -238,6 +255,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
       headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
     });
     assert.equal(requests.status, 200);
+    assert.equal(requests.body.page.limit, 50);
     assert.ok(requests.body.items.some((item: { providerId: string }) => item.providerId === "provider-legal-demo"));
     const requestId = requests.body.items[0].id as string;
     const accepted = await request(`/api/v1/requests/${requestId}`, {
@@ -247,6 +265,10 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(accepted.status, 200);
     assert.equal(accepted.body.item.status, "accepted");
+    const ordererNotifications = await request("/api/v1/notifications?limit=10", {
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+    });
+    assert.ok(ordererNotifications.body.items.some((item: { resourceId: string; type: string }) => item.resourceId === requestId && item.type === "request_status_changed"));
 
     const beautyProviderLogin = await request("/api/v1/auth/login", {
       method: "POST",
@@ -263,7 +285,19 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
   it("リクルーターは求人に応募でき、応募情報は本人と事業者に限定される", async () => {
     const publicJobs = await request("/api/v1/jobs?category=legal");
     assert.equal(publicJobs.status, 200);
+    assert.equal(publicJobs.body.page.limit, 50);
     assert.equal(publicJobs.body.items[0].providerId, "非公開");
+
+    const mcpJobs = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 8,
+        method: "tools/call",
+        params: { name: "job.search", arguments: { category: "legal", limit: 1 } },
+      }),
+    });
+    assert.equal(mcpJobs.body.result.structuredContent.page.limit, 1);
 
     const candidateLogin = await request("/api/v1/auth/login", {
       method: "POST",
@@ -284,7 +318,12 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
       headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
     });
     assert.equal(providerApplications.status, 200);
+    assert.equal(providerApplications.body.page.limit, 50);
     assert.equal(providerApplications.body.items[0].jobId, "job-legal-demo");
+    const applicationNotifications = await request("/api/v1/notifications?limit=10", {
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+    });
+    assert.ok(applicationNotifications.body.items.some((item: { resourceId: string; type: string }) => item.resourceId === application.body.item.id && item.type === "application_received"));
     const screening = await request(`/api/v1/applications/${providerApplications.body.items[0].id}`, {
       method: "PATCH",
       headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
@@ -292,6 +331,22 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(screening.status, 200);
     assert.equal(screening.body.item.status, "screening");
+    const candidateNotifications = await request("/api/v1/notifications?limit=10", {
+      headers: { authorization: `Bearer ${candidateLogin.body.accessToken}` },
+    });
+    assert.ok(candidateNotifications.body.items.some((item: { resourceId: string; type: string }) => item.resourceId === providerApplications.body.items[0].id && item.type === "application_status_changed"));
+
+    const mcpApplications = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: { name: "application.list", arguments: { limit: 1 } },
+      }),
+    });
+    assert.equal(mcpApplications.body.result.structuredContent.page.limit, 1);
   });
 
   it("ログインユーザーは公開事業者へ問い合わせでき、送信者と事業者だけが状態を更新できる", async () => {

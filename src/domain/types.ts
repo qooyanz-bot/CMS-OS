@@ -141,7 +141,7 @@ export interface ProviderInquiry {
 }
 
 export type NotificationRecipientType = "account" | "provider";
-export type NotificationType = "inquiry_received" | "inquiry_status_changed" | "listing_submitted" | "listing_reviewed";
+export type NotificationType = "inquiry_received" | "inquiry_status_changed" | "request_received" | "request_status_changed" | "application_received" | "application_status_changed" | "listing_submitted" | "listing_reviewed";
 
 export interface PortalNotification {
   id: string;
@@ -151,7 +151,7 @@ export interface PortalNotification {
   type: NotificationType;
   title: string;
   message: string;
-  resourceType: "inquiry" | "provider_listing";
+  resourceType: "inquiry" | "request" | "application" | "provider_listing";
   resourceId: string;
   createdAt: string;
   readAt?: string;

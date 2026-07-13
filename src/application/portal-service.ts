@@ -286,13 +286,24 @@ export class PortalService {
     const provider = this.store.listProviders(input.category).find((candidate) => candidate.id === input.providerId);
     if (!provider || !isPublicProvider(provider)) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
 
-    return this.store.createRequest({
+    const request = this.store.createRequest({
       category: input.category,
       ordererId: principal.accountId,
       providerId: input.providerId,
       title: input.title.trim(),
       description: input.description.trim(),
     });
+    this.notify({
+      category: request.category,
+      recipientType: "provider",
+      recipientId: request.providerId,
+      type: "request_received",
+      title: "新しい依頼があります",
+      message: request.title,
+      resourceType: "request",
+      resourceId: request.id,
+    });
+    return request;
   }
 
   public listRequests(principal: AuthenticatedPrincipal | null): ServiceRequest[] {
@@ -306,6 +317,13 @@ export class PortalService {
         ? request.ordererId === principal.accountId
         : request.providerId === principal.providerId,
     );
+  }
+
+  public listRequestsPage(
+    principal: AuthenticatedPrincipal | null,
+    pagination: { limit?: number; cursor?: number } = {},
+  ): PortalPage<ServiceRequest> {
+    return this.paginate(this.listRequests(principal), pagination.limit ?? 50, pagination.cursor ?? 0);
   }
 
   public updateRequestStatus(
@@ -327,6 +345,16 @@ export class PortalService {
     if (!validTransition) throw new PortalServiceError(409, "依頼の状態遷移が不正です。");
     const updated = this.store.updateRequest(request.id, status);
     if (!updated) throw new PortalServiceError(404, "依頼が見つかりません。");
+    this.notify({
+      category: updated.category,
+      recipientType: isAssignedProvider ? "account" : "provider",
+      recipientId: isAssignedProvider ? updated.ordererId : updated.providerId,
+      type: "request_status_changed",
+      title: "依頼の状態が更新されました",
+      message: `${updated.title}が「${status}」になりました。`,
+      resourceType: "request",
+      resourceId: updated.id,
+    });
     return updated;
   }
 
@@ -477,6 +505,14 @@ export class PortalService {
     });
   }
 
+  public listJobsPage(
+    category: CategorySlug,
+    principal: AuthenticatedPrincipal | null,
+    pagination: { limit?: number; cursor?: number } = {},
+  ): PortalPage<JobPosting> {
+    return this.paginate(this.listJobs(category, principal), pagination.limit ?? 50, pagination.cursor ?? 0);
+  }
+
   public createJob(
     principal: AuthenticatedPrincipal | null,
     input: { category: CategorySlug; title: string; employmentType: string; location: string; description: string; status?: JobStatus },
@@ -570,13 +606,24 @@ export class PortalService {
       throw new PortalServiceError(409, "この求人にはすでに応募しています。");
     }
 
-    return this.store.createApplication({
+    const application = this.store.createApplication({
       category: principal.category,
       jobId,
       providerId: job.providerId,
       candidateId: principal.accountId,
       message: message.trim(),
     });
+    this.notify({
+      category: application.category,
+      recipientType: "provider",
+      recipientId: application.providerId,
+      type: "application_received",
+      title: "新しい応募があります",
+      message: job.title,
+      resourceType: "application",
+      resourceId: application.id,
+    });
+    return application;
   }
 
   public listApplications(principal: AuthenticatedPrincipal | null): JobApplication[] {
@@ -590,6 +637,13 @@ export class PortalService {
         ? application.candidateId === principal.accountId
         : application.providerId === principal.providerId,
     );
+  }
+
+  public listApplicationsPage(
+    principal: AuthenticatedPrincipal | null,
+    pagination: { limit?: number; cursor?: number } = {},
+  ): PortalPage<JobApplication> {
+    return this.paginate(this.listApplications(principal), pagination.limit ?? 50, pagination.cursor ?? 0);
   }
 
   public updateApplicationStatus(
@@ -610,6 +664,16 @@ export class PortalService {
     if (!validTransition) throw new PortalServiceError(409, "応募の状態遷移が不正です。");
     const updated = this.store.updateApplication(application.id, status);
     if (!updated) throw new PortalServiceError(404, "応募情報が見つかりません。");
+    this.notify({
+      category: updated.category,
+      recipientType: "account",
+      recipientId: updated.candidateId,
+      type: "application_status_changed",
+      title: "応募の状態が更新されました",
+      message: `応募が「${status}」になりました。`,
+      resourceType: "application",
+      resourceId: updated.id,
+    });
     return updated;
   }
 }
