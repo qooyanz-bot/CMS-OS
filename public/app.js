@@ -60,6 +60,7 @@ const elements = {
   providerSort: document.querySelector("#provider-sort"),
   providers: document.querySelector("#provider-list"),
   providerPagination: document.querySelector("#provider-pagination"),
+  providerStatus: document.querySelector("#provider-list-status"),
   requestPanel: document.querySelector("#request-panel"),
   requestForm: document.querySelector("#request-form"),
   requestProvider: document.querySelector("#request-provider"),
@@ -78,6 +79,7 @@ const elements = {
   requestStatus: document.querySelector("#request-status-filter"),
   requestSort: document.querySelector("#request-sort"),
   requestPagination: document.querySelector("#request-pagination"),
+  requestStatusMessage: document.querySelector("#request-list-status"),
   applicationPanel: document.querySelector("#application-panel"),
   applicationList: document.querySelector("#application-list"),
   applicationSearch: document.querySelector("#application-search-filter"),
@@ -85,6 +87,7 @@ const elements = {
   applicationStatus: document.querySelector("#application-status-filter"),
   applicationSort: document.querySelector("#application-sort"),
   applicationPagination: document.querySelector("#application-pagination"),
+  applicationStatusMessage: document.querySelector("#application-list-status"),
   jobs: document.querySelector("#job-list"),
   jobSearch: document.querySelector("#job-search-filter"),
   jobEmployment: document.querySelector("#job-employment-filter"),
@@ -92,6 +95,7 @@ const elements = {
   jobStatus: document.querySelector("#job-status-filter"),
   jobSort: document.querySelector("#job-sort"),
   jobPagination: document.querySelector("#job-pagination"),
+  jobStatusMessage: document.querySelector("#job-list-status"),
   contentPanel: document.querySelector("#content-editor-panel"),
   contentForm: document.querySelector("#content-proposal-form"),
   contentMessage: document.querySelector("#content-message"),
@@ -138,6 +142,36 @@ function isLatestListRequest(name, version) {
 
 function finishListRequest(name, version, target) {
   if (isLatestListRequest(name, version)) target?.setAttribute("aria-busy", "false");
+}
+
+function invalidateListRequest(name, target, statusTarget) {
+  listRequestVersions[name] += 1;
+  target?.setAttribute("aria-busy", "false");
+  setListStatus(statusTarget);
+}
+
+function setListStatus(target, status = "", message = "", retryFunction) {
+  if (!target) return;
+  target.replaceChildren();
+  target.hidden = !status;
+  target.className = `list-state${status ? ` ${status}` : ""}`;
+  target.setAttribute("role", status === "error" ? "alert" : "status");
+  if (!status) return;
+
+  const text = document.createElement("span");
+  text.textContent = message;
+  target.append(text);
+  if (status !== "error" || !retryFunction) return;
+
+  const retryButton = document.createElement("button");
+  retryButton.type = "button";
+  retryButton.className = "button ghost";
+  retryButton.textContent = "再試行";
+  retryButton.addEventListener("click", () => {
+    retryButton.disabled = true;
+    void retryFunction().catch((error) => setMessage(error.message));
+  });
+  target.append(retryButton);
 }
 
 async function api(path, options = {}) {
@@ -383,6 +417,7 @@ function buildListQuery(values) {
 
 async function reloadProviders(cursor = "") {
   const requestVersion = beginListRequest("providers", elements.providers);
+  setListStatus(elements.providerStatus, "loading", "事業者一覧を読み込んでいます。");
   const query = buildListQuery({
     category: state.category,
     search: elements.search.value,
@@ -393,7 +428,15 @@ async function reloadProviders(cursor = "") {
   });
   try {
     const body = await api(`/api/v1/providers?${query}`);
-    if (isLatestListRequest("providers", requestVersion)) renderProviders(body.items, body.page, cursor);
+    if (isLatestListRequest("providers", requestVersion)) {
+      renderProviders(body.items, body.page, cursor);
+      setListStatus(elements.providerStatus);
+    }
+  } catch (error) {
+    if (isLatestListRequest("providers", requestVersion)) {
+      setListStatus(elements.providerStatus, "error", "事業者一覧を読み込めませんでした。再試行してください。", () => reloadProviders(cursor));
+      throw error;
+    }
   } finally {
     finishListRequest("providers", requestVersion, elements.providers);
   }
@@ -401,6 +444,7 @@ async function reloadProviders(cursor = "") {
 
 async function reloadRequests(cursor = "") {
   const requestVersion = beginListRequest("requests", elements.requestList);
+  setListStatus(elements.requestStatusMessage, "loading", "依頼一覧を読み込んでいます。");
   const query = buildListQuery({
     search: elements.requestSearch.value,
     status: elements.requestStatus.value,
@@ -409,7 +453,15 @@ async function reloadRequests(cursor = "") {
   });
   try {
     const body = await api(`/api/v1/requests?${query}`);
-    if (isLatestListRequest("requests", requestVersion)) renderRequests(body.items, body.page, cursor);
+    if (isLatestListRequest("requests", requestVersion)) {
+      renderRequests(body.items, body.page, cursor);
+      setListStatus(elements.requestStatusMessage);
+    }
+  } catch (error) {
+    if (isLatestListRequest("requests", requestVersion)) {
+      setListStatus(elements.requestStatusMessage, "error", "依頼一覧を読み込めませんでした。再試行してください。", () => reloadRequests(cursor));
+      throw error;
+    }
   } finally {
     finishListRequest("requests", requestVersion, elements.requestList);
   }
@@ -417,6 +469,7 @@ async function reloadRequests(cursor = "") {
 
 async function reloadApplications(cursor = "") {
   const requestVersion = beginListRequest("applications", elements.applicationList);
+  setListStatus(elements.applicationStatusMessage, "loading", "応募一覧を読み込んでいます。");
   const query = buildListQuery({
     search: elements.applicationSearch.value,
     jobId: elements.applicationJob.value,
@@ -426,7 +479,15 @@ async function reloadApplications(cursor = "") {
   });
   try {
     const body = await api(`/api/v1/applications?${query}`);
-    if (isLatestListRequest("applications", requestVersion)) renderApplications(body.items, body.page, cursor);
+    if (isLatestListRequest("applications", requestVersion)) {
+      renderApplications(body.items, body.page, cursor);
+      setListStatus(elements.applicationStatusMessage);
+    }
+  } catch (error) {
+    if (isLatestListRequest("applications", requestVersion)) {
+      setListStatus(elements.applicationStatusMessage, "error", "応募一覧を読み込めませんでした。再試行してください。", () => reloadApplications(cursor));
+      throw error;
+    }
   } finally {
     finishListRequest("applications", requestVersion, elements.applicationList);
   }
@@ -434,6 +495,7 @@ async function reloadApplications(cursor = "") {
 
 async function reloadJobs(cursor = "") {
   const requestVersion = beginListRequest("jobs", elements.jobs);
+  setListStatus(elements.jobStatusMessage, "loading", "求人一覧を読み込んでいます。");
   const query = buildListQuery({
     category: state.category,
     search: elements.jobSearch.value,
@@ -445,7 +507,15 @@ async function reloadJobs(cursor = "") {
   });
   try {
     const body = await api(`/api/v1/jobs?${query}`);
-    if (isLatestListRequest("jobs", requestVersion)) renderJobs(body.items, body.page, cursor);
+    if (isLatestListRequest("jobs", requestVersion)) {
+      renderJobs(body.items, body.page, cursor);
+      setListStatus(elements.jobStatusMessage);
+    }
+  } catch (error) {
+    if (isLatestListRequest("jobs", requestVersion)) {
+      setListStatus(elements.jobStatusMessage, "error", "求人一覧を読み込めませんでした。再試行してください。", () => reloadJobs(cursor));
+      throw error;
+    }
   } finally {
     finishListRequest("jobs", requestVersion, elements.jobs);
   }
@@ -462,10 +532,12 @@ async function reloadRoleData() {
   elements.inquiryManagementPanel.hidden = !canSeeInquiries || state.role !== "provider";
   elements.notificationPanel.hidden = !canSeeNotifications;
   if (!canSeeRequests) {
+    invalidateListRequest("requests", elements.requestList, elements.requestStatusMessage);
     elements.requestList.innerHTML = "";
     elements.requestPagination.replaceChildren();
   }
   if (!canSeeApplications) {
+    invalidateListRequest("applications", elements.applicationList, elements.applicationStatusMessage);
     elements.applicationList.innerHTML = "";
     elements.applicationPagination.replaceChildren();
   }
