@@ -100,5 +100,115 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(search.status, 200);
     assert.equal(search.body.result.structuredContent[0].name, "CMS-OS美容室（サンプル）");
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "request.create"));
+
+    const ordererLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "orderer@example.com", password: "demo-password", category: "beauty", role: "orderer" }),
+    });
+    const mcpRequest = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${ordererLogin.body.accessToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: "request.create",
+          arguments: {
+            category: "beauty",
+            providerId: "provider-beauty-demo",
+            title: "カラーの予約について相談したい",
+            description: "希望するカラーと予約可能な日時を相談したいです。",
+          },
+        },
+      }),
+    });
+    assert.equal(mcpRequest.status, 200);
+    assert.equal(mcpRequest.body.result.structuredContent.providerId, "provider-beauty-demo");
+  });
+
+  it("発注者は依頼を作成でき、一般ユーザーは作成できない", async () => {
+    const ordererLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "orderer@example.com", password: "demo-password", category: "legal", role: "orderer" }),
+    });
+    const created = await request("/api/v1/requests", {
+      method: "POST",
+      headers: { authorization: `Bearer ${ordererLogin.body.accessToken}` },
+      body: JSON.stringify({
+        category: "legal",
+        providerId: "provider-legal-demo",
+        title: "相続案件について相談したい",
+        description: "相続人が複数いるため、初回相談の進め方を確認したいです。",
+      }),
+    });
+    assert.equal(created.status, 201);
+
+    const userLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "user@example.com", password: "demo-password", category: "legal", role: "user" }),
+    });
+    const denied = await request("/api/v1/requests", {
+      method: "POST",
+      headers: { authorization: `Bearer ${userLogin.body.accessToken}` },
+      body: JSON.stringify({
+        category: "legal",
+        providerId: "provider-legal-demo",
+        title: "依頼",
+        description: "権限のないユーザーからの依頼作成です。",
+      }),
+    });
+    assert.equal(denied.status, 403);
+  });
+
+  it("担当事業者だけが依頼を確認できる", async () => {
+    const providerLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "lawyer@example.com", password: "demo-password", category: "legal", role: "provider" }),
+    });
+    const requests = await request("/api/v1/requests", {
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+    });
+    assert.equal(requests.status, 200);
+    assert.ok(requests.body.items.some((item: { providerId: string }) => item.providerId === "provider-legal-demo"));
+
+    const beautyProviderLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "beauty@example.com", password: "demo-password", category: "beauty", role: "provider" }),
+    });
+    const unrelated = await request("/api/v1/requests", {
+      headers: { authorization: `Bearer ${beautyProviderLogin.body.accessToken}` },
+    });
+    assert.equal(unrelated.status, 200);
+    assert.ok(unrelated.body.items.every((item: { category: string }) => item.category === "beauty"));
+    assert.ok(!unrelated.body.items.some((item: { providerId: string }) => item.providerId === "provider-legal-demo"));
+  });
+
+  it("リクルーターは求人に応募でき、応募情報は本人と事業者に限定される", async () => {
+    const publicJobs = await request("/api/v1/jobs?category=legal");
+    assert.equal(publicJobs.status, 200);
+    assert.equal(publicJobs.body.items[0].providerId, "非公開");
+
+    const candidateLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "candidate@example.com", password: "demo-password", category: "legal", role: "candidate" }),
+    });
+    const application = await request("/api/v1/jobs/job-legal-demo/applications", {
+      method: "POST",
+      headers: { authorization: `Bearer ${candidateLogin.body.accessToken}` },
+      body: JSON.stringify({ message: "企業法務の経験があり、チームでの業務に関心があります。" }),
+    });
+    assert.equal(application.status, 201);
+
+    const providerLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "lawyer@example.com", password: "demo-password", category: "legal", role: "provider" }),
+    });
+    const providerApplications = await request("/api/v1/applications", {
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+    });
+    assert.equal(providerApplications.status, 200);
+    assert.equal(providerApplications.body.items[0].jobId, "job-legal-demo");
   });
 });

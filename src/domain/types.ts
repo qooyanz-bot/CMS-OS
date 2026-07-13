@@ -63,3 +63,40 @@ export interface VisibleProvider extends Record<string, unknown> {
   themes: string[];
   location: string;
 }
+
+export type RequestStatus = "submitted" | "accepted" | "closed";
+export type JobStatus = "published" | "closed";
+export type ApplicationStatus = "submitted" | "screening" | "closed";
+
+export interface ServiceRequest {
+  id: string;
+  category: CategorySlug;
+  ordererId: string;
+  providerId: string;
+  title: string;
+  description: string;
+  status: RequestStatus;
+  createdAt: string;
+}
+
+export interface JobPosting {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  title: string;
+  employmentType: string;
+  location: string;
+  description: string;
+  status: JobStatus;
+}
+
+export interface JobApplication {
+  id: string;
+  category: CategorySlug;
+  jobId: string;
+  providerId: string;
+  candidateId: string;
+  message: string;
+  status: ApplicationStatus;
+  createdAt: string;
+}

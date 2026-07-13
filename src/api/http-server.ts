@@ -1,15 +1,39 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { URL } from "node:url";
 import { InMemoryAuthService } from "../domain/auth.js";
 import { getCategoryPolicy } from "../domain/catalog.js";
-import { PortalService } from "../application/portal-service.js";
+import { PortalService, PortalServiceError } from "../application/portal-service.js";
 import type { CategorySlug, PortalRole } from "../domain/types.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
+const staticAssets: Record<string, { file: string; contentType: string }> = {
+  "/": { file: "public/index.html", contentType: "text/html; charset=utf-8" },
+  "/app.js": { file: "public/app.js", contentType: "text/javascript; charset=utf-8" },
+  "/styles.css": { file: "public/styles.css", contentType: "text/css; charset=utf-8" },
+};
 
 function writeJson(response: ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, jsonHeaders);
   response.end(JSON.stringify(body));
+}
+
+async function serveStaticAsset(pathname: string, response: ServerResponse): Promise<boolean> {
+  const asset = staticAssets[pathname];
+  if (!asset) return false;
+
+  try {
+    const content = await readFile(resolve(process.cwd(), asset.file));
+    response.writeHead(200, {
+      "content-type": asset.contentType,
+      "cache-control": pathname === "/" ? "no-cache" : "public, max-age=300",
+    });
+    response.end(content);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function readJson(request: IncomingMessage): Promise<Record<string, unknown>> {
@@ -104,6 +128,39 @@ async function handleMcp(
               required: ["category", "role"],
             },
           },
+          {
+            name: "request.create",
+            description: "発注者として事業者への依頼を作成します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                category: { enum: ["legal", "beauty"] },
+                providerId: { type: "string" },
+                title: { type: "string" },
+                description: { type: "string" },
+              },
+              required: ["category", "providerId", "title", "description"],
+            },
+          },
+          {
+            name: "request.list",
+            description: "発注者自身の依頼、または事業者に割り当てられた依頼を取得します。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "job.search",
+            description: "カテゴリ別の公開求人を検索します。",
+            inputSchema: { type: "object", properties: { category: { enum: ["legal", "beauty"] } }, required: ["category"] },
+          },
+          {
+            name: "application.create",
+            description: "リクルーターとして求人へ応募します。",
+            inputSchema: {
+              type: "object",
+              properties: { jobId: { type: "string" }, message: { type: "string" } },
+              required: ["jobId", "message"],
+            },
+          },
         ],
       },
     });
@@ -149,6 +206,42 @@ async function handleMcp(
       return;
     }
 
+    if (name === "request.create") {
+      if (!isCategorySlug(argumentsObject.category) || typeof argumentsObject.providerId !== "string" || typeof argumentsObject.title !== "string" || typeof argumentsObject.description !== "string") {
+        throw new Error("category、providerId、title、descriptionが必要です。");
+      }
+      const result = portal.createRequest(principal, {
+        category: argumentsObject.category,
+        providerId: argumentsObject.providerId,
+        title: argumentsObject.title,
+        description: argumentsObject.description,
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "request.list") {
+      const result = portal.listRequests(principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "job.search") {
+      if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
+      const result = portal.listJobs(argumentsObject.category, principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "application.create") {
+      if (typeof argumentsObject.jobId !== "string" || typeof argumentsObject.message !== "string") {
+        throw new Error("jobIdとmessageが必要です。");
+      }
+      const result = portal.createApplication(principal, argumentsObject.jobId, argumentsObject.message);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     writeJson(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: "未対応のMCPツールです。" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "MCP操作に失敗しました。";
@@ -163,6 +256,10 @@ export function createHttpServer(auth: InMemoryAuthService, portal: PortalServic
     const principal = auth.authenticate(token);
 
     try {
+      if (request.method === "GET" && (await serveStaticAsset(url.pathname, response))) {
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/health") {
         writeJson(response, 200, { ok: true, service: "cms-os" });
         return;
@@ -216,7 +313,8 @@ export function createHttpServer(auth: InMemoryAuthService, portal: PortalServic
           const switched = portal.switchContext(token, body.category, body.role);
           writeJson(response, 200, { principal: switched, experience: portal.getExperience(switched.category, switched) });
         } catch (error) {
-          writeJson(response, 403, { error: error instanceof Error ? error.message : "コンテキストを切り替えられません。" });
+          const statusCode = error instanceof PortalServiceError ? error.statusCode : 403;
+          writeJson(response, statusCode, { error: error instanceof Error ? error.message : "コンテキストを切り替えられません。" });
         }
         return;
       }
@@ -250,6 +348,87 @@ export function createHttpServer(auth: InMemoryAuthService, portal: PortalServic
             location: url.searchParams.get("location") ?? undefined,
           }),
         });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/requests") {
+        if (!principal) {
+          writeJson(response, 401, { error: "ログインが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (!isCategorySlug(body.category) || typeof body.providerId !== "string" || typeof body.title !== "string" || typeof body.description !== "string") {
+          writeJson(response, 400, { error: "category、providerId、title、descriptionが必要です。" });
+          return;
+        }
+        try {
+          const result = portal.createRequest(principal, {
+            category: body.category,
+            providerId: body.providerId,
+            title: body.title,
+            description: body.description,
+          });
+          writeJson(response, 201, { item: result });
+        } catch (error) {
+          const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
+          writeJson(response, statusCode, { error: error instanceof Error ? error.message : "依頼を作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/requests") {
+        try {
+          writeJson(response, 200, { items: portal.listRequests(principal) });
+        } catch (error) {
+          const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
+          writeJson(response, statusCode, { error: error instanceof Error ? error.message : "依頼を取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/jobs") {
+        const category = url.searchParams.get("category");
+        if (!isCategorySlug(category)) {
+          writeJson(response, 400, { error: "categoryはlegalまたはbeautyが必要です。" });
+          return;
+        }
+        writeJson(response, 200, { items: portal.listJobs(category, principal) });
+        return;
+      }
+
+      const applicationMatch = url.pathname.match(/^\/api\/v1\/jobs\/([^/]+)\/applications$/);
+      if (request.method === "POST" && applicationMatch) {
+        const jobId = applicationMatch[1];
+        if (!jobId) {
+          writeJson(response, 400, { error: "jobIdが必要です。" });
+          return;
+        }
+        if (!principal) {
+          writeJson(response, 401, { error: "ログインが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (typeof body.message !== "string") {
+          writeJson(response, 400, { error: "messageが必要です。" });
+          return;
+        }
+        try {
+          const result = portal.createApplication(principal, jobId, body.message);
+          writeJson(response, 201, { item: result });
+        } catch (error) {
+          const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
+          writeJson(response, statusCode, { error: error instanceof Error ? error.message : "応募を作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/applications") {
+        try {
+          writeJson(response, 200, { items: portal.listApplications(principal) });
+        } catch (error) {
+          const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
+          writeJson(response, statusCode, { error: error instanceof Error ? error.message : "応募情報を取得できません。" });
+        }
         return;
       }
 

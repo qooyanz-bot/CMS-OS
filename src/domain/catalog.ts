@@ -106,7 +106,7 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "bookingHistory",
         ],
         visibleFields: ["publicFields", "ordererFields", "verificationStatus", "lastVerifiedAt"],
-        allowedActions: [...commonActions, "booking.create", "request.message", "booking.read"],
+        allowedActions: [...commonActions, "request.create", "booking.create", "request.message", "booking.read"],
         notices: ["予約・問い合わせの個人情報は、対象店舗とのやり取りにのみ使用します。"],
       },
       provider: {
