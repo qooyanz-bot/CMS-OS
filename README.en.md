@@ -24,6 +24,17 @@ CMS-OS is designed for AI agents that understand verified company information an
 
 AI agents support the editorial team; they do not bypass human approval for sensitive content such as IR, legal information, compensation, or executive data.
 
+## Industry theme portals
+
+CMS-OS guides visitors to providers by industry theme and changes visible data and actions according to the role: user, orderer, provider, or recruiter. The current themes cover legal services, beauty, generative AI and business transformation, labor shortages and automation, regional tourism and inbound travel, mobility DX and SDV, GX and energy/resource management, and regional revitalization, relocation, and vacant-house reuse.
+
+- User: browse public providers, theme guides, and FAQs
+- Orderer: compare providers, create requests, discuss quotes, and review request history
+- Provider: manage listings, jobs, inquiries, AI content, SEO, and publishing workflows
+- Recruiter: browse jobs and providers, apply, and track applications
+
+The category list and extension procedure are maintained in the [category registry](docs/CATEGORY-REGISTRY.md).
+
 ## API/MCP-first
 
 Every CMS-OS operation must be executable through a versioned API or MCP. There must be no business operation that exists only in the administration UI.
@@ -101,4 +112,3 @@ The planned implementation order is:
 ## License
 
 The license will be selected after the initial development policy is finalized.
-

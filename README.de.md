@@ -24,6 +24,17 @@ CMS-OS ist für KI-Agenten ausgelegt, die verifizierte Unternehmensinformationen
 
 KI-Agenten unterstützen das Redaktionsteam. Für sensible Inhalte wie IR, rechtliche Informationen, Vergütung oder Managementdaten bleibt eine menschliche Freigabe erforderlich.
 
+## Portale nach Branchenthemen
+
+CMS-OS führt Besucher nach Branchenthemen zu Anbietern und schaltet sichtbare Daten und Aktionen je nach Rolle um: Nutzer, Auftraggeber, Anbieter oder Recruiter. Aktuell werden Rechts- und Anwaltsdienstleistungen, Beauty, generative KI und Geschäftstransformation, Arbeitskräftemangel und Automatisierung, regionaler Tourismus und Incoming-Tourismus, Mobility DX und SDV, GX sowie Energie- und Ressourcenmanagement und regionale Belebung, Umzug und die Wiederverwendung leerstehender Häuser unterstützt.
+
+- Nutzer: öffentliche Anbieter, Themenleitfäden und FAQs ansehen
+- Auftraggeber: Anbieter vergleichen, Anfragen erstellen, Angebote besprechen und die Anfragehistorie prüfen
+- Anbieter: Einträge, Stellen, Anfragen, KI-Inhalte, SEO und Veröffentlichungs-Workflows verwalten
+- Recruiter: Stellen und Anbieter ansehen, Bewerbungen einreichen und ihren Status verfolgen
+
+Die Kategorien und das Erweiterungsverfahren werden im [Kategorie-Register](docs/CATEGORY-REGISTRY.md) gepflegt.
+
 ## API/MCP-first
 
 Jede CMS-OS-Operation muss über eine versionierte API oder MCP ausführbar sein. Es darf keine Geschäftsoperation geben, die nur in der Administrationsoberfläche verfügbar ist.
@@ -73,4 +84,3 @@ Die geplante Reihenfolge ist:
 ## Lizenz
 
 Die Lizenz wird festgelegt, sobald die anfängliche Entwicklungsrichtlinie beschlossen ist.
-

@@ -110,6 +110,8 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(fileMap.has("categories/legal/index.html"));
     assert.ok(fileMap.has("categories/legal/providers/index.html"));
     assert.ok(fileMap.has("categories/legal/providers/provider-legal-demo/index.html"));
+    assert.ok(fileMap.has("categories/ai-business/index.html"));
+    assert.ok(fileMap.has("categories/ai-business/providers/provider-ai-business-demo/index.html"));
     assert.match(fileMap.get(pagePath) ?? "", /application\/ld\+json/);
     assert.match(fileMap.get(pagePath) ?? "", /<table>/);
     assert.match(fileMap.get(pagePath) ?? "", /FAQPage/);
@@ -122,6 +124,7 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get("robots.txt") ?? "", /GPTBot/);
     assert.match(fileMap.get("robots.txt") ?? "", /Disallow: \/api\//);
     assert.match(fileMap.get("llms.txt") ?? "", /Provider/);
+    assert.match(fileMap.get("llms.txt") ?? "", /ai-business/);
     assert.match(fileMap.get("categories\/legal\/providers\/provider-legal-demo\/index.html") ?? "", /Organization/);
 
     const deployed = await request("/api/v1/publications/deploy", {

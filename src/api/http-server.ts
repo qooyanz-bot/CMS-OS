@@ -13,7 +13,7 @@ import {
   parseOptionalStringArray,
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
-import type { CategorySlug, PortalRole } from "../domain/types.js";
+import { categorySlugs, type CategorySlug, type PortalRole } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -69,8 +69,10 @@ function getBearerToken(request: IncomingMessage): string | undefined {
 }
 
 function isCategorySlug(value: unknown): value is CategorySlug {
-  return value === "legal" || value === "beauty";
+  return typeof value === "string" && (categorySlugs as readonly string[]).includes(value);
 }
+
+const categoryEnum = [...categorySlugs];
 
 function isPortalRole(value: unknown): value is PortalRole {
   return value === "user" || value === "orderer" || value === "provider" || value === "candidate";
@@ -149,7 +151,7 @@ async function handleMcp(
           {
             name: "category.resolve_experience",
             description: "カテゴリと認証コンテキストに応じた表示モジュールと操作権限を取得します。",
-            inputSchema: { type: "object", properties: { category: { enum: ["legal", "beauty"] } }, required: ["category"] },
+            inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
           },
           {
             name: "provider.search",
@@ -157,7 +159,7 @@ async function handleMcp(
             inputSchema: {
               type: "object",
               properties: {
-                category: { enum: ["legal", "beauty"] },
+                category: { enum: categoryEnum },
                 search: { type: "string" },
                 theme: { type: "string" },
                 location: { type: "string" },
@@ -173,7 +175,7 @@ async function handleMcp(
               properties: {
                 email: { type: "string" },
                 password: { type: "string" },
-                category: { enum: ["legal", "beauty"] },
+                category: { enum: categoryEnum },
                 role: { enum: ["user", "orderer", "provider", "candidate"] },
               },
               required: ["email", "password", "category"],
@@ -199,7 +201,7 @@ async function handleMcp(
             description: "許可されたカテゴリとロールへ操作コンテキストを切り替えます。",
             inputSchema: {
               type: "object",
-              properties: { category: { enum: ["legal", "beauty"] }, role: { enum: ["user", "orderer", "provider", "candidate"] } },
+              properties: { category: { enum: categoryEnum }, role: { enum: ["user", "orderer", "provider", "candidate"] } },
               required: ["category", "role"],
             },
           },
@@ -208,7 +210,7 @@ async function handleMcp(
             description: "OIDC Authorization Code + PKCE認証を開始します。",
             inputSchema: {
               type: "object",
-              properties: { category: { enum: ["legal", "beauty"] }, role: { enum: ["user", "orderer", "provider", "candidate"] } },
+              properties: { category: { enum: categoryEnum }, role: { enum: ["user", "orderer", "provider", "candidate"] } },
               required: ["category"],
             },
           },
@@ -242,7 +244,7 @@ async function handleMcp(
             inputSchema: {
               type: "object",
               properties: {
-                category: { enum: ["legal", "beauty"] },
+                category: { enum: categoryEnum },
                 providerId: { type: "string" },
                 title: { type: "string" },
                 description: { type: "string" },
@@ -258,7 +260,7 @@ async function handleMcp(
           {
             name: "job.search",
             description: "カテゴリ別の公開求人を検索します。",
-            inputSchema: { type: "object", properties: { category: { enum: ["legal", "beauty"] } }, required: ["category"] },
+            inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
           },
           {
             name: "application.create",
@@ -280,7 +282,7 @@ async function handleMcp(
             inputSchema: {
               type: "object",
               properties: {
-                category: { enum: ["legal", "beauty"] },
+                category: { enum: categoryEnum },
                 contentType: { enum: ["company", "blog", "job", "pr", "ir"] },
                 audience: { enum: ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] },
                 topic: { type: "string" },
@@ -795,7 +797,7 @@ export function createHttpServer(
       if (request.method === "GET" && url.pathname === "/api/v1/providers") {
         const category = url.searchParams.get("category");
         if (!isCategorySlug(category)) {
-          writeJson(response, 400, { error: "categoryはlegalまたはbeautyが必要です。" });
+          writeJson(response, 400, { error: "categoryが有効なカテゴリである必要があります。" });
           return;
         }
         writeJson(response, 200, {
@@ -991,7 +993,7 @@ export function createHttpServer(
       if (request.method === "GET" && url.pathname === "/api/v1/jobs") {
         const category = url.searchParams.get("category");
         if (!isCategorySlug(category)) {
-          writeJson(response, 400, { error: "categoryはlegalまたはbeautyが必要です。" });
+          writeJson(response, 400, { error: "categoryが有効なカテゴリである必要があります。" });
           return;
         }
         writeJson(response, 200, { items: portal.listJobs(category, principal) });

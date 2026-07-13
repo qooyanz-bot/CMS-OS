@@ -31,6 +31,26 @@ async function request(path: string, init?: RequestInit): Promise<{ status: numb
 }
 
 describe("CMS-OSカテゴリ別アクセス制御", () => {
+  it("追加テーマカテゴリをRESTとカテゴリ別ポリシーから取得できる", async () => {
+    const categories = await request("/api/v1/categories");
+    const slugs = categories.body.items.map((item: { slug: string }) => item.slug);
+
+    assert.equal(categories.status, 200);
+    assert.ok(slugs.includes("ai-business"));
+    assert.ok(slugs.includes("tourism"));
+    assert.ok(slugs.includes("gx"));
+
+    const experience = await request("/api/v1/categories/ai-business/experience");
+    const providers = await request("/api/v1/providers?category=ai-business");
+
+    assert.equal(experience.status, 200);
+    assert.ok(experience.body.experience.visibleModules.includes("providerSearch"));
+    assert.ok(!experience.body.experience.visibleModules.includes("legalDisclaimer"));
+    assert.equal(providers.status, 200);
+    assert.equal(providers.body.items[0].id, "provider-ai-business-demo");
+    assert.equal(providers.body.items[0].contactOptions, undefined);
+  });
+
   it("未ログインのユーザーにカテゴリごとの表示モジュールを返す", async () => {
     const legal = await request("/api/v1/categories/legal/experience");
     const beauty = await request("/api/v1/categories/beauty/experience");
@@ -88,6 +108,8 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(tools.status, 200);
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.search"));
+    const providerSearchTool = tools.body.result.tools.find((tool: { name: string }) => tool.name === "provider.search");
+    assert.ok(providerSearchTool.inputSchema.properties.category.enum.includes("ai-business"));
 
     const search = await request("/mcp", {
       method: "POST",

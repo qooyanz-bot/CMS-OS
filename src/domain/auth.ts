@@ -173,21 +173,23 @@ export class InMemoryAuthService implements AuthService {
       storedAccounts.forEach((account) => this.addAccount(account));
     } else if (this.allowDemoAccounts) {
       const passwordHash = createPasswordHash("demo-password");
-      const allCategories = { role: "user" as const, category: "*" as const };
+      const allUserCategories = { role: "user" as const, category: "*" as const };
+      const allOrdererCategories = { role: "orderer" as const, category: "*" as const };
+      const allCandidateCategories = { role: "candidate" as const, category: "*" as const };
 
       this.addAccount({
         id: "account-user-demo",
         email: "user@example.com",
         passwordHash,
         displayName: "一般ユーザー（サンプル）",
-        assignments: [allCategories],
+        assignments: [allUserCategories],
       });
       this.addAccount({
         id: "account-orderer-demo",
         email: "orderer@example.com",
         passwordHash,
         displayName: "発注者（サンプル）",
-        assignments: [allCategories, { role: "orderer", category: "legal" }, { role: "orderer", category: "beauty" }],
+        assignments: [allUserCategories, allOrdererCategories],
       });
       this.addAccount({
         id: "account-legal-provider-demo",
@@ -195,7 +197,7 @@ export class InMemoryAuthService implements AuthService {
         passwordHash,
         displayName: "士業事業者（サンプル）",
         providerId: "provider-legal-demo",
-        assignments: [allCategories, { role: "provider", category: "legal" }],
+        assignments: [allUserCategories, { role: "provider", category: "legal" }],
       });
       this.addAccount({
         id: "account-beauty-provider-demo",
@@ -203,14 +205,14 @@ export class InMemoryAuthService implements AuthService {
         passwordHash,
         displayName: "美容事業者（サンプル）",
         providerId: "provider-beauty-demo",
-        assignments: [allCategories, { role: "provider", category: "beauty" }],
+        assignments: [allUserCategories, { role: "provider", category: "beauty" }],
       });
       this.addAccount({
         id: "account-candidate-demo",
         email: "candidate@example.com",
         passwordHash,
         displayName: "リクルーター（サンプル）",
-        assignments: [allCategories, { role: "candidate", category: "legal" }, { role: "candidate", category: "beauty" }],
+        assignments: [allUserCategories, allCandidateCategories],
       });
       this.persistAccounts();
     }

@@ -1,7 +1,17 @@
 export const portalRoles = ["user", "orderer", "provider", "candidate"] as const;
+export const categorySlugs = [
+  "legal",
+  "beauty",
+  "ai-business",
+  "labor-shortage",
+  "tourism",
+  "mobility-dx",
+  "gx",
+  "regional-revitalization",
+] as const;
 
 export type PortalRole = (typeof portalRoles)[number];
-export type CategorySlug = "legal" | "beauty";
+export type CategorySlug = (typeof categorySlugs)[number];
 
 export interface RoleAssignment {
   role: PortalRole;

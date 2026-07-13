@@ -353,7 +353,7 @@
       "Conflict": { "description": "状態競合", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
     },
     "schemas": {
-      "CategorySlug": { "type": "string", "enum": ["legal", "beauty"] },
+      "CategorySlug": { "type": "string", "enum": ["legal", "beauty", "ai-business", "labor-shortage", "tourism", "mobility-dx", "gx", "regional-revitalization"] },
       "PortalRole": { "type": "string", "enum": ["user", "orderer", "provider", "candidate"] },
       "ContentType": { "type": "string", "enum": ["company", "blog", "job", "pr", "ir"] },
       "ContentAudience": { "type": "string", "enum": ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] },

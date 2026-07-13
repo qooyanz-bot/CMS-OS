@@ -24,6 +24,17 @@ CMS-OS está diseñado para agentes de IA que entienden la información corporat
 
 Los agentes de IA ayudan al equipo editorial. No pueden omitir la aprobación humana para contenidos sensibles como IR, información legal, remuneraciones o datos de directivos.
 
+## Portales por temas sectoriales
+
+CMS-OS guía a los visitantes hacia proveedores según el tema sectorial y cambia los datos y acciones visibles según el rol: usuario, solicitante, proveedor o reclutador. Actualmente cubre servicios jurídicos, belleza, IA generativa y transformación empresarial, escasez de mano de obra y automatización, turismo regional y turismo receptivo, movilidad DX y SDV, GX y gestión de energía y recursos, y revitalización regional, reubicación y reutilización de viviendas vacías.
+
+- Usuario: consultar proveedores públicos, guías temáticas y preguntas frecuentes
+- Solicitante: comparar proveedores, crear solicitudes, consultar presupuestos y revisar el historial
+- Proveedor: gestionar la ficha, las vacantes, las consultas, el contenido de IA, el SEO y la publicación
+- Reclutador: consultar vacantes y proveedores, presentar candidaturas y seguir su estado
+
+La lista de categorías y el procedimiento de ampliación se mantienen en el [registro de categorías](docs/CATEGORY-REGISTRY.md).
+
 ## API/MCP como principio fundamental
 
 Todas las operaciones de CMS-OS deben poder ejecutarse mediante una API versionada o MCP. No debe existir ninguna operación de negocio que solo pueda realizarse desde la interfaz de administración.
@@ -73,4 +84,3 @@ El orden previsto es:
 ## Licencia
 
 La licencia se decidirá cuando se finalice la política inicial de desarrollo.
-

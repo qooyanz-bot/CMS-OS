@@ -133,13 +133,16 @@ function renderExperience(experience) {
   elements.modules.innerHTML = experience.visibleModules.map((module) => `<span>${escapeHtml(module)}</span>`).join("");
 
   const isBeauty = experience.category === "beauty";
-  elements.workflowTitle.textContent = isBeauty ? "メニューから予約する" : "相談テーマから探す";
+  const isLegal = experience.category === "legal";
+  elements.workflowTitle.textContent = isBeauty ? "メニューから予約する" : isLegal ? "相談テーマから探す" : "テーマから事業者を探す";
   elements.workflowCopy.textContent = isBeauty
     ? "メニュー、地域、スタイル事例を比較して、自分に合う店舗へつなげます。"
-    : "相談テーマ、専門領域、対応地域を整理して、適切な事業者へつなげます。";
+    : isLegal
+      ? "相談テーマ、専門領域、対応地域を整理して、適切な事業者へつなげます。"
+      : "テーマ、対応領域、地域を整理して、目的に合う事業者へつなげます。";
   elements.workflowOne.textContent = isBeauty ? "メニューを選ぶ" : "テーマを選ぶ";
   elements.workflowTwo.textContent = isBeauty ? "店舗を比較する" : "事業者を比較する";
-  elements.workflowThree.textContent = isBeauty ? "予約する" : "相談する";
+  elements.workflowThree.textContent = isBeauty ? "予約する" : isLegal ? "相談する" : "問い合わせる";
   elements.requestPanel.hidden = !experience.allowedActions.includes("request.create");
 }
 

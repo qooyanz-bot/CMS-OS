@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS cms_accounts (
 
 CREATE TABLE IF NOT EXISTS cms_providers (
   id TEXT PRIMARY KEY,
-  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty')),
+  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty', 'ai-business', 'labor-shortage', 'tourism', 'mobility-dx', 'gx', 'regional-revitalization')),
   name TEXT NOT NULL,
   themes JSONB NOT NULL DEFAULT '[]'::jsonb,
   location TEXT NOT NULL,
@@ -30,7 +30,7 @@ ALTER TABLE cms_accounts
 CREATE TABLE IF NOT EXISTS cms_role_assignments (
   account_id TEXT NOT NULL REFERENCES cms_accounts(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('user', 'orderer', 'provider', 'candidate')),
-  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty', '*')),
+  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty', 'ai-business', 'labor-shortage', 'tourism', 'mobility-dx', 'gx', 'regional-revitalization', '*')),
   organization_id TEXT,
   provider_id TEXT REFERENCES cms_providers(id),
   PRIMARY KEY (account_id, role, category)
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS cms_role_assignments (
 CREATE TABLE IF NOT EXISTS cms_sessions (
   token_hash TEXT PRIMARY KEY,
   account_id TEXT NOT NULL REFERENCES cms_accounts(id) ON DELETE CASCADE,
-  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty')),
+  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty', 'ai-business', 'labor-shortage', 'tourism', 'mobility-dx', 'gx', 'regional-revitalization')),
   role TEXT NOT NULL CHECK (role IN ('user', 'orderer', 'provider', 'candidate')),
   expires_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS cms_sessions (
 
 CREATE TABLE IF NOT EXISTS cms_requests (
   id TEXT PRIMARY KEY,
-  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty')),
+  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty', 'ai-business', 'labor-shortage', 'tourism', 'mobility-dx', 'gx', 'regional-revitalization')),
   orderer_id TEXT NOT NULL REFERENCES cms_accounts(id),
   provider_id TEXT NOT NULL REFERENCES cms_providers(id),
   title TEXT NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS cms_requests (
 
 CREATE TABLE IF NOT EXISTS cms_jobs (
   id TEXT PRIMARY KEY,
-  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty')),
+  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty', 'ai-business', 'labor-shortage', 'tourism', 'mobility-dx', 'gx', 'regional-revitalization')),
   provider_id TEXT NOT NULL REFERENCES cms_providers(id),
   title TEXT NOT NULL,
   employment_type TEXT NOT NULL,
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS cms_jobs (
 
 CREATE TABLE IF NOT EXISTS cms_applications (
   id TEXT PRIMARY KEY,
-  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty')),
+  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty', 'ai-business', 'labor-shortage', 'tourism', 'mobility-dx', 'gx', 'regional-revitalization')),
   job_id TEXT NOT NULL REFERENCES cms_jobs(id),
   provider_id TEXT NOT NULL REFERENCES cms_providers(id),
   candidate_id TEXT NOT NULL REFERENCES cms_accounts(id),
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS cms_applications (
 
 CREATE TABLE IF NOT EXISTS cms_content_proposals (
   id TEXT PRIMARY KEY,
-  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty')),
+  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty', 'ai-business', 'labor-shortage', 'tourism', 'mobility-dx', 'gx', 'regional-revitalization')),
   provider_id TEXT NOT NULL REFERENCES cms_providers(id),
   content_type TEXT NOT NULL CHECK (content_type IN ('company', 'blog', 'job', 'pr', 'ir')),
   audience TEXT NOT NULL CHECK (audience IN ('customer', 'candidate', 'media', 'investor', 'beginner', 'existingCustomer')),
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS cms_content_proposals (
 
 CREATE TABLE IF NOT EXISTS cms_contents (
   id TEXT PRIMARY KEY,
-  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty')),
+  category TEXT NOT NULL CHECK (category IN ('legal', 'beauty', 'ai-business', 'labor-shortage', 'tourism', 'mobility-dx', 'gx', 'regional-revitalization')),
   provider_id TEXT NOT NULL REFERENCES cms_providers(id),
   proposal_id TEXT NOT NULL REFERENCES cms_content_proposals(id),
   content_type TEXT NOT NULL CHECK (content_type IN ('company', 'blog', 'job', 'pr', 'ir')),

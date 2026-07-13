@@ -16,6 +16,99 @@ interface CategoryPolicy {
 
 const commonActions = ["profile.read", "provider.search", "favorite.manage"];
 
+type GenericCategorySlug = Exclude<CategorySlug, "legal" | "beauty">;
+
+interface GenericCategoryDefinition {
+  slug: GenericCategorySlug;
+  label: string;
+  themeLabel: string;
+  themes: string[];
+}
+
+const genericCategoryDefinitions: GenericCategoryDefinition[] = [
+  { slug: "ai-business", label: "生成AI・業務改革", themeLabel: "活用テーマ", themes: ["生成AI導入", "業務自動化", "社内活用"] },
+  { slug: "labor-shortage", label: "人手不足・省人化", themeLabel: "省人化テーマ", themes: ["採用支援", "業務省人化", "現場改善"] },
+  { slug: "tourism", label: "地域観光・インバウンド", themeLabel: "観光テーマ", themes: ["観光DX", "多言語対応", "地域体験"] },
+  { slug: "mobility-dx", label: "モビリティDX・SDV", themeLabel: "DXテーマ", themes: ["車両データ", "モビリティサービス", "業務システム連携"] },
+  { slug: "gx", label: "GX・省エネ・資源循環", themeLabel: "環境テーマ", themes: ["省エネ", "再エネ活用", "資源循環"] },
+  { slug: "regional-revitalization", label: "地方創生・移住・空き家再生", themeLabel: "地域テーマ", themes: ["移住支援", "空き家活用", "地域事業開発"] },
+];
+
+function createGenericCategoryPolicy(definition: GenericCategoryDefinition): CategoryPolicy {
+  const providerActions = [
+    "profile.read",
+    "profile.update",
+    "listing.update",
+    "inquiry.read",
+    "job.manage",
+    "content.propose",
+    "content.draft",
+    "content.polish",
+    "content.fact_check",
+    "seo.audit",
+    "workflow.approve",
+    "publication.build",
+  ];
+
+  return {
+    slug: definition.slug,
+    label: definition.label,
+    navigation: [
+      { id: "themes", label: definition.themeLabel },
+      { id: "providers", label: "事業者を探す" },
+      { id: "guides", label: "業界ガイド" },
+      { id: "jobs", label: "求人" },
+    ],
+    roles: {
+      user: {
+        visibleModules: ["themeGuide", "providerSearch", "providerProfile", "faq"],
+        visibleFields: ["publicFields", "verificationStatus", "lastVerifiedAt"],
+        allowedActions: [...commonActions],
+        notices: ["掲載情報は公開された事実と最終確認日を基準に表示します。"],
+      },
+      orderer: {
+        visibleModules: [
+          "themeGuide",
+          "providerSearch",
+          "providerProfile",
+          "faq",
+          "requestCase",
+          "requestQuote",
+          "secureMessage",
+          "shortlist",
+          "requestHistory",
+        ],
+        visibleFields: ["publicFields", "ordererFields", "verificationStatus", "lastVerifiedAt"],
+        allowedActions: [...commonActions, "request.create", "request.message", "request.quote.read"],
+        notices: ["相談内容と連絡先は、依頼先として選択した事業者とのやり取りにのみ共有されます。"],
+      },
+      provider: {
+        visibleModules: [
+          "providerDashboard",
+          "listingManagement",
+          "inquiryManagement",
+          "jobManagement",
+          "contentAssistant",
+          "seoAssistant",
+        ],
+        visibleFields: ["publicFields", "providerFields", "verificationStatus", "lastVerifiedAt"],
+        allowedActions: providerActions,
+        notices: ["掲載情報、実績、求人、コンテンツを分けて管理し、公開前に確認できます。"],
+      },
+      candidate: {
+        visibleModules: ["jobSearch", "providerProfile", "culture", "application", "applicationStatus"],
+        visibleFields: ["publicFields", "candidateFields", "verificationStatus", "lastVerifiedAt"],
+        allowedActions: [...commonActions, "job.search", "application.create", "application.read"],
+        notices: ["応募書類と選考情報は、応募先事業者と本人以外には表示されません。"],
+      },
+    },
+  };
+}
+
+const genericCategoryPolicies = Object.fromEntries(
+  genericCategoryDefinitions.map((definition) => [definition.slug, createGenericCategoryPolicy(definition)]),
+) as Record<GenericCategorySlug, CategoryPolicy>;
+
 const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
   legal: {
     slug: "legal",
@@ -149,7 +242,38 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
       },
     },
   },
+  ...genericCategoryPolicies,
 };
+
+function createGenericProvider(definition: GenericCategoryDefinition): ProviderRecord {
+  return {
+    id: `provider-${definition.slug}-demo`,
+    category: definition.slug,
+    name: `CMS-OS${definition.label}事業者（サンプル）`,
+    themes: definition.themes,
+    location: "全国",
+    publicFields: {
+      serviceThemes: definition.themes,
+      listingStatus: "sample",
+      verificationStatus: "sample",
+      lastVerifiedAt: "2026-07-01",
+    },
+    ordererFields: {
+      contactOptions: ["問い合わせ"],
+      responsePolicy: "掲載準備中のサンプル情報です",
+    },
+    providerFields: {
+      internalStatus: "掲載情報を管理できます",
+      listingStatus: "sample",
+    },
+    candidateFields: {
+      openPositions: ["募集情報を確認"],
+      culture: `${definition.label}の事業づくりに関心のある人材を募集するカテゴリです`,
+    },
+  };
+}
+
+const genericProviders = genericCategoryDefinitions.map(createGenericProvider);
 
 const providers: ProviderRecord[] = [
   {
@@ -203,6 +327,7 @@ const providers: ProviderRecord[] = [
       culture: "技術研修と長期的なキャリア形成を重視",
     },
   },
+  ...genericProviders,
 ];
 
 export function getCategoryPolicy(category: CategorySlug): CategoryPolicy {

@@ -24,6 +24,17 @@ CMS-OS est conçu pour des agents d’IA capables de comprendre les informations
 
 Les agents d’IA assistent l’équipe éditoriale. Les contenus sensibles, notamment l’IR, les informations juridiques, les rémunérations et les données des dirigeants, nécessitent une validation humaine.
 
+## Portails par thèmes sectoriels
+
+CMS-OS guide les visiteurs vers des prestataires par thème sectoriel et adapte les données et actions visibles selon le rôle : utilisateur, donneur d’ordre, prestataire ou recruteur. Les thèmes actuels couvrent les services juridiques, la beauté, l’IA générative et la transformation des entreprises, la pénurie de main-d’œuvre et l’automatisation, le tourisme régional et réceptif, la mobilité DX et SDV, la GX et la gestion de l’énergie et des ressources, ainsi que la revitalisation régionale, la mobilité résidentielle et la réutilisation des logements vacants.
+
+- Utilisateur : consulter les prestataires publics, les guides thématiques et les FAQ
+- Donneur d’ordre : comparer les prestataires, créer une demande, échanger sur un devis et consulter l’historique
+- Prestataire : gérer la fiche, les offres d’emploi, les demandes, le contenu IA, le SEO et les workflows de publication
+- Recruteur : consulter les offres et les prestataires, candidater et suivre les candidatures
+
+La liste des catégories et la procédure d’extension sont maintenues dans le [registre des catégories](docs/CATEGORY-REGISTRY.md).
+
 ## API/MCP en priorité
 
 Toutes les opérations de CMS-OS doivent être exécutables par une API versionnée ou par MCP. Aucune opération métier ne doit être disponible uniquement dans l’interface d’administration.
@@ -73,4 +84,3 @@ L’ordre prévu est le suivant :
 ## Licence
 
 La licence sera choisie après la finalisation de la politique initiale de développement.
-
