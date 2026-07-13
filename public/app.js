@@ -31,6 +31,37 @@ const labels = {
   candidate: "リクルーター",
 };
 
+const moduleLabels = {
+  themeGuide: "テーマガイド",
+  menuSearch: "メニュー検索",
+  providerSearch: "事業者を探す",
+  providerProfile: "事業者プロフィール",
+  legalDisclaimer: "注意事項",
+  faq: "よくある質問",
+  styleGallery: "スタイル事例",
+  requestCase: "依頼内容",
+  requestQuote: "見積もり相談",
+  secureMessage: "安全なメッセージ",
+  requestMessage: "相談メッセージ",
+  shortlist: "候補リスト",
+  requestHistory: "依頼履歴",
+  booking: "予約",
+  bookingHistory: "予約履歴",
+  providerDashboard: "事業者ダッシュボード",
+  listingManagement: "掲載情報管理",
+  inquiryManagement: "問い合わせ管理",
+  menuManagement: "メニュー管理",
+  bookingManagement: "予約管理",
+  styleManagement: "スタイル管理",
+  jobManagement: "求人管理",
+  contentAssistant: "AIコンテンツ編集",
+  seoAssistant: "SEOアシスタント",
+  jobSearch: "求人を探す",
+  culture: "働き方・文化",
+  application: "応募",
+  applicationStatus: "応募状況",
+};
+
 const elements = {
   category: document.querySelector("#category-select"),
   account: document.querySelector("#account-select"),
@@ -231,12 +262,15 @@ function formatValue(value) {
   return escapeHtml(value);
 }
 
-function renderExperience(experience) {
+function renderExperience(experience, navigation = []) {
   state.experience = experience;
   elements.title.textContent = experience.categoryLabel;
   elements.badge.textContent = labels[experience.role];
   elements.notice.textContent = experience.notices.join(" ");
-  elements.modules.innerHTML = experience.visibleModules.map((module) => `<span>${escapeHtml(module)}</span>`).join("");
+  const navigationLabels = Object.fromEntries(navigation.map((item) => [item.id, item.label]));
+  elements.modules.innerHTML = experience.visibleModules
+    .map((module) => `<span>${escapeHtml(moduleLabels[module] ?? navigationLabels[module] ?? module)}</span>`)
+    .join("");
 
   const isBeauty = experience.category === "beauty";
   const isLegal = experience.category === "legal";
@@ -251,6 +285,9 @@ function renderExperience(experience) {
   elements.workflowThree.textContent = isBeauty ? "予約する" : isLegal ? "相談する" : "問い合わせる";
   elements.requestPanel.hidden = !experience.allowedActions.includes("request.create");
   elements.inquiryPanel.hidden = !experience.allowedActions.includes("inquiry.create");
+  const canSeeJobs = experience.visibleModules.includes("jobSearch") || experience.visibleModules.includes("jobManagement");
+  elements.jobPanel.hidden = !canSeeJobs;
+  if (!canSeeJobs) clearJobView();
 }
 
 function renderListPagination(target, page = {}, cursor = "", reloadFunction, label) {
@@ -317,6 +354,7 @@ const directoryGuideKindLabels = { directory: "検索・相談", booking: "検�
 
 function renderDirectoryGuides(items) {
   state.directoryGuides = items;
+  elements.directoryGuideList.setAttribute("aria-busy", "false");
   elements.directoryGuidePanel.hidden = items.length === 0;
   elements.directoryGuideList.innerHTML = items.length
     ? items.map((guide) => `<article class="directory-guide-item"><div class="meta"><span>${escapeHtml(directoryGuideKindLabels[guide.kind] ?? guide.kind)}</span><span>確認日 ${escapeHtml(guide.verifiedAt)}</span></div><h3><a href="${escapeHtml(guide.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(guide.name)}</a></h3><p>${escapeHtml(guide.description)}</p></article>`).join("")
@@ -529,6 +567,10 @@ async function reloadApplications(cursor = "") {
 }
 
 async function reloadJobs(cursor = "") {
+  if (elements.jobPanel.hidden) {
+    clearJobView();
+    return;
+  }
   const requestVersion = beginListRequest("jobs", elements.jobs);
   setListStatus(elements.jobStatusMessage, "loading", "求人一覧を読み込んでいます。");
   const query = buildListQuery({
@@ -554,6 +596,12 @@ async function reloadJobs(cursor = "") {
   } finally {
     finishListRequest("jobs", requestVersion, elements.jobs);
   }
+}
+
+function clearJobView() {
+  invalidateListRequest("jobs", elements.jobs, elements.jobStatusMessage);
+  elements.jobs.innerHTML = "";
+  elements.jobPagination.replaceChildren();
 }
 
 async function reloadRoleData() {
@@ -778,16 +826,13 @@ async function handleContentAction(action, contentId) {
 }
 
 async function reload() {
-  const experienceBody = await api(`/api/v1/categories/${state.category}/experience`);
-  renderExperience(experienceBody.experience);
+  const contextBody = await api(`/api/v1/categories/${encodeURIComponent(state.category)}`);
+  renderExperience(contextBody.item.experience, contextBody.item.navigation);
   await reloadProviderManagement();
   await reloadRoleData();
   await reloadProviders();
-  try {
-    await reloadDirectoryGuides();
-  } catch (error) {
-    setMessage(error.message);
-  }
+  renderDirectoryGuides(contextBody.item.directoryGuides);
+  setListStatus(elements.directoryGuideStatus);
   await reloadJobs();
   elements.session.textContent = state.token ? `${labels[state.role]} / ${state.category}` : "未ログイン";
   await reloadContent();

@@ -61,6 +61,10 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.equal(script.status, 200);
   const scriptBody = await script.text();
   assert.match(scriptBody, /category-select/);
+  assert.match(scriptBody, /api\/v1\/categories\/\$\{encodeURIComponent\(state\.category\)\}/);
+  assert.match(scriptBody, /moduleLabels/);
+  assert.match(scriptBody, /visibleModules\.includes\("jobSearch"\)/);
+  assert.match(scriptBody, /clearJobView/);
   assert.match(scriptBody, /api\/v1\/auth\/config/);
   assert.match(scriptBody, /api\/v1\/auth\/oidc\/start/);
   assert.match(scriptBody, /api\/v1\/auth\/mfa\/complete/);
