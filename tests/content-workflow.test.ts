@@ -55,6 +55,26 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(proposal.body.item.audience, "candidate");
     assert.ok(proposal.body.item.outline.includes("仕事内容と成長機会"));
 
+    const direct = await request("/api/v1/content", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({
+        category: "legal",
+        contentType: "pr",
+        audience: "media",
+        title: "法律相談の新しい取り組み",
+        summary: "報道関係者向けに新しい取り組みの要点を説明します。",
+        body: "# 法律相談の新しい取り組み\n\n確認済み情報に基づく本文です。",
+        slug: "legal-consultation-news",
+        sourceFacts: ["2026年7月に開始しました。"],
+        seo: { keywords: ["法律相談", "新しい取り組み"] },
+      }),
+    });
+    assert.equal(direct.status, 201);
+    assert.equal(direct.body.item.status, "drafted");
+    assert.equal(direct.body.item.slug, "legal-consultation-news");
+    assert.equal(direct.body.item.proposalId.startsWith("proposal-"), true);
+
     const userLogin = await request("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({ email: "user@example.com", password: "demo-password", category: "legal", role: "user" }),
@@ -206,6 +226,7 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     });
     const names = tools.body.result.tools.map((tool: { name: string }) => tool.name);
     assert.ok(names.includes("content.propose"));
+    assert.ok(names.includes("content.create"));
     assert.ok(names.includes("content.list"));
     assert.ok(names.includes("content.get"));
     assert.ok(names.includes("content.versions"));
@@ -256,6 +277,30 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     });
     assert.equal(siteAuditMcp.status, 200);
     assert.equal(siteAuditMcp.body.result.structuredContent.category, "beauty");
+
+    const direct = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 13,
+        method: "tools/call",
+        params: {
+          name: "content.create",
+          arguments: {
+            category: "beauty",
+            contentType: "blog",
+            audience: "customer",
+            title: "美容メニューの選び方ガイド",
+            summary: "初めての方が美容メニューを比較できるガイドです。",
+            body: "# 美容メニューの選び方ガイド\n\n確認済み情報をもとにした下書きです。",
+            sourceFacts: ["料金と施術時間を確認済みです。"],
+          },
+        },
+      }),
+    });
+    assert.equal(direct.status, 200);
+    assert.equal(direct.body.result.structuredContent.status, "drafted");
 
     const proposal = await request("/mcp", {
       method: "POST",

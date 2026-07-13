@@ -769,6 +769,27 @@ async function handleMcp(
             },
           },
           {
+            name: "content.create",
+            description: "検証済み本文をAIエージェントまたは外部APIから下書きとして登録します。登録後は既存の版管理・SEO監査・承認フローを利用します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                category: { enum: categoryEnum },
+                contentType: { enum: ["company", "blog", "job", "pr", "ir"] },
+                audience: { enum: ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] },
+                title: { type: "string" },
+                summary: { type: "string" },
+                body: { type: "string" },
+                slug: { type: "string" },
+                locale: { enum: [...contentLocales] },
+                proposalId: { type: "string" },
+                sourceFacts: { type: "array", items: { type: "string" } },
+                seo: { type: "object", additionalProperties: true },
+              },
+              required: ["category", "contentType", "audience", "title", "summary", "body"],
+            },
+          },
+          {
             name: "content.list",
             description: "事業者自身の企画案とコンテンツを一覧取得します。",
             inputSchema: { type: "object", properties: {} },
@@ -1464,6 +1485,32 @@ async function handleMcp(
         primaryKeyword: typeof argumentsObject.primaryKeyword === "string" ? argumentsObject.primaryKeyword : undefined,
         relatedKeywords: parseOptionalStringArray(argumentsObject.relatedKeywords, "relatedKeywords"),
         sourceFacts: parseOptionalStringArray(argumentsObject.sourceFacts, "sourceFacts"),
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.create") {
+      if (!isCategorySlug(argumentsObject.category) || !isContentType(argumentsObject.contentType) || !isContentAudience(argumentsObject.audience) || typeof argumentsObject.title !== "string" || typeof argumentsObject.summary !== "string" || typeof argumentsObject.body !== "string") {
+        throw new Error("category、contentType、audience、title、summary、bodyが必要です。");
+      }
+      if (argumentsObject.slug !== undefined && typeof argumentsObject.slug !== "string") throw new Error("slugは文字列で指定してください。");
+      if (argumentsObject.locale !== undefined && !isContentLocale(argumentsObject.locale)) throw new Error(`localeは${contentLocales.join(", ")}のいずれかを指定してください。`);
+      if (argumentsObject.proposalId !== undefined && typeof argumentsObject.proposalId !== "string") throw new Error("proposalIdは文字列で指定してください。");
+      const seo = parseContentSeoPatch(argumentsObject.seo);
+      const sourceFacts = parseOptionalStringArray(argumentsObject.sourceFacts, "sourceFacts");
+      const result = content.createContent(principal, {
+        category: argumentsObject.category,
+        contentType: argumentsObject.contentType,
+        audience: argumentsObject.audience,
+        title: argumentsObject.title,
+        summary: argumentsObject.summary,
+        body: argumentsObject.body,
+        ...(typeof argumentsObject.slug === "string" ? { slug: argumentsObject.slug } : {}),
+        ...(isContentLocale(argumentsObject.locale) ? { locale: argumentsObject.locale } : {}),
+        ...(typeof argumentsObject.proposalId === "string" ? { proposalId: argumentsObject.proposalId } : {}),
+        ...(sourceFacts ? { sourceFacts } : {}),
+        ...(seo ? { seo } : {}),
       });
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
@@ -2210,6 +2257,47 @@ export function createHttpServer(
           writeJson(response, 201, { item: content.createDraft(principal, body.proposalId) });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "下書きを作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/content") {
+        const body = await readJson(request);
+        if (!isCategorySlug(body.category) || !isContentType(body.contentType) || !isContentAudience(body.audience) || typeof body.title !== "string" || typeof body.summary !== "string" || typeof body.body !== "string") {
+          writeJson(response, 400, { error: "category、contentType、audience、title、summary、bodyが必要です。" });
+          return;
+        }
+        if (body.slug !== undefined && typeof body.slug !== "string") {
+          writeJson(response, 400, { error: "slugは文字列で指定してください。" });
+          return;
+        }
+        if (body.locale !== undefined && !isContentLocale(body.locale)) {
+          writeJson(response, 400, { error: `localeは${contentLocales.join(", ")}のいずれかを指定してください。` });
+          return;
+        }
+        if (body.proposalId !== undefined && typeof body.proposalId !== "string") {
+          writeJson(response, 400, { error: "proposalIdは文字列で指定してください。" });
+          return;
+        }
+        try {
+          const seo = parseContentSeoPatch(body.seo);
+          const sourceFacts = parseOptionalStringArray(body.sourceFacts, "sourceFacts");
+          const item = content.createContent(principal, {
+            category: body.category,
+            contentType: body.contentType,
+            audience: body.audience,
+            title: body.title,
+            summary: body.summary,
+            body: body.body,
+            ...(typeof body.slug === "string" ? { slug: body.slug } : {}),
+            ...(isContentLocale(body.locale) ? { locale: body.locale } : {}),
+            ...(typeof body.proposalId === "string" ? { proposalId: body.proposalId } : {}),
+            ...(sourceFacts ? { sourceFacts } : {}),
+            ...(seo ? { seo } : {}),
+          });
+          writeJson(response, 201, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを作成できません。" });
         }
         return;
       }

@@ -169,6 +169,70 @@ export class ContentService {
     return this.store.listProposals(principal!.category, principal!.providerId!);
   }
 
+  public createContent(
+    principal: AuthenticatedPrincipal | null,
+    input: {
+      category: CategorySlug;
+      contentType: ContentType;
+      audience: ContentAudience;
+      title: string;
+      summary: string;
+      body: string;
+      slug?: string | undefined;
+      sourceFacts?: string[] | undefined;
+      locale?: ContentLocale | undefined;
+      proposalId?: string | undefined;
+      seo?: Partial<ContentSeo> | undefined;
+    },
+  ): ContentRecord {
+    this.portal.assertAction(principal, input.category, "content.create");
+    this.assertProvider(principal, input.category);
+    if (!principal || !principal.providerId) throw new ContentServiceError(403, "事業者情報が見つかりません。");
+    const title = this.normalizeEditableText(input.title, "title", 160);
+    const summary = this.normalizeEditableText(input.summary, "summary", 320);
+    const body = this.normalizeEditableText(input.body, "body", 200_000);
+    const sourceFacts = trimList(input.sourceFacts);
+    const locale = input.locale ?? "ja";
+    let proposal: ContentProposal | undefined;
+    if (input.proposalId !== undefined) {
+      proposal = this.getOwnedProposal(principal, input.proposalId);
+      if (proposal.category !== input.category || proposal.contentType !== input.contentType || proposal.audience !== input.audience) {
+        throw new ContentServiceError(409, "proposalIdのカテゴリ、コンテンツ種別、対象ポジションが入力内容と一致しません。");
+      }
+    } else {
+      proposal = this.store.createProposal({
+        category: input.category,
+        providerId: principal.providerId,
+        contentType: input.contentType,
+        audience: input.audience,
+        topic: title,
+        searchIntent: audienceIntents[input.audience],
+        primaryKeyword: input.seo?.keywords?.[0]?.trim() || title,
+        relatedKeywords: trimList(input.seo?.keywords),
+        outline: ["要点", "具体例", "次のアクション"],
+        sourceFacts,
+        rationale: "AIエージェントまたは外部APIから登録された検証用コンテンツです。",
+      });
+    }
+    const slug = input.slug === undefined ? `content-${randomUUID().slice(-12)}` : this.normalizeSlug(input.slug);
+    const seo = this.createSeoForContent(input.contentType, title, summary, slug, input.seo);
+    return this.store.createContent({
+      category: input.category,
+      providerId: principal.providerId,
+      contentType: input.contentType,
+      audience: input.audience,
+      title,
+      slug,
+      summary,
+      body,
+      seo,
+      sourceFacts,
+      proposalId: proposal.id,
+      locale,
+      status: "drafted",
+    }, { ...(principal.accountId ? { actorId: principal.accountId } : {}) });
+  }
+
   public createDraft(principal: AuthenticatedPrincipal | null, proposalId: string): ContentRecord {
     const proposal = this.getOwnedProposal(principal, proposalId);
     this.portal.assertAction(principal, proposal.category, "content.draft");
@@ -777,6 +841,31 @@ export class ContentService {
     const normalized = value.trim();
     if (!normalized) throw new ContentServiceError(400, `${fieldName}は空にできません。`);
     return limit(normalized, maxLength);
+  }
+
+  private normalizeSlug(value: string): string {
+    const slug = value.trim();
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,119}$/.test(slug)) throw new ContentServiceError(400, "slugは英数字またはハイフンで1〜120文字にしてください。");
+    return slug;
+  }
+
+  private createSeoForContent(contentType: ContentType, title: string, summary: string, slug: string, input: Partial<ContentSeo> | undefined): ContentSeo {
+    const canonicalPath = input?.canonicalPath === undefined ? `/content/${slug}` : normalizeSeoPath(input.canonicalPath);
+    if (!canonicalPath) throw new ContentServiceError(400, "seo.canonicalPathはスラッシュから始まるパスで指定してください。");
+    const seoTitle = this.normalizeEditableText(input?.title ?? title, "seo.title", 60);
+    const seoDescription = this.normalizeEditableText(input?.description ?? summary, "seo.description", 160);
+    const ogTitle = this.normalizeEditableText(input?.ogTitle ?? seoTitle, "seo.ogTitle", 60);
+    const ogDescription = this.normalizeEditableText(input?.ogDescription ?? seoDescription, "seo.ogDescription", 160);
+    return {
+      title: seoTitle,
+      description: seoDescription,
+      keywords: trimList(input?.keywords ?? [title]),
+      canonicalPath,
+      ogTitle,
+      ogDescription,
+      jsonLdType: input?.jsonLdType ?? jsonLdTypes[contentType],
+      faq: input?.faq?.map((item) => ({ question: item.question.trim(), answer: item.answer.trim() })).filter((item) => item.question && item.answer) ?? [],
+    };
   }
 
   private assertVersionNumber(versionNumber: number): void {
