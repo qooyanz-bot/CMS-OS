@@ -70,6 +70,29 @@ const adapter = new BuilderOSAdapter();
 const manifest = await adapter.exportToDirectory(buildResult, "./cloudflare-pages-dist");
 ```
 
+## Cloudflare Pages Direct Upload
+
+`deployToCloudflarePages`は、BuilderOS AdapterからCloudflare PagesのDirect Uploadを呼び出します。実行時はCloudflare API Tokenを引数で受け取り、ログや戻り値にはトークンを含めません。ドライランでは外部通信を行わず、公開対象ファイル数だけを確認できます。
+
+```ts
+const result = await adapter.deployToCloudflarePages(buildResult, {
+  accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  projectName: process.env.CLOUDFLARE_PAGES_PROJECT!,
+  apiToken: process.env.CLOUDFLARE_API_TOKEN!,
+  branch: "main",
+});
+```
+
+処理は次の順序で行います。
+
+1. PagesプロジェクトのアップロードJWTを取得する
+2. 未登録ハッシュを確認する
+3. 未登録の静的アセットだけをBase64形式でアップロードする
+4. ハッシュを登録する
+5. `manifest`と`_headers`を添えてデプロイを作成する
+
+本番運用では、`CLOUDFLARE_API_TOKEN`にPages Write権限を持つAPI Tokenを設定し、Cloudflare PagesのDirect Uploadプロジェクトを使用してください。Cloudflareの公式API仕様は[Create deployment](https://developers.cloudflare.com/api/resources/pages/subresources/projects/subresources/deployments/methods/create/)および[Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/)を参照します。
+
 Adapterは絶対パス、`..`、重複パスを拒否し、出力先をCloudflare Pagesの静的アセットディレクトリとして扱います。
 
 開発版はファイル配列をAPI/MCPの結果として返します。本番では次の処理をAdapterで追加します。

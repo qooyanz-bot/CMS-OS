@@ -31,6 +31,7 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/content/{contentId}/fact-check",
       "/api/v1/content/{contentId}/approve",
       "/api/v1/publications/build",
+      "/api/v1/publications/deploy",
       "/api/v1/requests",
       "/api/v1/jobs",
       "/api/v1/jobs/{jobId}/applications",

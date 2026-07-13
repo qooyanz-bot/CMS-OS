@@ -3,6 +3,9 @@ import { after, before, describe, it } from "node:test";
 import type { Server } from "node:http";
 import { InMemoryAuthService } from "../src/domain/auth.js";
 import { PortalService } from "../src/application/portal-service.js";
+import { ContentService } from "../src/application/content-service.js";
+import { PublicationService } from "../src/application/publication-service.js";
+import { BuilderOSAdapter } from "../src/integrations/builderos-adapter.js";
 import { createHttpServer } from "../src/api/http-server.js";
 
 let server: Server;
@@ -11,7 +14,13 @@ let baseUrl: string;
 before(async () => {
   const auth = new InMemoryAuthService();
   const portal = new PortalService(auth);
-  server = createHttpServer(auth, portal);
+  const content = new ContentService(portal);
+  const publication = new PublicationService(portal, content, new BuilderOSAdapter(), () => ({
+    accountId: "account-test",
+    projectName: "cms-os-test",
+    dryRun: true,
+  }));
+  server = createHttpServer(auth, portal, content, publication);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("テストサーバーのポートを取得できません。");
@@ -102,6 +111,14 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get(pagePath) ?? "", /<link rel="canonical"/);
     assert.match(fileMap.get("sitemap.xml") ?? "", /https:\/\/www\.example\.com/);
     assert.match(fileMap.get("robots.txt") ?? "", /Sitemap: https:\/\/www\.example\.com\/sitemap\.xml/);
+
+    const deployed = await request("/api/v1/publications/deploy", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ contentIds: [draft.body.item.id], baseUrl: "https://www.example.com" }),
+    });
+    assert.equal(deployed.status, 202);
+    assert.equal(deployed.body.item.deployment.status, "dry_run");
   });
 
   it("静的公開の主要操作をMCPから利用できる", async () => {
@@ -112,5 +129,6 @@ describe("CMS-OS承認済み静的公開", () => {
     const names = tools.body.result.tools.map((tool: { name: string }) => tool.name);
     assert.ok(names.includes("workflow.approve"));
     assert.ok(names.includes("publication.build"));
+    assert.ok(names.includes("publication.deploy"));
   });
 });

@@ -259,6 +259,18 @@ async function handleMcp(
               required: [],
             },
           },
+          {
+            name: "publication.deploy",
+            description: "承認済みコンテンツをBuilderOS Adapter経由でCloudflare Pagesへ公開します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                contentIds: { type: "array", items: { type: "string" } },
+                baseUrl: { type: "string" },
+              },
+              required: [],
+            },
+          },
         ],
       },
     });
@@ -406,6 +418,16 @@ async function handleMcp(
 
     if (name === "publication.build") {
       const result = publication.build(
+        principal,
+        parseOptionalStringArray(argumentsObject.contentIds, "contentIds"),
+        typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
+      );
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "publication.deploy") {
+      const result = await publication.deploy(
         principal,
         parseOptionalStringArray(argumentsObject.contentIds, "contentIds"),
         typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
@@ -631,6 +653,29 @@ export function createHttpServer(
           writeJson(response, 201, { item: result });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "静的公開ファイルを生成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/publications/deploy") {
+        const body = await readJson(request);
+        if (body.contentIds !== undefined && (!Array.isArray(body.contentIds) || body.contentIds.some((item) => typeof item !== "string"))) {
+          writeJson(response, 400, { error: "contentIdsは文字列配列で指定してください。" });
+          return;
+        }
+        if (body.baseUrl !== undefined && typeof body.baseUrl !== "string") {
+          writeJson(response, 400, { error: "baseUrlは文字列で指定してください。" });
+          return;
+        }
+        try {
+          const result = await publication.deploy(
+            principal,
+            Array.isArray(body.contentIds) ? body.contentIds as string[] : undefined,
+            typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+          );
+          writeJson(response, 202, { item: result });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "Cloudflare Pagesへの公開に失敗しました。" });
         }
         return;
       }

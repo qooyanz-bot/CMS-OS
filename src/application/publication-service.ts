@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ContentService } from "./content-service.js";
 import type { PortalService } from "./portal-service.js";
 import type { AuthenticatedPrincipal, ContentRecord, PublicationBuildResult } from "../domain/types.js";
+import { BuilderOSAdapter, BuilderOSAdapterError, type CloudflarePagesDeployOptions, type CloudflarePagesDeploymentResult } from "../integrations/builderos-adapter.js";
 
 export class PublicationServiceError extends Error {
   public constructor(public readonly statusCode: number, message: string) {
@@ -180,6 +181,14 @@ export class PublicationService {
   public constructor(
     private readonly portal: PortalService,
     private readonly content: ContentService,
+    private readonly builderosAdapter = new BuilderOSAdapter(),
+    private readonly cloudflareOptionsProvider: () => CloudflarePagesDeployOptions = () => ({
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? "",
+      projectName: process.env.CLOUDFLARE_PAGES_PROJECT ?? "",
+      ...(process.env.CLOUDFLARE_API_TOKEN ? { apiToken: process.env.CLOUDFLARE_API_TOKEN } : {}),
+      ...(process.env.CLOUDFLARE_PAGES_BRANCH ? { branch: process.env.CLOUDFLARE_PAGES_BRANCH } : {}),
+      ...(process.env.CMS_OS_CLOUDFLARE_DRY_RUN === "true" ? { dryRun: true } : {}),
+    }),
   ) {}
 
   public build(
@@ -221,5 +230,22 @@ export class PublicationService {
       generatedAt: new Date().toISOString(),
       files,
     };
+  }
+
+  public async deploy(
+    principal: AuthenticatedPrincipal | null,
+    contentIds?: string[],
+    requestedBaseUrl?: string,
+  ): Promise<{ publication: PublicationBuildResult; deployment: CloudflarePagesDeploymentResult }> {
+    const publication = this.build(principal, contentIds, requestedBaseUrl);
+    try {
+      const deployment = await this.builderosAdapter.deployToCloudflarePages(publication, this.cloudflareOptionsProvider());
+      return { publication, deployment };
+    } catch (error) {
+      if (error instanceof BuilderOSAdapterError) {
+        throw new PublicationServiceError(502, error.message);
+      }
+      throw error;
+    }
   }
 }

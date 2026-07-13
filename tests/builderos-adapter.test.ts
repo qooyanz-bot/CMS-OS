@@ -53,4 +53,63 @@ describe("BuilderOS Adapter", () => {
     const absolute: PublicationBuildResult = { ...build, files: [{ ...firstFile, path: "/outside.html" }] };
     await assert.rejects(() => adapter.exportToDirectory(absolute, outputDirectory), BuilderOSAdapterError);
   });
+
+  it("Cloudflare Pages Direct Uploadの段階APIをモック通信で実行する", async () => {
+    const adapter = new BuilderOSAdapter();
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const mockFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.endsWith("/upload-token")) {
+        return new Response(JSON.stringify({ success: true, result: { jwt: "upload-jwt" } }), { status: 200 });
+      }
+      if (url.endsWith("/check-missing")) {
+        const body = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ success: true, result: body.hashes }), { status: 200 });
+      }
+      if (url.endsWith("/assets/upload") || url.endsWith("/upsert-hashes")) {
+        return new Response(JSON.stringify({ success: true, result: null }), { status: 200 });
+      }
+      if (url.endsWith("/deployments")) {
+        return new Response(JSON.stringify({
+          success: true,
+          result: { id: "deployment-test", url: "https://cms-os.pages.dev", environment: "production" },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ success: false, errors: [{ message: "想定外のURL" }] }), { status: 404 });
+    };
+
+    const result = await adapter.deployToCloudflarePages(build, {
+      accountId: "account-test",
+      projectName: "cms-os-test",
+      apiToken: "token-that-must-not-be-logged",
+      apiBaseUrl: "https://api.example.test/client/v4",
+      fetchImplementation: mockFetch,
+    });
+
+    assert.equal(result.status, "submitted");
+    assert.equal(result.deploymentId, "deployment-test");
+    assert.equal(result.deploymentUrl, "https://cms-os.pages.dev");
+    assert.equal(result.uploadedFileCount, build.files.length);
+    assert.equal(calls.length, 5);
+    assert.equal(calls[0]?.init?.headers && new Headers(calls[0].init.headers).get("authorization"), "Bearer token-that-must-not-be-logged");
+    assert.equal(calls[4]?.init?.headers && new Headers(calls[4].init.headers).get("authorization"), "Bearer token-that-must-not-be-logged");
+    const deploymentBody = calls[4]?.init?.body;
+    assert.ok(deploymentBody instanceof FormData);
+    assert.match(String(deploymentBody.get("manifest")), /index\.html/);
+    assert.ok(deploymentBody.get("_headers") instanceof File);
+  });
+
+  it("Cloudflare Pages Direct Uploadのドライランは認証情報なしで実行できる", async () => {
+    const adapter = new BuilderOSAdapter();
+    const result = await adapter.deployToCloudflarePages(build, {
+      accountId: "account-test",
+      projectName: "cms-os-test",
+      dryRun: true,
+    });
+
+    assert.equal(result.status, "dry_run");
+    assert.equal(result.fileCount, build.files.length);
+    assert.equal(result.uploadedFileCount, 0);
+  });
 });
