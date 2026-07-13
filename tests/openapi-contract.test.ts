@@ -16,6 +16,11 @@ describe("CMS-OS OpenAPI契約", () => {
     const requiredPaths = [
       "/health",
       "/api/v1/auth/login",
+      "/api/v1/auth/oidc/start",
+      "/api/v1/auth/oidc/callback",
+      "/api/v1/auth/mfa/enroll",
+      "/api/v1/auth/mfa/confirm",
+      "/api/v1/auth/mfa/complete",
       "/api/v1/auth/logout",
       "/api/v1/auth/me",
       "/api/v1/auth/context",

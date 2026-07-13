@@ -1,4 +1,4 @@
-import { InMemoryAuthService } from "./domain/auth.js";
+import { authOptionsFromEnvironment, InMemoryAuthService } from "./domain/auth.js";
 import { PortalService } from "./application/portal-service.js";
 import { ContentService } from "./application/content-service.js";
 import { PublicationService } from "./application/publication-service.js";
@@ -23,7 +23,7 @@ async function createStateStore(): Promise<StateStore | undefined> {
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? "8787");
   const stateStore = await createStateStore();
-  const auth = new InMemoryAuthService(stateStore);
+  const auth = new InMemoryAuthService(stateStore, authOptionsFromEnvironment());
   const portal = new PortalService(auth, new PortalStore(stateStore));
   const content = new ContentService(portal, new ContentStore(stateStore));
   const publication = new PublicationService(portal, content);

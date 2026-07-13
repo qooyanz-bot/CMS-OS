@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { URL } from "node:url";
-import { InMemoryAuthService } from "../domain/auth.js";
+import { AuthServiceError, type AuthService } from "../domain/auth.js";
 import { getCategoryPolicy } from "../domain/catalog.js";
 import { PortalService, PortalServiceError } from "../application/portal-service.js";
 import {
@@ -80,13 +80,13 @@ function mcpText(value: unknown): { type: "text"; text: string } {
 }
 
 function serviceErrorStatus(error: unknown): number {
-  return error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError ? error.statusCode : 400;
+  return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError ? error.statusCode : 400;
 }
 
 async function handleMcp(
   request: IncomingMessage,
   response: ServerResponse,
-  auth: InMemoryAuthService,
+  auth: AuthService,
   portal: PortalService,
   content: ContentService,
   publication: PublicationService,
@@ -134,6 +134,30 @@ async function handleMcp(
             },
           },
           {
+            name: "auth.login",
+            description: "ログインします。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                email: { type: "string" },
+                password: { type: "string" },
+                category: { enum: ["legal", "beauty"] },
+                role: { enum: ["user", "orderer", "provider", "candidate"] },
+              },
+              required: ["email", "password", "category"],
+            },
+          },
+          {
+            name: "auth.me",
+            description: "現在のユーザー情報を取得します。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "auth.logout",
+            description: "ログアウトします。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
             name: "auth.switch_context",
             description: "許可されたカテゴリとロールへ操作コンテキストを切り替えます。",
             inputSchema: {
@@ -141,6 +165,39 @@ async function handleMcp(
               properties: { category: { enum: ["legal", "beauty"] }, role: { enum: ["user", "orderer", "provider", "candidate"] } },
               required: ["category", "role"],
             },
+          },
+          {
+            name: "auth.oidc_start",
+            description: "OIDC Authorization Code + PKCE認証を開始します。",
+            inputSchema: {
+              type: "object",
+              properties: { category: { enum: ["legal", "beauty"] }, role: { enum: ["user", "orderer", "provider", "candidate"] } },
+              required: ["category"],
+            },
+          },
+          {
+            name: "auth.oidc_callback",
+            description: "OIDCプロバイダーから返されたcodeとstateを検証してログインを完了します。",
+            inputSchema: {
+              type: "object",
+              properties: { code: { type: "string" }, state: { type: "string" } },
+              required: ["code", "state"],
+            },
+          },
+          {
+            name: "auth.mfa_enroll",
+            description: "ログイン中のアカウントにTOTP MFAを登録します。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "auth.mfa_confirm",
+            description: "TOTPコードを検証してMFA登録を確定します。",
+            inputSchema: { type: "object", properties: { code: { type: "string" } }, required: ["code"] },
+          },
+          {
+            name: "auth.mfa_complete",
+            description: "MFAチャレンジをTOTPコードで完了してセッションを発行します。",
+            inputSchema: { type: "object", properties: { challengeToken: { type: "string" }, code: { type: "string" } }, required: ["challengeToken", "code"] },
           },
           {
             name: "request.create",
@@ -288,6 +345,40 @@ async function handleMcp(
   const principal = auth.authenticate(getBearerToken(request));
 
   try {
+    if (name === "auth.login") {
+      if (
+        typeof argumentsObject.email !== "string" ||
+        typeof argumentsObject.password !== "string" ||
+        !isCategorySlug(argumentsObject.category) ||
+        (argumentsObject.role !== undefined && !isPortalRole(argumentsObject.role))
+      ) {
+        throw new Error("email、password、category、roleの指定が不正です。");
+      }
+      const result = auth.login(
+        argumentsObject.email,
+        argumentsObject.password,
+        argumentsObject.category,
+        isPortalRole(argumentsObject.role) ? argumentsObject.role : "user",
+      );
+      if (!result) throw new Error("認証情報またはカテゴリ・ロールが正しくありません。");
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "auth.me") {
+      if (!principal) throw new Error("ログインが必要です。");
+      const result = { principal, experience: portal.getExperience(principal.category, principal) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "auth.logout") {
+      auth.logout(getBearerToken(request));
+      const result = { ok: true };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "category.resolve_experience") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
       const result = portal.getExperience(argumentsObject.category, principal);
@@ -312,6 +403,46 @@ async function handleMcp(
         throw new Error("認証トークン、category、roleが必要です。");
       }
       const result = portal.switchContext(token, argumentsObject.category, argumentsObject.role);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "auth.oidc_start") {
+      if (!isCategorySlug(argumentsObject.category) || (argumentsObject.role !== undefined && !isPortalRole(argumentsObject.role))) {
+        throw new Error("categoryとroleが不正です。");
+      }
+      const result = await auth.startOidc(argumentsObject.category, isPortalRole(argumentsObject.role) ? argumentsObject.role : "user");
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "auth.oidc_callback") {
+      if (typeof argumentsObject.code !== "string" || typeof argumentsObject.state !== "string") {
+        throw new Error("codeとstateが必要です。");
+      }
+      const result = await auth.completeOidc(argumentsObject.state, argumentsObject.code);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "auth.mfa_enroll") {
+      const result = auth.enrollMfa(getBearerToken(request));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "auth.mfa_confirm") {
+      if (typeof argumentsObject.code !== "string") throw new Error("codeが必要です。");
+      const result = auth.confirmMfaEnrollment(getBearerToken(request), argumentsObject.code);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "auth.mfa_complete") {
+      if (typeof argumentsObject.challengeToken !== "string" || typeof argumentsObject.code !== "string") {
+        throw new Error("challengeTokenとcodeが必要です。");
+      }
+      const result = auth.completeMfa(argumentsObject.challengeToken, argumentsObject.code);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -444,7 +575,7 @@ async function handleMcp(
 }
 
 export function createHttpServer(
-  auth: InMemoryAuthService,
+  auth: AuthService,
   portal: PortalService,
   content = new ContentService(portal),
   publication = new PublicationService(portal, content),
@@ -480,6 +611,70 @@ export function createHttpServer(
           return;
         }
         writeJson(response, 200, login);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/auth/oidc/start") {
+        const body = await readJson(request);
+        if (!isCategorySlug(body.category) || !isPortalRole(body.role ?? "user")) {
+          writeJson(response, 400, { error: "categoryとroleが必要です。" });
+          return;
+        }
+        try {
+          const result = await auth.startOidc(body.category, body.role as PortalRole);
+          writeJson(response, 200, { item: result });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "OIDC認証を開始できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/auth/oidc/callback") {
+        const state = url.searchParams.get("state");
+        const code = url.searchParams.get("code");
+        try {
+          const result = await auth.completeOidc(state ?? "", code ?? "");
+          writeJson(response, 200, { item: result });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "OIDC認証を完了できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/auth/mfa/enroll") {
+        try {
+          writeJson(response, 200, { item: auth.enrollMfa(token) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "MFA登録を開始できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/auth/mfa/confirm") {
+        const body = await readJson(request);
+        if (typeof body.code !== "string") {
+          writeJson(response, 400, { error: "codeが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: auth.confirmMfaEnrollment(token, body.code) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "MFA登録を確定できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/auth/mfa/complete") {
+        const body = await readJson(request);
+        if (typeof body.challengeToken !== "string" || typeof body.code !== "string") {
+          writeJson(response, 400, { error: "challengeTokenとcodeが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, auth.completeMfa(body.challengeToken, body.code));
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "MFA認証を完了できません。" });
+        }
         return;
       }
 

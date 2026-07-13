@@ -30,12 +30,35 @@
 | `beauty@example.com` | 美容カテゴリの事業者 |
 | `candidate@example.com` | リクルーター |
 
+## 本番認証設定
+
+本番環境では、`NODE_ENV=production` の場合にOIDCが既定のログイン方式になります。デモアカウントとパスワードログインは既定で無効です。次の環境変数を設定してください。
+
+```text
+CMS_OS_AUTH_MODE=oidc
+CMS_OS_OIDC_ISSUER=https://認証基盤.example.com
+CMS_OS_OIDC_CLIENT_ID=...
+CMS_OS_OIDC_CLIENT_SECRET=...
+CMS_OS_OIDC_REDIRECT_URI=https://cms.example.com/api/v1/auth/oidc/callback
+CMS_OS_OIDC_SCOPES=openid profile email
+CMS_OS_OIDC_AUTO_PROVISION=false
+CMS_OS_OIDC_REQUIRE_MFA=true
+CMS_OS_AUTH_ENCRYPTION_KEY=32文字以上の秘密値
+```
+
+OIDCはAuthorization Code + PKCEを使用し、`state` はハッシュ化して短時間・一回限りで検証します。OIDCプロバイダーからメールアドレスが未検証と通知された場合はログインを許可しません。CMS-OS側のMFAを使う場合は、暗号化キーでTOTP秘密鍵をAES-256-GCMにより暗号化して保存します。
+
 ## API例
 
 ```text
 POST /api/v1/auth/login
 GET  /api/v1/auth/me
 POST /api/v1/auth/context
+POST /api/v1/auth/oidc/start
+GET  /api/v1/auth/oidc/callback
+POST /api/v1/auth/mfa/enroll
+POST /api/v1/auth/mfa/confirm
+POST /api/v1/auth/mfa/complete
 GET  /api/v1/categories
 GET  /api/v1/categories/{category}/experience
 GET  /api/v1/providers?category=beauty&theme=カラー

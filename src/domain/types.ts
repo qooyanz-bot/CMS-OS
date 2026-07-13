@@ -12,10 +12,14 @@ export interface RoleAssignment {
 export interface Account {
   id: string;
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
   displayName: string;
   assignments: RoleAssignment[];
   providerId?: string;
+  oidcIssuer?: string;
+  oidcSubject?: string;
+  mfaEnabled?: boolean;
+  mfaSecretCiphertext?: string;
 }
 
 export interface AuthenticatedPrincipal {

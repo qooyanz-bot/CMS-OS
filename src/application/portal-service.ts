@@ -1,4 +1,4 @@
-import { InMemoryAuthService } from "../domain/auth.js";
+import type { AuthService } from "../domain/auth.js";
 import {
   listCategoryPolicies,
   listProviders,
@@ -25,7 +25,7 @@ export class PortalServiceError extends Error {
 
 export class PortalService {
   public constructor(
-    private readonly auth: InMemoryAuthService,
+    private readonly auth: AuthService,
     private readonly store = new PortalStore(),
   ) {}
 

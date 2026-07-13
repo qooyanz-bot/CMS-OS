@@ -28,7 +28,7 @@ describe("CMS-OSファイル永続化", () => {
     const content1 = new ContentService(portal1, new ContentStore(state1));
 
     const ordererLogin = auth1.login("orderer@example.com", "demo-password", "legal", "orderer");
-    assert.ok(ordererLogin);
+    if (!ordererLogin || !("accessToken" in ordererLogin)) throw new Error("注文者ログインにMFAチャレンジが返されました。");
     const request = portal1.createRequest(ordererLogin.principal, {
       category: "legal",
       providerId: "provider-legal-demo",
@@ -38,7 +38,7 @@ describe("CMS-OSファイル永続化", () => {
     assert.ok(request.id);
 
     const providerLogin = auth1.login("lawyer@example.com", "demo-password", "legal", "provider");
-    assert.ok(providerLogin);
+    if (!providerLogin || !("accessToken" in providerLogin)) throw new Error("事業者ログインにMFAチャレンジが返されました。");
     const proposal = content1.createProposal(providerLogin.principal, {
       category: "legal",
       contentType: "blog",

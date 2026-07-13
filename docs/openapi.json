@@ -40,6 +40,52 @@
         }
       }
     },
+    "/api/v1/auth/oidc/start": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "startOidcLogin",
+        "summary": "OIDC Authorization Code + PKCEログインを開始",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcStartRequest" } } } },
+        "responses": { "200": { "description": "OIDC認証URL", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcStartResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } }
+      }
+    },
+    "/api/v1/auth/oidc/callback": {
+      "get": {
+        "tags": ["Auth"],
+        "operationId": "completeOidcLogin",
+        "summary": "OIDC callbackのstateとcodeを検証してログインを完了",
+        "parameters": [{ "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }, { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "ログイン結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcCallbackResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "403": { "$ref": "#/components/responses/Forbidden" }, "502": { "$ref": "#/components/responses/BadGateway" } }
+      }
+    },
+    "/api/v1/auth/mfa/enroll": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "enrollMfa",
+        "summary": "TOTP MFA登録を開始",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "MFA登録情報", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaEnrollResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/Conflict" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } }
+      }
+    },
+    "/api/v1/auth/mfa/confirm": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "confirmMfaEnrollment",
+        "summary": "TOTP MFA登録を確定",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaCodeRequest" } } } },
+        "responses": { "200": { "description": "MFA登録済み", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaConfirmResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/v1/auth/mfa/complete": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "completeMfa",
+        "summary": "MFAチャレンジを完了してセッションを発行",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaCompleteRequest" } } } },
+        "responses": { "200": { "description": "ログイン結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      }
+    },
     "/api/v1/auth/logout": {
       "post": {
         "tags": ["Auth"],
@@ -291,6 +337,7 @@
       "BadRequest": { "description": "入力不正", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "Unauthorized": { "description": "ログインが必要", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "BadGateway": { "description": "外部公開先との連携失敗", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "ServiceUnavailable": { "description": "認証基盤が未設定または利用不可", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "Forbidden": { "description": "権限不足", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "NotFound": { "description": "対象なし", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "Conflict": { "description": "状態競合", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
@@ -304,9 +351,16 @@
       "OkResponse": { "type": "object", "required": ["ok"], "properties": { "ok": { "type": "boolean" } } },
       "ErrorResponse": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } } },
       "LoginRequest": { "type": "object", "required": ["email", "password", "category"], "properties": { "email": { "type": "string", "format": "email" }, "password": { "type": "string", "minLength": 1 }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole", "default": "user" } }, "additionalProperties": false },
+      "OidcStartRequest": { "type": "object", "required": ["category"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole", "default": "user" } }, "additionalProperties": false },
+      "OidcStartResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["authorizationUrl", "state", "expiresInSeconds"], "properties": { "authorizationUrl": { "type": "string", "format": "uri" }, "state": { "type": "string" }, "expiresInSeconds": { "type": "integer" } } } } },
+      "OidcCallbackResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/LoginResponse" } } },
       "ContextRequest": { "type": "object", "required": ["category", "role"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole" } }, "additionalProperties": false },
       "Principal": { "type": "object", "required": ["accountId", "email", "displayName", "category", "role"], "properties": { "accountId": { "type": "string" }, "email": { "type": "string", "format": "email" }, "displayName": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole" }, "providerId": { "type": "string" } } },
-      "LoginResponse": { "type": "object", "required": ["accessToken", "principal", "expiresInSeconds"], "properties": { "accessToken": { "type": "string" }, "principal": { "$ref": "#/components/schemas/Principal" }, "expiresInSeconds": { "type": "integer" } } },
+      "LoginResponse": { "oneOf": [{ "type": "object", "required": ["accessToken", "principal", "expiresInSeconds"], "properties": { "accessToken": { "type": "string" }, "principal": { "$ref": "#/components/schemas/Principal" }, "expiresInSeconds": { "type": "integer" } } }, { "type": "object", "required": ["mfaRequired", "mfaChallengeToken", "expiresInSeconds"], "properties": { "mfaRequired": { "const": true }, "mfaChallengeToken": { "type": "string" }, "expiresInSeconds": { "type": "integer" } } }] },
+      "MfaEnrollResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["secret", "otpauthUrl", "expiresInSeconds"], "properties": { "secret": { "type": "string" }, "otpauthUrl": { "type": "string", "format": "uri" }, "expiresInSeconds": { "type": "integer" } } } } },
+      "MfaCodeRequest": { "type": "object", "required": ["code"], "properties": { "code": { "type": "string", "pattern": "^[0-9]{6}$" } }, "additionalProperties": false },
+      "MfaConfirmResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["enabled"], "properties": { "enabled": { "const": true } } } } },
+      "MfaCompleteRequest": { "type": "object", "required": ["challengeToken", "code"], "properties": { "challengeToken": { "type": "string" }, "code": { "type": "string", "pattern": "^[0-9]{6}$" } }, "additionalProperties": false },
       "MeResponse": { "type": "object", "required": ["principal", "experience"], "properties": { "principal": { "$ref": "#/components/schemas/Principal" }, "experience": { "$ref": "#/components/schemas/Experience" } } },
       "Category": { "type": "object", "required": ["slug", "label", "navigation"], "properties": { "slug": { "$ref": "#/components/schemas/CategorySlug" }, "label": { "type": "string" }, "navigation": { "type": "array", "items": { "type": "object", "additionalProperties": true } } } },
       "CategoryListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } } } },
