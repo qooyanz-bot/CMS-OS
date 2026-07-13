@@ -43,6 +43,10 @@ describe("CMS-OS OpenAPI契約", () => {
         if (typeof operation === "object" && operation !== null) assert.ok("responses" in operation, `${path}のレスポンス定義がありません。`);
       }
     }
+    for (const path of ["/api/v1/categories/{category}/experience", "/api/v1/providers", "/api/v1/jobs", "/mcp"]) {
+      const operation = Object.values(specification.paths[path] ?? {})[0] as { security?: unknown };
+      assert.deepEqual(operation.security, [{}, { BearerAuth: [] }], `${path}は任意認証である必要があります。`);
+    }
     assert.deepEqual(specification.components.securitySchemes.BearerAuth, { type: "http", scheme: "bearer", bearerFormat: "opaque-session-token" });
   });
 });

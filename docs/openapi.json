@@ -90,7 +90,7 @@
         "operationId": "resolveCategoryExperience",
         "summary": "カテゴリとロールに応じた表示対象を取得",
         "parameters": [{ "$ref": "#/components/parameters/CategoryPath" }],
-        "security": [{ "BearerAuth": [] }],
+        "security": [{}, { "BearerAuth": [] }],
         "responses": {
           "200": { "description": "カテゴリ表示体験", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExperienceResponse" } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
@@ -108,7 +108,7 @@
           { "name": "theme", "in": "query", "schema": { "type": "string" } },
           { "name": "location", "in": "query", "schema": { "type": "string" } }
         ],
-        "security": [{ "BearerAuth": [] }],
+        "security": [{}, { "BearerAuth": [] }],
         "responses": { "200": { "description": "事業者一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
@@ -232,7 +232,7 @@
         "operationId": "searchJobs",
         "summary": "カテゴリ別の公開求人を取得",
         "parameters": [{ "$ref": "#/components/parameters/CategoryQuery" }],
-        "security": [{ "BearerAuth": [] }],
+        "security": [{}, { "BearerAuth": [] }],
         "responses": { "200": { "description": "求人一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
@@ -261,7 +261,7 @@
         "tags": ["MCP"],
         "operationId": "mcpJsonRpc",
         "summary": "MCP JSON-RPCを実行",
-        "security": [{ "BearerAuth": [] }],
+        "security": [{}, { "BearerAuth": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["jsonrpc", "method"], "properties": { "jsonrpc": { "const": "2.0" }, "id": {}, "method": { "type": "string" }, "params": { "type": "object", "additionalProperties": true } }, "additionalProperties": false } } } },
         "responses": { "200": { "description": "JSON-RPCレスポンス", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
