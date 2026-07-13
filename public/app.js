@@ -140,6 +140,8 @@ const elements = {
   contentVersions: document.querySelector("#content-version-list"),
   contentReviews: document.querySelector("#content-review-list"),
   publicationHistory: document.querySelector("#publication-history-list"),
+  siteSeoAuditButton: document.querySelector("#site-seo-audit-button"),
+  siteSeoAuditResult: document.querySelector("#site-seo-audit-result"),
   contentPreview: document.querySelector("#content-preview"),
   providerManagementPanel: document.querySelector("#provider-management-panel"),
   providerManagementForm: document.querySelector("#provider-management-form"),
@@ -906,6 +908,8 @@ async function reloadContent() {
   if (!visible) {
     elements.contentVersions.innerHTML = "";
     elements.contentReviews.innerHTML = "";
+    elements.siteSeoAuditResult.hidden = true;
+    elements.siteSeoAuditResult.textContent = "";
     return;
   }
   const proposals = await api("/api/v1/content/proposals");
@@ -913,6 +917,20 @@ async function reloadContent() {
   renderProposals(proposals.items);
   renderContents(contents.items);
   await reloadPublicationHistory();
+}
+
+async function runSiteSeoAudit() {
+  try {
+    const body = await api("/api/v1/seo/audit");
+    const issueSummary = body.item.issues.length === 0
+      ? "問題は検出されませんでした。"
+      : body.item.issues.map((issue) => `[${issue.severity}] ${issue.code}: ${issue.message}`).join("\n");
+    elements.siteSeoAuditResult.hidden = false;
+    elements.siteSeoAuditResult.textContent = `スコア: ${body.item.score} / 100\n公開対象: ${body.item.publicContentCount}件\n${issueSummary}`;
+  } catch (error) {
+    elements.siteSeoAuditResult.hidden = false;
+    elements.siteSeoAuditResult.textContent = error.message;
+  }
 }
 
 async function handleContentAction(action, contentId) {
@@ -1105,6 +1123,7 @@ elements.account.addEventListener("change", () => {
   elements.email.value = elements.account.value;
 });
 elements.logout.addEventListener("click", logout);
+elements.siteSeoAuditButton.addEventListener("click", () => void runSiteSeoAudit());
 elements.requestForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(elements.requestForm);

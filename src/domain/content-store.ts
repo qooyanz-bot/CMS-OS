@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ContentProposal, ContentRecord, ContentReviewRecord, ContentVersionReason, ContentVersionRecord } from "./types.js";
+import type { ContentProposal, ContentRecord, ContentReviewRecord, ContentVersionReason, ContentVersionRecord, SeoSiteAuditResult } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 
 interface ContentMutationOptions {
@@ -17,12 +17,14 @@ export class ContentStore {
   private readonly contents: ContentRecord[];
   private readonly versions: ContentVersionRecord[];
   private readonly reviews: ContentReviewRecord[];
+  private readonly siteSeoAudits: SeoSiteAuditResult[];
 
   public constructor(private readonly stateStore?: StateStore) {
     this.proposals = stateStore?.load<ContentProposal[]>("content-proposals.json", []) ?? [];
     this.contents = stateStore?.load<ContentRecord[]>("content-records.json", []) ?? [];
     this.versions = stateStore?.load<ContentVersionRecord[]>("content-versions.json", []) ?? [];
     this.reviews = stateStore?.load<ContentReviewRecord[]>("content-review-records.json", []) ?? [];
+    this.siteSeoAudits = stateStore?.load<SeoSiteAuditResult[]>("seo-site-audits.json", []) ?? [];
     for (const content of this.contents) {
       if (!this.versions.some((version) => version.contentId === content.id)) {
         this.versions.push(this.createVersionSnapshot(content, "migrated"));
@@ -75,6 +77,18 @@ export class ContentStore {
 
   public getContent(contentId: string): ContentRecord | undefined {
     return this.contents.find((content) => content.id === contentId);
+  }
+
+  public saveSiteSeoAudit(result: SeoSiteAuditResult): SeoSiteAuditResult {
+    const index = this.siteSeoAudits.findIndex((audit) => audit.category === result.category && audit.providerId === result.providerId);
+    if (index >= 0) this.siteSeoAudits[index] = result;
+    else this.siteSeoAudits.push(result);
+    this.stateStore?.save("seo-site-audits.json", this.siteSeoAudits);
+    return result;
+  }
+
+  public getSiteSeoAudit(category: SeoSiteAuditResult["category"], providerId: string): SeoSiteAuditResult | undefined {
+    return this.siteSeoAudits.find((audit) => audit.category === category && audit.providerId === providerId);
   }
 
   public listVersions(contentId: string): ContentVersionRecord[] {

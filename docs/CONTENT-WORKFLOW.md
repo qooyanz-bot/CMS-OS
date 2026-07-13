@@ -52,6 +52,7 @@ POST /api/v1/content/{contentId}/duplicate
 POST /api/v1/content/{contentId}/restore
 POST /api/v1/content/{contentId}/polish
 POST /api/v1/content/{contentId}/seo-audit
+GET /api/v1/seo/audit
 POST /api/v1/content/{contentId}/fact-check
 GET  /api/v1/content/{contentId}/reviews
 POST /api/v1/content/{contentId}/review-request
@@ -84,6 +85,7 @@ POST /api/v1/publications/publish
 - `workflow.request_review`
 - `workflow.request_changes`
 - `seo.audit`
+- `seo.site_audit`
 - `workflow.approve`
 - `publication.publish`
 

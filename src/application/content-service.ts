@@ -16,6 +16,7 @@ import {
   type ContentVersionRecord,
   type FactCheckResult,
   type SeoAuditResult,
+  type SeoSiteAuditResult,
 } from "../domain/types.js";
 
 export class ContentServiceError extends Error {
@@ -65,6 +66,13 @@ function trimList(values: string[] | undefined): string[] {
 
 function limit(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
+}
+
+function normalizeSeoPath(value: string): string {
+  const path = value.trim().split(/[?#]/, 1)[0] ?? "";
+  if (!path.startsWith("/")) return "";
+  const normalized = path.replace(/\/{2,}/g, "/").replace(/\/+$/, "");
+  return normalized || "/";
 }
 
 function createOutline(audience: ContentAudience): string[] {
@@ -461,6 +469,173 @@ export class ContentService {
     const updated = this.store.updateContent(content.id, patch, { incrementVersion: false });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return result;
+  }
+
+  public auditSiteSeo(principal: AuthenticatedPrincipal | null): SeoSiteAuditResult {
+    this.assertProvider(principal, principal?.category);
+    const category = principal!.category;
+    const providerId = principal!.providerId!;
+    this.portal.assertAction(principal, category, "seo.site_audit");
+
+    const contents = this.store.listContent(category, providerId);
+    const publicContents = contents.filter((content) => content.status === "approved" || content.status === "published");
+    const issues: SeoSiteAuditResult["issues"] = [];
+    const canonicalOwners = new Map<string, ContentRecord[]>();
+    const titleOwners = new Map<string, ContentRecord[]>();
+    const knownPaths = new Set<string>();
+
+    const addIssue = (
+      issue: Omit<SeoSiteAuditResult["issues"][number], "contentId"> & { contentId?: string },
+    ): void => {
+      issues.push(issue);
+    };
+
+    if (publicContents.length === 0) {
+      addIssue({
+        code: "NO_PUBLIC_CONTENT",
+        severity: "info",
+        field: "contents",
+        message: "公開対象のコンテンツがまだありません。",
+        recommendation: "承認済みコンテンツを公開対象に追加してください。",
+      });
+    }
+
+    for (const content of publicContents) {
+      const canonicalPath = normalizeSeoPath(content.seo.canonicalPath);
+      if (canonicalPath) knownPaths.add(canonicalPath);
+    }
+
+    for (const content of publicContents) {
+      const canonicalPath = normalizeSeoPath(content.seo.canonicalPath);
+      if (!canonicalPath) {
+        addIssue({
+          code: "CANONICAL_INVALID",
+          severity: "error",
+          contentId: content.id,
+          field: "seo.canonicalPath",
+          message: "公開対象のcanonicalがサイト内パスではありません。",
+          recommendation: "先頭が / の一意なサイト内パスを設定してください。",
+        });
+      } else {
+        knownPaths.add(canonicalPath);
+        const owners = canonicalOwners.get(canonicalPath) ?? [];
+        owners.push(content);
+        canonicalOwners.set(canonicalPath, owners);
+      }
+
+      const title = content.seo.title.trim().toLocaleLowerCase("ja-JP");
+      if (title) {
+        const owners = titleOwners.get(title) ?? [];
+        owners.push(content);
+        titleOwners.set(title, owners);
+      }
+
+      if (!content.seo.jsonLdType || !["Organization", "Article", "BlogPosting", "JobPosting", "NewsArticle", "FAQPage"].includes(content.seo.jsonLdType)) {
+        addIssue({
+          code: "JSONLD_TYPE_MISSING",
+          severity: "error",
+          contentId: content.id,
+          field: "seo.jsonLdType",
+          message: "公開対象のJSON-LDタイプが設定されていません。",
+          recommendation: "コンテンツ種別に対応するschema.orgのJSON-LDタイプを設定してください。",
+        });
+      }
+
+      if (!content.lastSeoAudit || content.lastSeoAudit.contentVersion !== content.version) {
+        addIssue({
+          code: "SEO_AUDIT_STALE",
+          severity: "error",
+          contentId: content.id,
+          field: "lastSeoAudit",
+          message: "公開対象のSEO監査証跡が最新版ではありません。",
+          recommendation: "最新版に対してコンテンツSEO監査を再実行してください。",
+        });
+      } else if (content.lastSeoAudit.issues.some((issue) => issue.severity === "error")) {
+        addIssue({
+          code: "SEO_AUDIT_HAS_ERRORS",
+          severity: "error",
+          contentId: content.id,
+          field: "lastSeoAudit.issues",
+          message: "公開対象のページSEO監査に重大な問題があります。",
+          recommendation: "ページSEO監査のエラーを解消してから再監査してください。",
+        });
+      }
+
+      if (!content.lastFactCheck || content.lastFactCheck.contentVersion !== content.version || !content.lastFactCheck.passed) {
+        addIssue({
+          code: "FACT_CHECK_STALE",
+          severity: "error",
+          contentId: content.id,
+          field: "lastFactCheck",
+          message: "公開対象の事実確認証跡が最新版ではないか、合格していません。",
+          recommendation: "一次情報を登録し、最新版の事実確認を完了してください。",
+        });
+      }
+
+      const links = [...content.body.matchAll(/\]\(\s*(\/[^)\s]+)[^)]*\)/g)].map((match) => normalizeSeoPath(match[1] ?? ""));
+      if (publicContents.length > 1 && links.length === 0) {
+        addIssue({
+          code: "INTERNAL_LINK_MISSING",
+          severity: "warning",
+          contentId: content.id,
+          field: "body",
+          message: "同一カテゴリの公開対象へ向かう本文内リンクがありません。",
+          recommendation: "関連する公開ページへの内部リンクを本文に追加してください。",
+        });
+      }
+      for (const link of links) {
+        if (link && !knownPaths.has(link) && link !== "/") {
+          addIssue({
+            code: "INTERNAL_LINK_TARGET_MISSING",
+            severity: "warning",
+            contentId: content.id,
+            field: "body",
+            message: `内部リンク先 ${link} が公開対象のcanonical一覧にありません。`,
+            recommendation: "リンク先のcanonical、公開状態、またはリンクURLを確認してください。",
+          });
+        }
+      }
+    }
+
+    for (const [canonicalPath, owners] of canonicalOwners) {
+      if (owners.length < 2) continue;
+      for (const content of owners) {
+        addIssue({
+          code: "CANONICAL_DUPLICATE",
+          severity: "error",
+          contentId: content.id,
+          field: "seo.canonicalPath",
+          message: `canonical ${canonicalPath} が複数の公開対象で重複しています。`,
+          recommendation: "公開ページごとに一意のcanonicalパスを設定してください。",
+        });
+      }
+    }
+
+    for (const [title, owners] of titleOwners) {
+      if (owners.length < 2) continue;
+      for (const content of owners) {
+        addIssue({
+          code: "SEO_TITLE_DUPLICATE",
+          severity: "warning",
+          contentId: content.id,
+          field: "seo.title",
+          message: `SEOタイトル「${title}」が複数の公開対象で重複しています。`,
+          recommendation: "検索意図とページ内容に合わせてSEOタイトルを固有化してください。",
+        });
+      }
+    }
+
+    const score = Math.max(0, 100 - issues.reduce((total, issue) => total + (issue.severity === "error" ? 20 : issue.severity === "warning" ? 10 : 3), 0));
+    const result: SeoSiteAuditResult = {
+      category,
+      providerId,
+      contentCount: contents.length,
+      publicContentCount: publicContents.length,
+      score,
+      issues,
+      auditedAt: new Date().toISOString(),
+    };
+    return this.store.saveSiteSeoAudit(result);
   }
 
   public factCheck(principal: AuthenticatedPrincipal | null, contentId: string): FactCheckResult {

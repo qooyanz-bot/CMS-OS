@@ -304,6 +304,25 @@ export interface SeoAuditResult {
   auditedAt: string;
 }
 
+export interface SeoSiteAuditIssue {
+  code: string;
+  severity: SeoIssueSeverity;
+  contentId?: string;
+  field: string;
+  message: string;
+  recommendation: string;
+}
+
+export interface SeoSiteAuditResult {
+  category: CategorySlug;
+  providerId: string;
+  contentCount: number;
+  publicContentCount: number;
+  score: number;
+  issues: SeoSiteAuditIssue[];
+  auditedAt: string;
+}
+
 export type FactCheckItemStatus = "source_registered" | "source_missing";
 
 export interface FactCheckItem {

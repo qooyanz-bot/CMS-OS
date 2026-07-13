@@ -210,6 +210,7 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.ok(names.includes("content.polish"));
     assert.ok(names.includes("content.fact_check"));
     assert.ok(names.includes("seo.audit"));
+    assert.ok(names.includes("seo.site_audit"));
     assert.ok(names.includes("publication.publish"));
     assert.ok(names.includes("publication.unpublish"));
 
@@ -225,6 +226,23 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(list.status, 200);
     assert.ok(Array.isArray(list.body.result.structuredContent.items));
     assert.ok(Array.isArray(list.body.result.structuredContent.proposals));
+
+    const siteAudit = await request("/api/v1/seo/audit", {
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+    });
+    assert.equal(siteAudit.status, 200);
+    assert.equal(siteAudit.body.item.category, "beauty");
+    assert.equal(siteAudit.body.item.providerId, "provider-beauty-demo");
+    assert.equal(typeof siteAudit.body.item.score, "number");
+    assert.ok(Array.isArray(siteAudit.body.item.issues));
+
+    const siteAuditMcp = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "seo.site_audit", arguments: {} } }),
+    });
+    assert.equal(siteAuditMcp.status, 200);
+    assert.equal(siteAuditMcp.body.result.structuredContent.category, "beauty");
 
     const proposal = await request("/mcp", {
       method: "POST",
@@ -324,6 +342,10 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     const approved = await request(`/api/v1/content/${contentId}/approve`, { method: "POST", headers });
     assert.equal(approved.status, 200);
     assert.equal(approved.body.item.status, "approved");
+    const siteAudit = await request("/api/v1/seo/audit", { headers });
+    assert.equal(siteAudit.status, 200);
+    assert.ok(siteAudit.body.item.publicContentCount >= 1);
+    assert.equal(siteAudit.body.item.issues.some((issue: { code: string; contentId?: string }) => issue.contentId === contentId && ["SEO_AUDIT_STALE", "FACT_CHECK_STALE"].includes(issue.code)), false);
     const reviews = await request(`/api/v1/content/${contentId}/reviews`, { headers });
     assert.equal(reviews.status, 200);
     assert.equal(reviews.body.items.length, 2);

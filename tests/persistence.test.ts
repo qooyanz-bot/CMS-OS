@@ -72,12 +72,15 @@ describe("CMS-OSファイル永続化", () => {
     content1.factCheck(providerLogin.principal, draft.id);
     const review = content1.requestReview(providerLogin.principal, draft.id);
     assert.equal(review.review.status, "requested");
+    const siteAudit = content1.auditSiteSeo(providerLogin.principal);
+    assert.equal(siteAudit.category, "legal");
 
     const state2 = new JsonStateStore(directory);
     const auth2 = new InMemoryAuthService(state2);
     const portal2 = new PortalService(auth2, new PortalStore(state2));
     const content2 = new ContentService(portal2, new ContentStore(state2));
 
+    assert.equal(new ContentStore(state2).getSiteSeoAudit("legal", "provider-legal-demo")?.auditedAt, siteAudit.auditedAt);
     assert.deepEqual(auth2.authenticate(ordererLogin.accessToken)?.accountId, ordererLogin.principal.accountId);
     const restoredRequests = portal2.listRequests(auth2.authenticate(ordererLogin.accessToken));
     assert.equal(restoredRequests[0]?.id, request.id);

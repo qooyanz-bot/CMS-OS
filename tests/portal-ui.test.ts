@@ -29,6 +29,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /CMS-OS Portal/);
   assert.match(body, /content-editor-panel/);
   assert.match(body, /publication-history-list/);
+  assert.match(body, /site-seo-audit-button/);
+  assert.match(body, /site-seo-audit-result/);
   assert.match(body, /content-version-list/);
   assert.match(body, /content-review-list/);
   assert.match(body, /provider-management-panel/);
@@ -74,6 +76,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/content\/proposals/);
   assert.match(scriptBody, /api\/v1\/publications\/build/);
   assert.match(scriptBody, /api\/v1\/publications\/unpublish/);
+  assert.match(scriptBody, /api\/v1\/seo\/audit/);
   assert.match(scriptBody, /api\/v1\/publications/);
   assert.match(scriptBody, /publication-history/);
   assert.match(scriptBody, /handlePublicationRollback/);

@@ -699,6 +699,11 @@ async function handleMcp(
             },
           },
           {
+            name: "seo.site_audit",
+            description: "サイト全体のcanonical、内部リンク、構造化データ、監査証跡を確認します。",
+            inputSchema: { type: "object", properties: {}, required: [] },
+          },
+          {
             name: "content.fact_check",
             description: "本文に紐づく一次情報の登録状況を確認します。本番では外部検証アダプターへ差し替えます。",
             inputSchema: {
@@ -1313,6 +1318,12 @@ async function handleMcp(
       return;
     }
 
+    if (name === "seo.site_audit") {
+      const result = content.auditSiteSeo(principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "content.fact_check") {
       if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
       const result = content.factCheck(principal, argumentsObject.contentId);
@@ -1576,6 +1587,15 @@ export function createHttpServer(
           return;
         }
         writeJson(response, 200, { principal, experience: portal.getExperience(principal.category, principal) });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/seo/audit") {
+        try {
+          writeJson(response, 200, { item: content.auditSiteSeo(principal) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "サイト全体SEO監査に失敗しました。" });
+        }
         return;
       }
 

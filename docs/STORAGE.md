@@ -34,6 +34,7 @@ npm run dev
 - `content-records.json`
 - `content-versions.json`
 - `content-review-records.json`
+- `seo-site-audits.json`
 - `publication-history.json`
 - `publication-schedules.json`
 
