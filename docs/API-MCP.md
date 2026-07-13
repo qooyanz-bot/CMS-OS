@@ -82,6 +82,10 @@ GET  /api/v1/publications
 POST /api/v1/publications/build
 POST /api/v1/publications/deploy
 POST /api/v1/publications/publish
+GET  /api/v1/publications/schedules
+POST /api/v1/publications/schedules
+POST /api/v1/publications/schedules/execute
+POST /api/v1/publications/schedules/{scheduleId}/cancel
 POST /api/v1/publications/{publicationId}/rollback
 GET  /api/v1/providers?category=legal&limit=50&cursor=0
 GET  /api/v1/providers/{providerId}
@@ -142,6 +146,8 @@ PATCH /api/v1/jobs/{jobId}
 | `request.list` / `GET /api/v1/requests` | `search`、`status` | `createdAt_desc`、`createdAt_asc`、`title_asc` |
 | `job.search` / `GET /api/v1/jobs` | `search`、`employmentType`、`location`、`status` | `title_asc`、`title_desc`、`location_asc` |
 | `application.list` / `GET /api/v1/applications` | `search`、`jobId`、`status` | `createdAt_desc`、`createdAt_asc`、`status` |
+
+予約公開は`publication.schedule` / `POST /api/v1/publications/schedules`で作成します。作成時に承認済みコンテンツの静的スナップショットを固定するため、予約後に編集された内容が意図せず混ざりません。`publication.schedule_list` / `GET /api/v1/publications/schedules`で一覧を取得し、未実行の予約だけを`publication.schedule_cancel`で取り消せます。Cloudflare Cronなどの外部ジョブは`publication.schedule_execute` / `POST /api/v1/publications/schedules/execute`を呼び出し、期限を迎えた予約を実行します。ドライランでは予約を実行済みにせず、実デプロイ成功時だけコンテンツとスケジュールを公開済みへ進めます。
 
 RESTの応答は `{ items, page }`、MCPの`structuredContent`も同じ形式です。認証が必要な一覧では、フィルター適用前にロール・カテゴリ・本人所有のアクセス制御を行い、他カテゴリや他ユーザーのデータが検索条件で露出しないようにします。
 

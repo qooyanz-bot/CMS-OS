@@ -367,3 +367,24 @@ export interface PublicationHistoryRecord {
 }
 
 export type PublicationHistorySummary = Omit<PublicationHistoryRecord, "files"> & { fileCount: number };
+
+export const publicationScheduleStatuses = ["scheduled", "cancelled", "executed"] as const;
+export type PublicationScheduleStatus = (typeof publicationScheduleStatuses)[number];
+
+export interface PublicationScheduleRecord {
+  id: string;
+  publicationId: string;
+  category: CategorySlug;
+  providerId: string;
+  contentIds: string[];
+  baseUrl: string;
+  scheduledFor: string;
+  status: PublicationScheduleStatus;
+  executedAt?: string;
+  cancelledAt?: string;
+  lastError?: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PublicationScheduleSummary = PublicationScheduleRecord;

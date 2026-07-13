@@ -780,6 +780,34 @@ async function handleMcp(
             },
           },
           {
+            name: "publication.schedule",
+            description: "承認済みコンテンツを指定日時にBuilderOS Adapterで公開する予約を保存します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                contentIds: { type: "array", items: { type: "string" } },
+                baseUrl: { type: "string" },
+                scheduledFor: { type: "string", format: "date-time" },
+              },
+              required: ["scheduledFor"],
+            },
+          },
+          {
+            name: "publication.schedule_list",
+            description: "事業者自身の予約公開一覧を取得します。",
+            inputSchema: { type: "object", properties: {}, required: [] },
+          },
+          {
+            name: "publication.schedule_cancel",
+            description: "事業者自身の未実行の予約公開を取り消します。",
+            inputSchema: { type: "object", properties: { scheduleId: { type: "string" } }, required: ["scheduleId"] },
+          },
+          {
+            name: "publication.schedule_execute",
+            description: "外部Cronから呼び出し、期限を迎えた予約公開を実行します。",
+            inputSchema: { type: "object", properties: { before: { type: "string", format: "date-time" } }, required: [] },
+          },
+          {
             name: "publication.history",
             description: "事業者自身の静的公開履歴を取得します。公開ファイル本体は含めず、ロールバック可能な履歴情報を返します。",
             inputSchema: { type: "object", properties: {}, required: [] },
@@ -1336,6 +1364,38 @@ async function handleMcp(
         typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
       );
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "publication.schedule") {
+      if (typeof argumentsObject.scheduledFor !== "string") throw new Error("scheduledForは必須です。");
+      const result = publication.schedule(
+        principal,
+        argumentsObject.scheduledFor,
+        parseOptionalStringArray(argumentsObject.contentIds, "contentIds"),
+        typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
+      );
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: { item: result } } });
+      return;
+    }
+
+    if (name === "publication.schedule_list") {
+      const result = { items: publication.listSchedules(principal) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "publication.schedule_cancel") {
+      if (typeof argumentsObject.scheduleId !== "string") throw new Error("scheduleIdは必須です。");
+      const result = publication.cancelSchedule(principal, argumentsObject.scheduleId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: { item: result } } });
+      return;
+    }
+
+    if (name === "publication.schedule_execute") {
+      if (argumentsObject.before !== undefined && typeof argumentsObject.before !== "string") throw new Error("beforeは文字列で指定してください。");
+      const result = await publication.executeSchedules(principal, typeof argumentsObject.before === "string" ? argumentsObject.before : undefined);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: { items: result } } });
       return;
     }
 
@@ -1942,6 +2002,73 @@ export function createHttpServer(
           writeJson(response, 202, { item: result });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを公開できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/publications/schedules") {
+        const body = await readJson(request);
+        if (typeof body.scheduledFor !== "string") {
+          writeJson(response, 400, { error: "scheduledForは必須です。" });
+          return;
+        }
+        if (body.contentIds !== undefined && (!Array.isArray(body.contentIds) || body.contentIds.some((item) => typeof item !== "string"))) {
+          writeJson(response, 400, { error: "contentIdsは文字列配列で指定してください。" });
+          return;
+        }
+        if (body.baseUrl !== undefined && typeof body.baseUrl !== "string") {
+          writeJson(response, 400, { error: "baseUrlは文字列で指定してください。" });
+          return;
+        }
+        try {
+          const item = publication.schedule(
+            principal,
+            body.scheduledFor,
+            Array.isArray(body.contentIds) ? body.contentIds as string[] : undefined,
+            typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+          );
+          writeJson(response, 201, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "予約公開を作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/publications/schedules") {
+        try {
+          writeJson(response, 200, { items: publication.listSchedules(principal) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "予約公開一覧を取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/publications/schedules/execute") {
+        const body = await readJson(request);
+        if (body.before !== undefined && typeof body.before !== "string") {
+          writeJson(response, 400, { error: "beforeはISO 8601形式の日時で指定してください。" });
+          return;
+        }
+        try {
+          const items = await publication.executeSchedules(principal, typeof body.before === "string" ? body.before : undefined);
+          writeJson(response, 200, { items });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "予約公開を実行できません。" });
+        }
+        return;
+      }
+
+      const scheduleCancelMatch = url.pathname.match(/^\/api\/v1\/publications\/schedules\/([^/]+)\/cancel$/);
+      if (request.method === "POST" && scheduleCancelMatch) {
+        const scheduleId = scheduleCancelMatch[1];
+        if (!scheduleId) {
+          writeJson(response, 400, { error: "scheduleIdは必須です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: publication.cancelSchedule(principal, scheduleId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "予約公開を取り消せません。" });
         }
         return;
       }

@@ -22,6 +22,10 @@ GET  /api/v1/publications
 POST /api/v1/publications/build
 POST /api/v1/publications/deploy
 POST /api/v1/publications/publish
+GET  /api/v1/publications/schedules
+POST /api/v1/publications/schedules
+POST /api/v1/publications/schedules/execute
+POST /api/v1/publications/schedules/{scheduleId}/cancel
 POST /api/v1/publications/{publicationId}/rollback
 ```
 
@@ -35,6 +39,16 @@ POST /api/v1/publications/{publicationId}/rollback
 ```
 
 `contentIds`を省略すると、ログイン中の事業者が管理する承認済みコンテンツをまとめてビルドします。`baseUrl`はcanonical、sitemap、robots.txt、llms.txtの絶対URLに使用します。
+
+## 予約公開
+
+`POST /api/v1/publications/schedules`またはMCPの`publication.schedule`は、承認済みコンテンツを静的スナップショットとして固定し、`scheduledFor`（ISO 8601形式）が到来した後に公開できる予約を作成します。予約後にコンテンツを編集しても、予約スナップショットへは反映されません。
+
+- `GET /api/v1/publications/schedules` / `publication.schedule_list`：事業者自身の予約一覧
+- `POST /api/v1/publications/schedules/{scheduleId}/cancel` / `publication.schedule_cancel`：未実行予約の取消
+- `POST /api/v1/publications/schedules/execute` / `publication.schedule_execute`：外部Cronから期限到来分を実行
+
+実行入口はCMS-OS内部のタイマーに依存せず、Cloudflare Cronや外部ジョブからAPI/MCPで呼び出します。Cloudflare Pagesへの実デプロイが成功した場合だけ、予約を`executed`、対象コンテンツを`published`へ更新します。ドライランでは予約を保持し、再実行できます。
 
 ## 公開履歴とロールバック
 

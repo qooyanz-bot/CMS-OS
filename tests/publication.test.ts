@@ -141,6 +141,54 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get("categories/legal/index.html") ?? "", /弁護士ドットコム/);
     assert.match(fileMap.get("categories\/legal\/providers\/provider-legal-demo\/index.html") ?? "", /Organization/);
 
+    const scheduledFor = new Date(Date.now() + 60_000).toISOString();
+    const scheduled = await request("/api/v1/publications/schedules", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ contentIds: [draft.body.item.id], baseUrl: "https://www.example.com", scheduledFor }),
+    });
+    assert.equal(scheduled.status, 201);
+    assert.equal(scheduled.body.item.status, "scheduled");
+    const schedules = await request("/api/v1/publications/schedules", { headers: authHeaders });
+    assert.equal(schedules.status, 200);
+    assert.ok(schedules.body.items.some((item: { id: string }) => item.id === scheduled.body.item.id));
+    const dryRunSchedules = await request("/api/v1/publications/schedules/execute", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ before: new Date(Date.now() + 120_000).toISOString() }),
+    });
+    assert.equal(dryRunSchedules.status, 200);
+    assert.equal(dryRunSchedules.body.items[0].status, "dry_run");
+    assert.equal(dryRunSchedules.body.items[0].schedule.status, "scheduled");
+    const cancelledSchedule = await request(`/api/v1/publications/schedules/${scheduled.body.item.id}/cancel`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({}),
+    });
+    assert.equal(cancelledSchedule.status, 200);
+    assert.equal(cancelledSchedule.body.item.status, "cancelled");
+    const mcpScheduled = await request("/mcp", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 20,
+        method: "tools/call",
+        params: {
+          name: "publication.schedule",
+          arguments: { contentIds: [draft.body.item.id], baseUrl: "https://www.example.com", scheduledFor: new Date(Date.now() + 180_000).toISOString() },
+        },
+      }),
+    });
+    const mcpSchedule = mcpScheduled.body.result.structuredContent.item;
+    assert.equal(mcpSchedule.status, "scheduled");
+    const mcpCancelled = await request("/mcp", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 21, method: "tools/call", params: { name: "publication.schedule_cancel", arguments: { scheduleId: mcpSchedule.id } } }),
+    });
+    assert.equal(mcpCancelled.body.result.structuredContent.item.status, "cancelled");
+
     const submitted = await request("/api/v1/providers/provider-legal-demo/listing-submission", {
       method: "POST",
       headers: authHeaders,
@@ -204,6 +252,10 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(names.includes("publication.build"));
     assert.ok(names.includes("publication.deploy"));
     assert.ok(names.includes("publication.publish"));
+    assert.ok(names.includes("publication.schedule"));
+    assert.ok(names.includes("publication.schedule_list"));
+    assert.ok(names.includes("publication.schedule_cancel"));
+    assert.ok(names.includes("publication.schedule_execute"));
     assert.ok(names.includes("publication.history"));
     assert.ok(names.includes("publication.rollback"));
   });
@@ -259,5 +311,29 @@ describe("CMS-OS承認済み静的公開", () => {
     const rollbackHistory = publication.listHistory(login.principal).find((item) => item.id === rollback.publication.publicationId);
     assert.equal(rollbackHistory?.status, "rolled_back");
     assert.equal(rollbackHistory?.rollbackOf, result.publication.publicationId);
+
+    const scheduledProposal = content.createProposal(login.principal, {
+      category: "legal",
+      contentType: "blog",
+      audience: "customer",
+      topic: "予約公開の実行確認",
+      sourceFacts: ["予約公開の実行確認に使用する一次情報"],
+    });
+    const scheduledDraft = content.createDraft(login.principal, scheduledProposal.id);
+    content.polishContent(login.principal, scheduledDraft.id);
+    content.auditSeo(login.principal, scheduledDraft.id);
+    content.factCheck(login.principal, scheduledDraft.id);
+    content.approveContent(login.principal, scheduledDraft.id);
+    const schedule = publication.schedule(
+      login.principal,
+      new Date(Date.now() + 60_000).toISOString(),
+      [scheduledDraft.id],
+      "https://www.example.com",
+    );
+    const executed = await publication.executeSchedules(login.principal, new Date(Date.now() + 120_000).toISOString());
+    assert.equal(executed.length, 1);
+    assert.equal(executed[0]?.status, "executed");
+    assert.equal(executed[0]?.schedule.id, schedule.id);
+    assert.equal(content.getContent(login.principal, scheduledDraft.id).status, "published");
   });
 });

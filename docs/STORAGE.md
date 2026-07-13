@@ -35,6 +35,7 @@ npm run dev
 - `content-versions.json`
 - `content-review-records.json`
 - `publication-history.json`
+- `publication-schedules.json`
 
 セッション、OIDC state、MFAチャレンジは生値ではなくハッシュ化した値を保存します。MFA秘密鍵は`CMS_OS_AUTH_ENCRYPTION_KEY`で暗号化します。ファイルモードは単一インスタンスの開発・小規模検証用であり、複数プロセスからの同時書き込みや暗号化バックアップは別途運用設計が必要です。本番はPostgreSQLと秘密管理基盤を使用してください。
 

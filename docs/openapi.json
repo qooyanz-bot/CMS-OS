@@ -469,6 +469,43 @@
         "responses": { "200": { "description": "公開履歴", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationHistoryListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
+    "/api/v1/publications/schedules": {
+      "get": {
+        "tags": ["Publication"],
+        "operationId": "listPublicationSchedules",
+        "summary": "事業者自身の予約公開一覧を取得",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "予約公開一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationScheduleListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "post": {
+        "tags": ["Publication"],
+        "operationId": "schedulePublication",
+        "summary": "指定日時の予約公開を作成",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationScheduleRequest" } } } },
+        "responses": { "201": { "description": "予約公開", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationScheduleResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/v1/publications/schedules/execute": {
+      "post": {
+        "tags": ["Publication"],
+        "operationId": "executePublicationSchedules",
+        "summary": "期限を迎えた予約公開を実行",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationScheduleExecuteRequest" } } } },
+        "responses": { "200": { "description": "予約公開の実行結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationScheduleExecuteResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/publications/schedules/{scheduleId}/cancel": {
+      "post": {
+        "tags": ["Publication"],
+        "operationId": "cancelPublicationSchedule",
+        "summary": "予約公開を取り消す",
+        "parameters": [{ "$ref": "#/components/parameters/PublicationScheduleIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "取消済み予約公開", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationScheduleResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
     "/api/v1/publications/build": {
       "post": {
         "tags": ["Publication"],
@@ -696,6 +733,7 @@
       "ContentIdPath": { "name": "contentId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "ContentVersionPath": { "name": "version", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
       "PublicationIdPath": { "name": "publicationId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "PublicationScheduleIdPath": { "name": "scheduleId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "ProviderIdPath": { "name": "providerId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "DirectoryIdPath": { "name": "directoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "JobIdPath": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
@@ -779,6 +817,8 @@
       "FactCheck": { "type": "object", "required": ["contentId", "contentVersion", "passed", "scope", "items", "issues", "checkedAt"], "properties": { "contentId": { "type": "string" }, "contentVersion": { "type": "integer" }, "passed": { "type": "boolean" }, "scope": { "type": "string", "enum": ["source_presence_only"] }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/FactCheckItem" } }, "issues": { "type": "array", "items": { "type": "string" } }, "checkedAt": { "type": "string", "format": "date-time" } } },
       "FactCheckResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/FactCheck" } } },
       "PublicationBuildRequest": { "type": "object", "properties": { "contentIds": { "type": "array", "items": { "type": "string" } }, "baseUrl": { "type": "string", "format": "uri" } }, "additionalProperties": false },
+      "PublicationScheduleRequest": { "type": "object", "required": ["scheduledFor"], "properties": { "contentIds": { "type": "array", "items": { "type": "string" } }, "baseUrl": { "type": "string", "format": "uri" }, "scheduledFor": { "type": "string", "format": "date-time" } }, "additionalProperties": false },
+      "PublicationScheduleExecuteRequest": { "type": "object", "properties": { "before": { "type": "string", "format": "date-time" } }, "additionalProperties": false },
       "PublicationRollbackRequest": { "type": "object", "properties": { "baseUrl": { "type": "string", "format": "uri" } }, "additionalProperties": false },
       "PublicationResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publicationId", "baseUrl", "contentIds", "generatedAt", "files"], "properties": { "publicationId": { "type": "string" }, "baseUrl": { "type": "string", "format": "uri" }, "contentIds": { "type": "array", "items": { "type": "string" } }, "generatedAt": { "type": "string", "format": "date-time" }, "files": { "type": "array", "items": { "type": "object", "required": ["path", "contentType", "content"], "properties": { "path": { "type": "string" }, "contentType": { "type": "string" }, "content": { "type": "string" } } } } } } } },
       "PublicationDeployment": { "type": "object", "required": ["status", "provider", "projectName", "requestId", "fileCount", "uploadedFileCount"], "properties": { "status": { "type": "string", "enum": ["submitted", "dry_run"] }, "provider": { "type": "string", "enum": ["cloudflare-pages"] }, "projectName": { "type": "string" }, "requestId": { "type": "string" }, "fileCount": { "type": "integer" }, "uploadedFileCount": { "type": "integer" }, "deploymentId": { "type": "string" }, "deploymentUrl": { "type": "string", "format": "uri" }, "environment": { "type": "string" } } },
@@ -787,6 +827,10 @@
       "PublicationRollbackResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment", "rolledBackPublicationId"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "$ref": "#/components/schemas/PublicationDeployment" }, "rolledBackPublicationId": { "type": "string" } } } } },
       "PublicationDeployResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "type": "object", "additionalProperties": true } } } } },
       "PublicationPublishResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment", "publishedContentIds"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "type": "object", "additionalProperties": true }, "publishedContentIds": { "type": "array", "items": { "type": "string" } } } } } },
+      "PublicationSchedule": { "type": "object", "required": ["id", "publicationId", "category", "providerId", "contentIds", "baseUrl", "scheduledFor", "status", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "publicationId": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "contentIds": { "type": "array", "items": { "type": "string" } }, "baseUrl": { "type": "string", "format": "uri" }, "scheduledFor": { "type": "string", "format": "date-time" }, "status": { "type": "string", "enum": ["scheduled", "cancelled", "executed"] }, "executedAt": { "type": "string", "format": "date-time" }, "cancelledAt": { "type": "string", "format": "date-time" }, "lastError": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "PublicationScheduleResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/PublicationSchedule" } } },
+      "PublicationScheduleListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/PublicationSchedule" } } } },
+      "PublicationScheduleExecuteResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "type": "object", "required": ["schedule", "status"], "properties": { "schedule": { "$ref": "#/components/schemas/PublicationSchedule" }, "status": { "type": "string", "enum": ["executed", "dry_run", "failed"] }, "publication": { "type": "object", "additionalProperties": true }, "deployment": { "type": "object", "additionalProperties": true }, "publishedContentIds": { "type": "array", "items": { "type": "string" } }, "error": { "type": "string" } } } } } },
       "RequestCreate": { "type": "object", "required": ["category", "providerId", "title", "description"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "title": { "type": "string", "minLength": 3 }, "description": { "type": "string", "minLength": 10 } }, "additionalProperties": false },
       "RequestStatusUpdate": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["submitted", "accepted", "closed"] } }, "additionalProperties": false },
       "ServiceRequest": { "type": "object", "required": ["id", "category", "ordererId", "providerId", "title", "description", "status", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "ordererId": { "type": "string" }, "providerId": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "status": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },

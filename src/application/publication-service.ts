@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ContentService } from "./content-service.js";
 import type { PortalService } from "./portal-service.js";
 import { PublicationStore } from "../domain/publication-store.js";
-import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, PublicationBuildResult, PublicationDeploymentRecord, PublicationHistorySummary, VisibleProvider } from "../domain/types.js";
+import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, PublicationBuildResult, PublicationDeploymentRecord, PublicationHistorySummary, PublicationScheduleRecord, PublicationScheduleSummary, VisibleProvider } from "../domain/types.js";
 import { BuilderOSAdapter, BuilderOSAdapterError, type CloudflarePagesDeployOptions, type CloudflarePagesDeploymentResult } from "../integrations/builderos-adapter.js";
 
 export class PublicationServiceError extends Error {
@@ -116,6 +116,17 @@ function normalizeBaseUrl(value: string | undefined): string {
     throw new PublicationServiceError(400, "baseUrlはhttpまたはhttpsで指定してください。");
   }
   return parsed.toString().replace(/\/+$/, "");
+}
+
+function normalizeScheduleAt(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    throw new PublicationServiceError(400, "scheduledForはISO 8601形式の日時で指定してください。");
+  }
+  if (timestamp <= Date.now()) {
+    throw new PublicationServiceError(400, "scheduledForは現在より後の日時で指定してください。");
+  }
+  return new Date(timestamp).toISOString();
 }
 
 function deploymentRecord(deployment: CloudflarePagesDeploymentResult): PublicationDeploymentRecord {
@@ -561,6 +572,13 @@ export class PublicationService {
     requestedBaseUrl?: string,
   ): Promise<{ publication: PublicationBuildResult; deployment: CloudflarePagesDeploymentResult; publishedContentIds: string[] }> {
     const publication = this.build(principal, contentIds, requestedBaseUrl);
+    return this.publishBuilt(principal, publication);
+  }
+
+  private async publishBuilt(
+    principal: AuthenticatedPrincipal | null,
+    publication: PublicationBuildResult,
+  ): Promise<{ publication: PublicationBuildResult; deployment: CloudflarePagesDeploymentResult; publishedContentIds: string[] }> {
     try {
       const deployment = await this.builderosAdapter.deployToCloudflarePages(publication, this.cloudflareOptionsProvider());
       const publishedContentIds = deployment.status === "submitted"
@@ -577,6 +595,117 @@ export class PublicationService {
       }
       throw error;
     }
+  }
+
+  public schedule(
+    principal: AuthenticatedPrincipal | null,
+    scheduledFor: string,
+    contentIds?: string[],
+    requestedBaseUrl?: string,
+  ): PublicationScheduleRecord {
+    if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
+    if (principal.role !== "provider" || !principal.providerId) {
+      throw new PublicationServiceError(403, "予約公開は事業者だけが利用できます。");
+    }
+    this.portal.assertAction(principal, principal.category, "publication.schedule");
+    const normalizedScheduledFor = normalizeScheduleAt(scheduledFor);
+    const publication = this.build(principal, contentIds, requestedBaseUrl);
+    return this.publicationStore.createSchedule({
+      publicationId: publication.publicationId,
+      category: principal.category,
+      providerId: principal.providerId,
+      contentIds: [...publication.contentIds],
+      baseUrl: publication.baseUrl,
+      scheduledFor: normalizedScheduledFor,
+      status: "scheduled",
+    });
+  }
+
+  public listSchedules(principal: AuthenticatedPrincipal | null): PublicationScheduleSummary[] {
+    if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
+    if (principal.role !== "provider" || !principal.providerId) {
+      throw new PublicationServiceError(403, "予約公開一覧は事業者だけが取得できます。");
+    }
+    this.portal.assertAction(principal, principal.category, "publication.schedule_list");
+    return this.publicationStore.listSchedules(principal.category, principal.providerId).map((schedule) => ({
+      ...schedule,
+      contentIds: [...schedule.contentIds],
+    }));
+  }
+
+  public cancelSchedule(principal: AuthenticatedPrincipal | null, scheduleId: string): PublicationScheduleRecord {
+    if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
+    if (principal.role !== "provider" || !principal.providerId) {
+      throw new PublicationServiceError(403, "予約公開の取消は事業者だけが利用できます。");
+    }
+    this.portal.assertAction(principal, principal.category, "publication.schedule_cancel");
+    const schedule = this.publicationStore.getSchedule(scheduleId);
+    if (!schedule || schedule.category !== principal.category || schedule.providerId !== principal.providerId) {
+      throw new PublicationServiceError(404, "予約公開が見つかりません。");
+    }
+    if (schedule.status !== "scheduled") {
+      throw new PublicationServiceError(409, "実行済みまたは取消済みの予約公開は変更できません。");
+    }
+    const cancelled = this.publicationStore.updateSchedule(schedule.id, {
+      status: "cancelled",
+      cancelledAt: new Date().toISOString(),
+      lastError: undefined,
+    });
+    if (!cancelled) throw new PublicationServiceError(404, "予約公開が見つかりません。");
+    return cancelled;
+  }
+
+  public async executeSchedules(
+    principal: AuthenticatedPrincipal | null,
+    before?: string,
+  ): Promise<Array<{ schedule: PublicationScheduleRecord; status: "executed" | "dry_run" | "failed"; publication?: PublicationBuildResult; deployment?: CloudflarePagesDeploymentResult; publishedContentIds?: string[]; error?: string }>> {
+    if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
+    if (principal.role !== "provider" || !principal.providerId) {
+      throw new PublicationServiceError(403, "予約公開の実行は事業者だけが利用できます。");
+    }
+    this.portal.assertAction(principal, principal.category, "publication.schedule_execute");
+    const cutoff = before === undefined ? Date.now() : Date.parse(before);
+    if (!Number.isFinite(cutoff)) throw new PublicationServiceError(400, "beforeはISO 8601形式の日時で指定してください。");
+
+    const dueSchedules = this.publicationStore
+      .listSchedules(principal.category, principal.providerId)
+      .filter((schedule) => schedule.status === "scheduled" && Date.parse(schedule.scheduledFor) <= cutoff);
+    const results: Array<{ schedule: PublicationScheduleRecord; status: "executed" | "dry_run" | "failed"; publication?: PublicationBuildResult; deployment?: CloudflarePagesDeploymentResult; publishedContentIds?: string[]; error?: string }> = [];
+
+    for (const schedule of dueSchedules) {
+      const storedPublication = this.publicationStore.get(schedule.publicationId);
+      if (!storedPublication) {
+        const error = "予約公開に紐づくビルド履歴が見つかりません。";
+        const failedSchedule = this.publicationStore.updateSchedule(schedule.id, { lastError: error }) ?? schedule;
+        results.push({ schedule: failedSchedule, status: "failed", error });
+        continue;
+      }
+      const publication: PublicationBuildResult = {
+        publicationId: storedPublication.id,
+        baseUrl: storedPublication.baseUrl,
+        contentIds: [...storedPublication.contentIds],
+        generatedAt: storedPublication.generatedAt,
+        files: storedPublication.files.map((file) => ({ ...file })),
+      };
+      try {
+        const deployed = await this.publishBuilt(principal, publication);
+        if (deployed.deployment.status === "submitted") {
+          const executedSchedule = this.publicationStore.updateSchedule(schedule.id, {
+            status: "executed",
+            executedAt: new Date().toISOString(),
+            lastError: undefined,
+          }) ?? schedule;
+          results.push({ ...deployed, schedule: executedSchedule, status: "executed" });
+        } else {
+          results.push({ ...deployed, schedule, status: "dry_run" });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "予約公開に失敗しました。";
+        const failedSchedule = this.publicationStore.updateSchedule(schedule.id, { lastError: message }) ?? schedule;
+        results.push({ schedule: failedSchedule, status: "failed", error: message });
+      }
+    }
+    return results;
   }
 
   public listHistory(principal: AuthenticatedPrincipal | null): PublicationHistorySummary[] {

@@ -95,6 +95,16 @@ describe("CMS-OSファイル永続化", () => {
   it("公開履歴と静的ファイルスナップショットを再起動後に復元できる", () => {
     const state1 = new JsonStateStore(directory);
     const store1 = new PublicationStore(state1);
+    const schedule = store1.createSchedule({
+      id: "publication-schedule-persistence-test",
+      publicationId: "publication-persistence-test",
+      category: "legal",
+      providerId: "provider-legal-demo",
+      contentIds: ["content-persistence-test"],
+      baseUrl: "https://www.example.com",
+      scheduledFor: "2099-07-14T00:00:00.000Z",
+      status: "scheduled",
+    });
     const created = store1.create({
       id: "publication-persistence-test",
       category: "legal",
@@ -110,6 +120,8 @@ describe("CMS-OSファイル永続化", () => {
     const store2 = new PublicationStore(state2);
     const restored = store2.get(created.id);
     assert.equal(restored?.status, "published");
+    assert.equal(store2.getSchedule(schedule.id)?.publicationId, created.id);
+    assert.equal(store2.listSchedules("legal", "provider-legal-demo")[0]?.status, "scheduled");
     assert.equal(restored?.files[0]?.content, "<h1>永続化</h1>");
   });
 });
