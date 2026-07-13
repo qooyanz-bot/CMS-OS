@@ -75,7 +75,7 @@ describe("CMS-OS承認済み静的公開", () => {
     const polished = await request(`/api/v1/content/${draft.body.item.id}/polish`, {
       method: "POST",
       headers: authHeaders,
-      body: JSON.stringify({}),
+      body: JSON.stringify({ instructions: "\n\n| 比較項目 | 選択肢A | 選択肢B |\n| --- | --- | --- |\n| 対象 | 顧客 | 求職者 |" }),
     });
     assert.equal(polished.body.item.status, "polished");
 
@@ -107,10 +107,22 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(fileMap.has("sitemap.xml"));
     assert.ok(fileMap.has("robots.txt"));
     assert.ok(fileMap.has("llms.txt"));
+    assert.ok(fileMap.has("categories/legal/index.html"));
+    assert.ok(fileMap.has("categories/legal/providers/index.html"));
+    assert.ok(fileMap.has("categories/legal/providers/provider-legal-demo/index.html"));
     assert.match(fileMap.get(pagePath) ?? "", /application\/ld\+json/);
+    assert.match(fileMap.get(pagePath) ?? "", /<table>/);
+    assert.match(fileMap.get(pagePath) ?? "", /FAQPage/);
+    assert.match(fileMap.get(pagePath) ?? "", /BreadcrumbList/);
     assert.match(fileMap.get(pagePath) ?? "", /<link rel="canonical"/);
+    assert.match(fileMap.get(pagePath) ?? "", /hreflang="ja"/);
     assert.match(fileMap.get("sitemap.xml") ?? "", /https:\/\/www\.example\.com/);
+    assert.match(fileMap.get("sitemap.xml") ?? "", /categories\/legal\/providers\/provider-legal-demo/);
     assert.match(fileMap.get("robots.txt") ?? "", /Sitemap: https:\/\/www\.example\.com\/sitemap\.xml/);
+    assert.match(fileMap.get("robots.txt") ?? "", /GPTBot/);
+    assert.match(fileMap.get("robots.txt") ?? "", /Disallow: \/api\//);
+    assert.match(fileMap.get("llms.txt") ?? "", /Provider/);
+    assert.match(fileMap.get("categories\/legal\/providers\/provider-legal-demo\/index.html") ?? "", /Organization/);
 
     const deployed = await request("/api/v1/publications/deploy", {
       method: "POST",
