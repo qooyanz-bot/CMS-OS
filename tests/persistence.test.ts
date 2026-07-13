@@ -26,6 +26,15 @@ describe("CMS-OSファイル永続化", () => {
     const auth1 = new InMemoryAuthService(state1);
     const portal1 = new PortalService(auth1, new PortalStore(state1));
     const content1 = new ContentService(portal1, new ContentStore(state1));
+    const managedGuide = portal1.createDirectoryGuide({
+      category: "legal",
+      name: "永続化テスト案内",
+      kind: "directory",
+      description: "再起動後も復元される外部案内のテストです。",
+      url: "https://example.com/persisted-guide",
+      targetRoles: ["provider"],
+      verifiedAt: "2026-07-14",
+    }, true);
 
     const ordererLogin = auth1.login("orderer@example.com", "demo-password", "legal", "orderer");
     if (!ordererLogin || !("accessToken" in ordererLogin)) throw new Error("注文者ログインにMFAチャレンジが返されました。");
@@ -68,5 +77,7 @@ describe("CMS-OSファイル永続化", () => {
     assert.equal(restoredProposals[0]?.id, proposal.id);
     const restoredNotifications = portal2.listNotifications(auth2.authenticate(providerLogin.accessToken));
     assert.ok(restoredNotifications.items.some((item) => item.resourceId === inquiry.id));
+    const restoredGuides = portal2.listDirectoryGuides("legal", auth2.authenticate(providerLogin.accessToken));
+    assert.ok(restoredGuides.some((guide) => guide.id === managedGuide.id));
   });
 });

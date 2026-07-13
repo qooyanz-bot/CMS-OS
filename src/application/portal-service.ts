@@ -4,7 +4,6 @@ import {
   projectProvider,
   resolveExperience,
 } from "../domain/catalog.js";
-import { listDirectoryGuides as listCatalogDirectoryGuides } from "../domain/directory-catalog.js";
 import { PortalStore } from "../domain/portal-store.js";
 import type {
   AuthenticatedPrincipal,
@@ -23,9 +22,11 @@ import type {
   ServiceRequest,
   VisibleProvider,
 } from "../domain/types.js";
-import { applicationStatuses, jobStatuses, requestStatuses } from "../domain/types.js";
+import { applicationStatuses, directoryGuideKinds, jobStatuses, portalRoles, requestStatuses } from "../domain/types.js";
 
 export type ProviderUpdateInput = Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "publicFields">>;
+export type DirectoryGuideCreateInput = Omit<DirectoryGuide, "id">;
+export type DirectoryGuideUpdateInput = Partial<DirectoryGuideCreateInput>;
 
 export const providerSortValues = ["relevance", "name_asc", "location_asc"] as const;
 export const requestSortValues = ["createdAt_desc", "createdAt_asc", "title_asc"] as const;
@@ -102,6 +103,45 @@ function normalizeFilterText(value: string | undefined): string | undefined {
   return normalized || undefined;
 }
 
+function validateDirectoryGuideInput(input: DirectoryGuideCreateInput | DirectoryGuideUpdateInput, requireAll: boolean): void {
+  if (requireAll || input.category !== undefined) {
+    if (!input.category) throw new PortalServiceError(400, "categoryは必須です。");
+  }
+  if (requireAll || input.name !== undefined) {
+    if (typeof input.name !== "string" || input.name.trim().length < 2 || input.name.trim().length > 200) {
+      throw new PortalServiceError(400, "nameは2文字以上200文字以内で指定してください。");
+    }
+  }
+  if (requireAll || input.kind !== undefined) {
+    if (!input.kind || !directoryGuideKinds.includes(input.kind)) throw new PortalServiceError(400, "kindが不正です。");
+  }
+  if (requireAll || input.description !== undefined) {
+    if (typeof input.description !== "string" || input.description.trim().length < 10 || input.description.trim().length > 2000) {
+      throw new PortalServiceError(400, "descriptionは10文字以上2000文字以内で指定してください。");
+    }
+  }
+  if (requireAll || input.url !== undefined) {
+    if (typeof input.url !== "string" || input.url.length > 500) throw new PortalServiceError(400, "urlは500文字以内で指定してください。");
+    try {
+      const parsed = new URL(input.url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("protocol");
+    } catch {
+      throw new PortalServiceError(400, "urlはhttpまたはhttpsのURLで指定してください。");
+    }
+  }
+  if (requireAll || input.targetRoles !== undefined) {
+    const roles = input.targetRoles;
+    if (!Array.isArray(roles) || roles.length === 0 || roles.length > portalRoles.length || new Set(roles).size !== roles.length || roles.some((role) => !portalRoles.includes(role))) {
+      throw new PortalServiceError(400, "targetRolesには重複しない対象ロールを1件以上指定してください。");
+    }
+  }
+  if (requireAll || input.verifiedAt !== undefined) {
+    if (typeof input.verifiedAt !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input.verifiedAt)) {
+      throw new PortalServiceError(400, "verifiedAtはYYYY-MM-DD形式で指定してください。");
+    }
+  }
+}
+
 function assertAllowedFilter<T extends string>(value: T | undefined, allowed: readonly T[], fieldName: string): T | undefined {
   if (value !== undefined && !allowed.includes(value)) {
     throw new PortalServiceError(400, `${fieldName}の指定値が不正です。`);
@@ -158,7 +198,42 @@ export class PortalService {
 
   public listDirectoryGuides(category: CategorySlug, principal: AuthenticatedPrincipal | null): DirectoryGuide[] {
     const role = principal?.category === category ? principal.role : "user";
-    return listCatalogDirectoryGuides(category, role);
+    return this.store.listDirectoryGuides()
+      .filter((guide) => guide.category === category && guide.targetRoles.includes(role));
+  }
+
+  public createDirectoryGuide(input: DirectoryGuideCreateInput, operatorAuthorized: boolean): DirectoryGuide {
+    if (!operatorAuthorized) throw new PortalServiceError(403, "外部案内を管理する権限がありません。");
+    validateDirectoryGuideInput(input, true);
+    return this.store.createDirectoryGuide({
+      ...input,
+      name: input.name.trim(),
+      description: input.description.trim(),
+      url: input.url.trim(),
+      targetRoles: [...input.targetRoles],
+    });
+  }
+
+  public updateDirectoryGuide(id: string, patch: DirectoryGuideUpdateInput, operatorAuthorized: boolean): DirectoryGuide {
+    if (!operatorAuthorized) throw new PortalServiceError(403, "外部案内を管理する権限がありません。");
+    if (!id.trim()) throw new PortalServiceError(400, "directoryIdは必須です。");
+    validateDirectoryGuideInput(patch, false);
+    const updated = this.store.updateDirectoryGuide(id, {
+      ...patch,
+      ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
+      ...(patch.description !== undefined ? { description: patch.description.trim() } : {}),
+      ...(patch.url !== undefined ? { url: patch.url.trim() } : {}),
+      ...(patch.targetRoles !== undefined ? { targetRoles: [...patch.targetRoles] } : {}),
+    });
+    if (!updated) throw new PortalServiceError(404, "指定された外部案内が見つかりません。");
+    return updated;
+  }
+
+  public deleteDirectoryGuide(id: string, operatorAuthorized: boolean): { deleted: true; id: string } {
+    if (!operatorAuthorized) throw new PortalServiceError(403, "外部案内を管理する権限がありません。");
+    if (!id.trim()) throw new PortalServiceError(400, "directoryIdは必須です。");
+    if (!this.store.deleteDirectoryGuide(id)) throw new PortalServiceError(404, "指定された外部案内が見つかりません。");
+    return { deleted: true, id };
   }
 
   public getExperience(

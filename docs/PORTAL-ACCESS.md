@@ -71,6 +71,10 @@ POST /api/v1/auth/mfa/complete
 GET  /api/v1/categories
 GET  /api/v1/categories/{category}/experience
 GET  /api/v1/categories/{category}/directories
+POST /api/v1/directories                  # 運営キーで外部案内を追加
+PATCH /api/v1/directories/{directoryId}   # 運営キーで外部案内を更新
+DELETE /api/v1/directories/{directoryId}  # 運営キーで外部案内を削除
+外部案内は運営キーを持つAPI/MCP連携だけが追加・更新・削除できます。閲覧時はカテゴリと現在のロールに応じて対象案内を投影します。
 GET  /api/v1/providers?category=beauty&theme=カラー
 GET  /api/v1/providers/{providerId}
 PATCH /api/v1/providers/{providerId}

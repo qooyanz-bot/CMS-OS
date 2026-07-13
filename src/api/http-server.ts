@@ -13,7 +13,7 @@ import {
   parseOptionalStringArray,
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
-import { applicationStatuses, categorySlugs, inquiryStatuses, jobStatuses, providerListingStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type InquiryStatus, type JobStatus, type PortalRole, type ProviderListingStatus, type RequestStatus } from "../domain/types.js";
+import { applicationStatuses, categorySlugs, directoryGuideKinds, inquiryStatuses, jobStatuses, providerListingStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type PortalRole, type ProviderListingStatus, type RequestStatus } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -102,6 +102,62 @@ const categoryEnum = [...categorySlugs];
 
 function isPortalRole(value: unknown): value is PortalRole {
   return value === "user" || value === "orderer" || value === "provider" || value === "candidate";
+}
+
+function isDirectoryGuideKind(value: unknown): value is DirectoryGuide["kind"] {
+  return typeof value === "string" && (directoryGuideKinds as readonly string[]).includes(value);
+}
+
+function parseDirectoryGuideCreateInput(input: Record<string, unknown>): Omit<DirectoryGuide, "id"> {
+  if (!isCategorySlug(input.category) || !isDirectoryGuideKind(input.kind) || typeof input.name !== "string" || typeof input.description !== "string" || typeof input.url !== "string" || typeof input.verifiedAt !== "string") {
+    throw new Error("category、name、kind、description、url、verifiedAtを正しく指定してください。");
+  }
+  if (!Array.isArray(input.targetRoles) || input.targetRoles.some((role) => !isPortalRole(role))) {
+    throw new Error("targetRolesを正しく指定してください。");
+  }
+  return {
+    category: input.category,
+    name: input.name,
+    kind: input.kind,
+    description: input.description,
+    url: input.url,
+    targetRoles: input.targetRoles,
+    verifiedAt: input.verifiedAt,
+  };
+}
+
+function parseDirectoryGuideUpdateInput(input: Record<string, unknown>): Partial<Omit<DirectoryGuide, "id">> {
+  const patch: Partial<Omit<DirectoryGuide, "id">> = {};
+  if (input.category !== undefined) {
+    if (!isCategorySlug(input.category)) throw new Error("categoryが不正です。");
+    patch.category = input.category;
+  }
+  if (input.name !== undefined) {
+    if (typeof input.name !== "string") throw new Error("nameが不正です。");
+    patch.name = input.name;
+  }
+  if (input.kind !== undefined) {
+    if (!isDirectoryGuideKind(input.kind)) throw new Error("kindが不正です。");
+    patch.kind = input.kind;
+  }
+  if (input.description !== undefined) {
+    if (typeof input.description !== "string") throw new Error("descriptionが不正です。");
+    patch.description = input.description;
+  }
+  if (input.url !== undefined) {
+    if (typeof input.url !== "string") throw new Error("urlが不正です。");
+    patch.url = input.url;
+  }
+  if (input.targetRoles !== undefined) {
+    if (!Array.isArray(input.targetRoles) || input.targetRoles.some((role) => !isPortalRole(role))) throw new Error("targetRolesが不正です。");
+    patch.targetRoles = input.targetRoles;
+  }
+  if (input.verifiedAt !== undefined) {
+    if (typeof input.verifiedAt !== "string") throw new Error("verifiedAtが不正です。");
+    patch.verifiedAt = input.verifiedAt;
+  }
+  if (Object.keys(patch).length === 0) throw new Error("更新項目を1つ以上指定してください。");
+  return patch;
 }
 
 function mcpText(value: unknown): { type: "text"; text: string } {
@@ -270,6 +326,33 @@ async function handleMcp(
             name: "category.resolve_experience",
             description: "カテゴリと認証コンテキストに応じた表示モジュールと操作権限を取得します。",
             inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
+          },
+          {
+            name: "directory.create",
+            description: "運営キーでカテゴリ別の外部案内を追加します。x-cms-os-operator-keyヘッダーが必要です。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                category: { enum: categoryEnum },
+                name: { type: "string" },
+                kind: { enum: [...directoryGuideKinds] },
+                description: { type: "string" },
+                url: { type: "string", format: "uri" },
+                targetRoles: { type: "array", items: { enum: ["user", "orderer", "provider", "candidate"] } },
+                verifiedAt: { type: "string", format: "date" },
+              },
+              required: ["category", "name", "kind", "description", "url", "targetRoles", "verifiedAt"],
+            },
+          },
+          {
+            name: "directory.update",
+            description: "運営キーで外部案内を更新します。x-cms-os-operator-keyヘッダーが必要です。",
+            inputSchema: { type: "object", properties: { directoryId: { type: "string" }, category: { enum: categoryEnum }, name: { type: "string" }, kind: { enum: [...directoryGuideKinds] }, description: { type: "string" }, url: { type: "string", format: "uri" }, targetRoles: { type: "array", items: { enum: ["user", "orderer", "provider", "candidate"] } }, verifiedAt: { type: "string", format: "date" } }, required: ["directoryId"] },
+          },
+          {
+            name: "directory.delete",
+            description: "運営キーで外部案内を削除します。x-cms-os-operator-keyヘッダーが必要です。",
+            inputSchema: { type: "object", properties: { directoryId: { type: "string" } }, required: ["directoryId"] },
           },
           {
             name: "directory.list",
@@ -719,6 +802,26 @@ async function handleMcp(
     if (name === "directory.list") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
       const result = { items: portal.listDirectoryGuides(argumentsObject.category, principal) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "directory.create") {
+      const result = portal.createDirectoryGuide(parseDirectoryGuideCreateInput(argumentsObject), hasOperatorKey(request));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "directory.update") {
+      if (typeof argumentsObject.directoryId !== "string") throw new Error("directoryIdが必要です。");
+      const result = portal.updateDirectoryGuide(argumentsObject.directoryId, parseDirectoryGuideUpdateInput(argumentsObject), hasOperatorKey(request));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "directory.delete") {
+      if (typeof argumentsObject.directoryId !== "string") throw new Error("directoryIdが必要です。");
+      const result = portal.deleteDirectoryGuide(argumentsObject.directoryId, hasOperatorKey(request));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1295,6 +1398,38 @@ export function createHttpServer(
           return;
         }
         writeJson(response, 200, { experience: portal.getExperience(category, principal) });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/directories") {
+        try {
+          const body = await readJson(request);
+          const item = portal.createDirectoryGuide(parseDirectoryGuideCreateInput(body), hasOperatorKey(request));
+          writeJson(response, 201, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "外部案内を作成できません。" });
+        }
+        return;
+      }
+
+      const directoryManagementMatch = url.pathname.match(/^\/api\/v1\/directories\/([^/]+)$/);
+      if (directoryManagementMatch && (request.method === "PATCH" || request.method === "DELETE")) {
+        const directoryId = directoryManagementMatch[1];
+        if (!directoryId) {
+          writeJson(response, 400, { error: "directoryIdが必要です。" });
+          return;
+        }
+        try {
+          if (request.method === "PATCH") {
+            const body = await readJson(request);
+            const item = portal.updateDirectoryGuide(directoryId, parseDirectoryGuideUpdateInput(body), hasOperatorKey(request));
+            writeJson(response, 200, { item });
+          } else {
+            writeJson(response, 200, portal.deleteDirectoryGuide(directoryId, hasOperatorKey(request)));
+          }
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "外部案内を更新できません。" });
+        }
         return;
       }
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { listProviders as listCatalogProviders } from "./catalog.js";
-import type { CategorySlug, InquiryStatus, JobApplication, JobPosting, PortalNotification, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceRequest } from "./types.js";
+import { listAllDirectoryGuides } from "./directory-catalog.js";
+import type { CategorySlug, DirectoryGuide, InquiryStatus, JobApplication, JobPosting, PortalNotification, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceRequest } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 
 const defaultJobs: JobPosting[] = [
@@ -42,8 +43,13 @@ function cloneProvider(provider: ProviderRecord): ProviderRecord {
   };
 }
 
+function cloneDirectoryGuide(guide: DirectoryGuide): DirectoryGuide {
+  return { ...guide, targetRoles: [...guide.targetRoles] };
+}
+
 export class PortalStore {
   private readonly providers: ProviderRecord[];
+  private readonly directoryGuides: DirectoryGuide[];
   private readonly requests: ServiceRequest[];
   private readonly jobs: JobPosting[];
   private readonly applications: JobApplication[];
@@ -62,6 +68,9 @@ export class PortalStore {
     );
     const savedProviders = stateStore?.load<ProviderRecord[]>("portal-providers.json", catalogProviders);
     this.providers = (savedProviders ?? catalogProviders).map(cloneProvider);
+    const catalogDirectoryGuides = listAllDirectoryGuides();
+    const savedDirectoryGuides = stateStore?.load<DirectoryGuide[]>("portal-directory-guides.json", catalogDirectoryGuides);
+    this.directoryGuides = (savedDirectoryGuides ?? catalogDirectoryGuides).map(cloneDirectoryGuide);
     this.requests = stateStore?.load<ServiceRequest[]>("portal-requests.json", []) ?? [];
     const savedJobs = stateStore?.load<JobPosting[]>("portal-jobs.json", defaultJobs) ?? defaultJobs;
     this.jobs = savedJobs.map((job) => ({ ...job }));
@@ -76,6 +85,33 @@ export class PortalStore {
 
   public getProvider(providerId: string): ProviderRecord | undefined {
     return this.providers.find((provider) => provider.id === providerId);
+  }
+
+  public listDirectoryGuides(): DirectoryGuide[] {
+    return this.directoryGuides.map(cloneDirectoryGuide);
+  }
+
+  public createDirectoryGuide(input: Omit<DirectoryGuide, "id">): DirectoryGuide {
+    const guide = { ...input, id: `directory-${randomUUID()}` };
+    this.directoryGuides.push(guide);
+    this.stateStore?.save("portal-directory-guides.json", this.directoryGuides);
+    return cloneDirectoryGuide(guide);
+  }
+
+  public updateDirectoryGuide(id: string, patch: Partial<Omit<DirectoryGuide, "id">>): DirectoryGuide | undefined {
+    const guide = this.directoryGuides.find((item) => item.id === id);
+    if (!guide) return undefined;
+    Object.assign(guide, patch);
+    this.stateStore?.save("portal-directory-guides.json", this.directoryGuides);
+    return cloneDirectoryGuide(guide);
+  }
+
+  public deleteDirectoryGuide(id: string): boolean {
+    const index = this.directoryGuides.findIndex((guide) => guide.id === id);
+    if (index < 0) return false;
+    this.directoryGuides.splice(index, 1);
+    this.stateStore?.save("portal-directory-guides.json", this.directoryGuides);
+    return true;
   }
 
   public updateProvider(

@@ -93,8 +93,11 @@ const directoryGuides: DirectoryGuide[] = [
   },
 ];
 
+export function listAllDirectoryGuides(): DirectoryGuide[] {
+  return directoryGuides.map((guide) => ({ ...guide, targetRoles: [...guide.targetRoles] }));
+}
+
 export function listDirectoryGuides(category: CategorySlug, role: PortalRole): DirectoryGuide[] {
-  return directoryGuides
+  return listAllDirectoryGuides()
     .filter((guide) => guide.category === category && guide.targetRoles.includes(role))
-    .map((guide) => ({ ...guide, targetRoles: [...guide.targetRoles] }));
 }

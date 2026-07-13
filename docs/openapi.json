@@ -162,6 +162,35 @@
         "responses": { "200": { "description": "カテゴリ別外部案内", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DirectoryGuideListResponse" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
+    "/api/v1/directories": {
+      "post": {
+        "tags": ["Portal"],
+        "operationId": "createDirectoryGuide",
+        "summary": "運営キーで外部案内を追加",
+        "security": [{ "OperatorKey": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DirectoryGuideCreateRequest" } } } },
+        "responses": { "201": { "description": "外部案内", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DirectoryGuideResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/directories/{directoryId}": {
+      "patch": {
+        "tags": ["Portal"],
+        "operationId": "updateDirectoryGuide",
+        "summary": "運営キーで外部案内を更新",
+        "security": [{ "OperatorKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/DirectoryIdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DirectoryGuideUpdateRequest" } } } },
+        "responses": { "200": { "description": "外部案内", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DirectoryGuideResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "delete": {
+        "tags": ["Portal"],
+        "operationId": "deleteDirectoryGuide",
+        "summary": "運営キーで外部案内を削除",
+        "security": [{ "OperatorKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/DirectoryIdPath" }],
+        "responses": { "200": { "description": "削除結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DirectoryGuideDeleteResponse" } } } }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/api/v1/providers": {
       "get": {
         "tags": ["Portal"],
@@ -574,6 +603,7 @@
       "CategoryQuery": { "name": "category", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/CategorySlug" } },
       "ContentIdPath": { "name": "contentId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "ProviderIdPath": { "name": "providerId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "DirectoryIdPath": { "name": "directoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "JobIdPath": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "InquiryIdPath": { "name": "inquiryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "NotificationIdPath": { "name": "notificationId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
@@ -615,6 +645,10 @@
       "ExperienceResponse": { "type": "object", "required": ["experience"], "properties": { "experience": { "$ref": "#/components/schemas/Experience" } } },
       "DirectoryGuide": { "type": "object", "required": ["id", "category", "name", "kind", "description", "url", "targetRoles", "verifiedAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string" }, "kind": { "type": "string", "enum": ["directory", "booking", "provider_resource"] }, "description": { "type": "string" }, "url": { "type": "string", "format": "uri" }, "targetRoles": { "type": "array", "items": { "$ref": "#/components/schemas/PortalRole" } }, "verifiedAt": { "type": "string", "format": "date" } } },
       "DirectoryGuideListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/DirectoryGuide" } } } },
+      "DirectoryGuideCreateRequest": { "type": "object", "required": ["category", "name", "kind", "description", "url", "targetRoles", "verifiedAt"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string", "minLength": 2, "maxLength": 200 }, "kind": { "type": "string", "enum": ["directory", "booking", "provider_resource"] }, "description": { "type": "string", "minLength": 10, "maxLength": 2000 }, "url": { "type": "string", "format": "uri", "maxLength": 500 }, "targetRoles": { "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": { "$ref": "#/components/schemas/PortalRole" } }, "verifiedAt": { "type": "string", "format": "date" } }, "additionalProperties": false },
+      "DirectoryGuideUpdateRequest": { "type": "object", "minProperties": 1, "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string", "minLength": 2, "maxLength": 200 }, "kind": { "type": "string", "enum": ["directory", "booking", "provider_resource"] }, "description": { "type": "string", "minLength": 10, "maxLength": 2000 }, "url": { "type": "string", "format": "uri", "maxLength": 500 }, "targetRoles": { "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": { "$ref": "#/components/schemas/PortalRole" } }, "verifiedAt": { "type": "string", "format": "date" } }, "additionalProperties": false },
+      "DirectoryGuideResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/DirectoryGuide" } } },
+      "DirectoryGuideDeleteResponse": { "type": "object", "required": ["deleted", "id"], "properties": { "deleted": { "const": true }, "id": { "type": "string" } } },
       "Provider": { "type": "object", "required": ["id", "category", "name", "themes", "location"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string" }, "themes": { "type": "array", "items": { "type": "string" } }, "location": { "type": "string" }, "listingStatus": { "$ref": "#/components/schemas/ProviderListingStatus" }, "listingSubmittedAt": { "type": "string", "format": "date-time" }, "listingReviewedAt": { "type": "string", "format": "date-time" }, "listingReviewNote": { "type": "string" } }, "additionalProperties": true },
       "ProviderListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Provider" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
       "ProviderUpdateRequest": { "type": "object", "properties": { "name": { "type": "string", "minLength": 2 }, "themes": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string" } }, "location": { "type": "string", "minLength": 2 }, "publicFields": { "type": "object", "additionalProperties": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] } } }, "additionalProperties": false },

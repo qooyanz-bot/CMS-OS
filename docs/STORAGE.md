@@ -27,6 +27,7 @@ npm run dev
 - `auth-mfa-enrollments.json`
 - `auth-audit-log.json`
 - `portal-requests.json`
+- `portal-directory-guides.json`
 - `portal-jobs.json`
 - `portal-applications.json`
 - `content-proposals.json`

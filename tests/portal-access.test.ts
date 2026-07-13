@@ -112,6 +112,62 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(mcpGuides.body.result.structuredContent.items[0].id, "directory-legal-bengo4");
   });
 
+  it("運営キーで外部案内をRESTとMCPから管理できる", async () => {
+    const denied = await request("/api/v1/directories", {
+      method: "POST",
+      body: JSON.stringify({ category: "legal", name: "管理対象案内", kind: "directory", description: "運営管理APIのテスト用外部案内です。", url: "https://example.com/managed", targetRoles: ["user"], verifiedAt: "2026-07-14" }),
+    });
+    assert.equal(denied.status, 403);
+
+    const created = await request("/api/v1/directories", {
+      method: "POST",
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+      body: JSON.stringify({ category: "legal", name: "管理対象案内", kind: "directory", description: "運営管理APIのテスト用外部案内です。", url: "https://example.com/managed", targetRoles: ["user"], verifiedAt: "2026-07-14" }),
+    });
+    assert.equal(created.status, 201);
+
+    const updated = await request(`/api/v1/directories/${created.body.item.id}`, {
+      method: "PATCH",
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+      body: JSON.stringify({ targetRoles: ["provider"], name: "更新済み案内" }),
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.item.name, "更新済み案内");
+
+    const userGuides = await request("/api/v1/categories/legal/directories");
+    assert.equal(userGuides.body.items.some((item: { id: string }) => item.id === created.body.item.id), false);
+    const providerGuides = await request("/api/v1/categories/legal/directories", { headers: { authorization: `Bearer ${legalProviderToken}` } });
+    assert.equal(providerGuides.body.items.some((item: { id: string }) => item.id === created.body.item.id), true);
+
+    const tools = await request("/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 43, method: "tools/list" }) });
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "directory.create"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "directory.update"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "directory.delete"));
+
+    const mcpCreated = await request("/mcp", {
+      method: "POST",
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 44, method: "tools/call", params: { name: "directory.create", arguments: { category: "legal", name: "MCP管理案内", kind: "directory", description: "MCP経由で追加するテスト用外部案内です。", url: "https://example.com/mcp-managed", targetRoles: ["user"], verifiedAt: "2026-07-14" } } }),
+    });
+    assert.equal(mcpCreated.status, 200);
+    assert.match(mcpCreated.body.result.structuredContent.id, /^directory-/);
+
+    const deleted = await request(`/api/v1/directories/${created.body.item.id}`, {
+      method: "DELETE",
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+    });
+    assert.equal(deleted.status, 200);
+    assert.equal(deleted.body.deleted, true);
+
+    const mcpDeleted = await request("/mcp", {
+      method: "POST",
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 45, method: "tools/call", params: { name: "directory.delete", arguments: { directoryId: mcpCreated.body.result.structuredContent.id } } }),
+    });
+    assert.equal(mcpDeleted.status, 200);
+    assert.equal(mcpDeleted.body.result.structuredContent.deleted, true);
+  });
+
   it("発注者は注文者向けの情報を取得でき、一般ユーザーには取得できない", async () => {
     const userLogin = await request("/api/v1/auth/login", {
       method: "POST",
