@@ -2,10 +2,12 @@ import { authOptionsFromEnvironment, InMemoryAuthService } from "./domain/auth.j
 import { PortalService } from "./application/portal-service.js";
 import { ContentService } from "./application/content-service.js";
 import { PublicationService } from "./application/publication-service.js";
+import { MediaService } from "./application/media-service.js";
 import { createHttpServer } from "./api/http-server.js";
 import { PortalStore } from "./domain/portal-store.js";
 import { ContentStore } from "./domain/content-store.js";
 import { PublicationStore } from "./domain/publication-store.js";
+import { MediaStore } from "./domain/media-store.js";
 import { JsonStateStore, type StateStore } from "./infrastructure/json-state-store.js";
 import { PostgresStateStore } from "./infrastructure/postgres-state-store.js";
 
@@ -28,7 +30,8 @@ async function main(): Promise<void> {
   const portal = new PortalService(auth, new PortalStore(stateStore));
   const content = new ContentService(portal, new ContentStore(stateStore));
   const publication = new PublicationService(portal, content, undefined, undefined, new PublicationStore(stateStore));
-  const server = createHttpServer(auth, portal, content, publication);
+  const media = new MediaService(portal, new MediaStore(stateStore));
+  const server = createHttpServer(auth, portal, content, publication, media);
 
   const shutdown = async (): Promise<void> => {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

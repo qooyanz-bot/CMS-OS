@@ -14,6 +14,7 @@ const state = {
   notifications: [],
   proposals: [],
   contents: [],
+  mediaAssets: [],
 };
 
 const listRequestVersions = {
@@ -22,6 +23,7 @@ const listRequestVersions = {
   applications: 0,
   jobs: 0,
   directories: 0,
+  media: 0,
 };
 
 const labels = {
@@ -178,6 +180,10 @@ const elements = {
   jobManagementPanel: document.querySelector("#job-management-panel"),
   jobManagementForm: document.querySelector("#job-management-form"),
   jobManagementMessage: document.querySelector("#job-management-message"),
+  mediaManagementPanel: document.querySelector("#media-management-panel"),
+  mediaManagementForm: document.querySelector("#media-management-form"),
+  mediaManagementMessage: document.querySelector("#media-management-message"),
+  mediaList: document.querySelector("#media-list"),
 };
 
 function escapeHtml(value) {
@@ -730,6 +736,60 @@ function setJobManagementMessage(message = "") {
   elements.jobManagementMessage.textContent = message;
 }
 
+function setMediaManagementMessage(message = "") {
+  elements.mediaManagementMessage.textContent = message;
+}
+
+function renderMediaAssets(items) {
+  state.mediaAssets = items;
+  elements.mediaList.innerHTML = items.length
+    ? items.map((asset) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(asset.mediaType)}</span><span>${escapeHtml(asset.status)}</span><span>${escapeHtml(asset.rightsStatus)}</span></div><h3>${escapeHtml(asset.name)}</h3><p>${escapeHtml(asset.altText)} / ${escapeHtml(String(asset.sizeBytes))} bytes</p><div class="editor-actions"><button class="button ghost media-transform-button" data-asset-id="${escapeHtml(asset.id)}">変換アセット作成</button>${asset.status !== "archived" ? `<button class="button ghost media-archive-button" data-asset-id="${escapeHtml(asset.id)}">アーカイブ</button>` : ""}</div></article>`).join("")
+    : '<p class="empty">登録済みメディアはありません。</p>';
+  document.querySelectorAll(".media-transform-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const format = window.prompt("変換形式を指定してください（webp / avif / jpg / png / mp4 / webm）", "webp") ?? "";
+      if (!format) return;
+      try {
+        await api(`/api/v1/media/${encodeURIComponent(button.dataset.assetId ?? "")}/transform`, { method: "POST", body: JSON.stringify({ format: format.trim() }) });
+        setMediaManagementMessage("変換アセットを作成しました。実体変換はBuilderOS Adapterへ委譲できます。");
+        await reloadMediaManagement();
+      } catch (error) {
+        setMediaManagementMessage(error.message);
+      }
+    });
+  });
+  document.querySelectorAll(".media-archive-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("このメディアをアーカイブしますか？")) return;
+      try {
+        await api(`/api/v1/media/${encodeURIComponent(button.dataset.assetId ?? "")}`, { method: "DELETE" });
+        setMediaManagementMessage("メディアをアーカイブしました。");
+        await reloadMediaManagement();
+      } catch (error) {
+        setMediaManagementMessage(error.message);
+      }
+    });
+  });
+}
+
+async function reloadMediaManagement() {
+  const visible = Boolean(state.token && state.role === "provider" && state.experience?.allowedActions.includes("media.read"));
+  elements.mediaManagementPanel.hidden = !visible;
+  if (!visible) {
+    elements.mediaList.innerHTML = "";
+    return;
+  }
+  const requestVersion = beginListRequest("media", elements.mediaList);
+  try {
+    const body = await api("/api/v1/media?sort=updatedAt_desc&limit=50");
+    if (isLatestListRequest("media", requestVersion)) renderMediaAssets(body.items);
+  } catch (error) {
+    if (isLatestListRequest("media", requestVersion)) elements.mediaList.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
+  } finally {
+    finishListRequest("media", requestVersion, elements.mediaList);
+  }
+}
+
 async function reloadProviderManagement() {
   const canManage = Boolean(
     state.token
@@ -1055,6 +1115,7 @@ async function reload() {
   const contextBody = await api(`/api/v1/categories/${encodeURIComponent(state.category)}`);
   renderExperience(contextBody.item.experience, contextBody.item.navigation);
   await reloadProviderManagement();
+  await reloadMediaManagement();
   await reloadRoleData();
   await reloadProviders();
   renderDirectoryGuides(contextBody.item.directoryGuides);
@@ -1313,6 +1374,33 @@ elements.jobManagementForm.addEventListener("submit", async (event) => {
     await reload();
   } catch (error) {
     setJobManagementMessage(error.message);
+  }
+});
+
+elements.mediaManagementForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(elements.mediaManagementForm);
+  try {
+    await api("/api/v1/media", {
+      method: "POST",
+      body: JSON.stringify({
+        category: state.category,
+        name: form.get("name"),
+        storageKey: form.get("storageKey"),
+        mediaType: form.get("mediaType"),
+        mimeType: form.get("mimeType"),
+        sizeBytes: Number(form.get("sizeBytes")),
+        altText: form.get("altText"),
+        publicUrl: form.get("publicUrl") || undefined,
+        rightsStatus: form.get("rightsStatus"),
+        tags: String(form.get("tags") ?? "").split(",").map((tag) => tag.trim()).filter(Boolean),
+      }),
+    });
+    elements.mediaManagementForm.reset();
+    setMediaManagementMessage("メディアを登録しました。");
+    await reloadMediaManagement();
+  } catch (error) {
+    setMediaManagementMessage(error.message);
   }
 });
 

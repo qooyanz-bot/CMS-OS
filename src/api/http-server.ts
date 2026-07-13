@@ -13,7 +13,8 @@ import {
   parseOptionalStringArray,
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
-import { applicationStatuses, categorySlugs, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, providerListingStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type PortalRole, type ProviderListingStatus, type RequestStatus } from "../domain/types.js";
+import { MediaService, MediaServiceError, mediaSortValues, type MediaRegisterInput, type MediaUpdateInput } from "../application/media-service.js";
+import { applicationStatuses, categorySlugs, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, providerListingStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type ProviderListingStatus, type RequestStatus } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -216,6 +217,102 @@ function parseStringMap(value: unknown, fieldName: string): Record<string, strin
   return result;
 }
 
+function isMediaTypeValue(value: unknown): value is MediaType {
+  return typeof value === "string" && (mediaTypes as readonly string[]).includes(value);
+}
+
+function isMediaStatusValue(value: unknown): value is MediaStatus {
+  return typeof value === "string" && (mediaStatuses as readonly string[]).includes(value);
+}
+
+function isMediaRightsStatusValue(value: unknown): value is MediaRightsStatus {
+  return typeof value === "string" && (mediaRightsStatuses as readonly string[]).includes(value);
+}
+
+function parseMediaNumber(value: unknown, fieldName: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) throw new Error(`${fieldName}は整数で指定してください。`);
+  return value;
+}
+
+function parseMediaRegisterInput(input: Record<string, unknown>): MediaRegisterInput {
+  if (!isCategorySlug(input.category) || typeof input.name !== "string" || typeof input.storageKey !== "string" || !isMediaTypeValue(input.mediaType) || typeof input.mimeType !== "string" || typeof input.sizeBytes !== "number" || typeof input.altText !== "string") {
+    throw new Error("category、name、storageKey、mediaType、mimeType、sizeBytes、altTextを指定してください。");
+  }
+  const tags = parseOptionalStringArray(input.tags, "tags");
+  const optionalStringFields = ["publicUrl", "title", "description", "rightsHolder", "licenseExpiresAt"] as const;
+  for (const field of optionalStringFields) {
+    if (input[field] !== undefined && typeof input[field] !== "string") throw new Error(`${field}は文字列で指定してください。`);
+  }
+  const width = parseMediaNumber(input.width, "width");
+  const height = parseMediaNumber(input.height, "height");
+  const durationSeconds = parseMediaNumber(input.durationSeconds, "durationSeconds");
+  if (input.status !== undefined && !isMediaStatusValue(input.status)) throw new Error("statusが不正です。");
+  if (input.rightsStatus !== undefined && !isMediaRightsStatusValue(input.rightsStatus)) throw new Error("rightsStatusが不正です。");
+  return {
+    category: input.category,
+    name: input.name,
+    storageKey: input.storageKey,
+    mediaType: input.mediaType,
+    mimeType: input.mimeType,
+    sizeBytes: input.sizeBytes,
+    altText: input.altText,
+    ...(typeof input.publicUrl === "string" ? { publicUrl: input.publicUrl } : {}),
+    ...(typeof input.title === "string" ? { title: input.title } : {}),
+    ...(typeof input.description === "string" ? { description: input.description } : {}),
+    ...(width !== undefined ? { width } : {}),
+    ...(height !== undefined ? { height } : {}),
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+    ...(tags ? { tags } : {}),
+    ...(isMediaRightsStatusValue(input.rightsStatus) ? { rightsStatus: input.rightsStatus } : {}),
+    ...(typeof input.rightsHolder === "string" ? { rightsHolder: input.rightsHolder } : {}),
+    ...(typeof input.licenseExpiresAt === "string" ? { licenseExpiresAt: input.licenseExpiresAt } : {}),
+    ...(isMediaStatusValue(input.status) ? { status: input.status } : {}),
+  };
+}
+
+function parseMediaUpdateInput(input: Record<string, unknown>): MediaUpdateInput {
+  const result: MediaUpdateInput = {};
+  const stringFields = ["name", "publicUrl", "altText", "title", "description", "rightsHolder", "licenseExpiresAt"] as const;
+  for (const field of stringFields) {
+    if (input[field] !== undefined) {
+      if (typeof input[field] !== "string") throw new Error(`${field}は文字列で指定してください。`);
+      result[field] = input[field];
+    }
+  }
+  const numericFields = ["width", "height", "durationSeconds"] as const;
+  for (const field of numericFields) {
+    const value = parseMediaNumber(input[field], field);
+    if (value !== undefined) result[field] = value;
+  }
+  if (input.tags !== undefined) {
+    const tags = parseOptionalStringArray(input.tags, "tags");
+    if (tags !== undefined) result.tags = tags;
+  }
+  if (input.rightsStatus !== undefined) {
+    if (!isMediaRightsStatusValue(input.rightsStatus)) throw new Error("rightsStatusが不正です。");
+    result.rightsStatus = input.rightsStatus;
+  }
+  if (input.status !== undefined) {
+    if (!isMediaStatusValue(input.status)) throw new Error("statusが不正です。");
+    result.status = input.status;
+  }
+  return result;
+}
+
+function parseMediaTransformInput(input: Record<string, unknown>): MediaTransformSpec {
+  if (input.format !== undefined && typeof input.format !== "string") throw new Error("formatは文字列で指定してください。");
+  const width = parseMediaNumber(input.width, "width");
+  const height = parseMediaNumber(input.height, "height");
+  const quality = parseMediaNumber(input.quality, "quality");
+  return {
+    ...(typeof input.format === "string" ? { format: input.format } : {}),
+    ...(width !== undefined ? { width } : {}),
+    ...(height !== undefined ? { height } : {}),
+    ...(quality !== undefined ? { quality } : {}),
+  };
+}
+
 function parsePaginationValue(value: unknown, fieldName: string, fallback: number): number {
   if (value === undefined || value === null || value === "") return fallback;
   const raw = typeof value === "number" ? String(value) : value;
@@ -257,7 +354,7 @@ function parseQueryString(url: URL, fieldName: string): string | undefined {
 }
 
 function serviceErrorStatus(error: unknown): number {
-  return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError ? error.statusCode : 400;
+  return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError || error instanceof MediaServiceError ? error.statusCode : 400;
 }
 
 function getClientAddress(request: IncomingMessage): string {
@@ -297,6 +394,7 @@ async function handleMcp(
   portal: PortalService,
   content: ContentService,
   publication: PublicationService,
+  media: MediaService,
   authRateLimiter: FixedWindowRateLimiter,
 ): Promise<void> {
   const body = await readJson(request);
@@ -428,6 +526,40 @@ async function handleMcp(
               properties: { category: { enum: categoryEnum }, status: { enum: ["draft", "pending_review", "published", "suspended"] }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } },
               required: [],
             },
+          },
+          {
+            name: "media.list",
+            description: "メディアアセット一覧を取得します。",
+            inputSchema: {
+              type: "object",
+              properties: { search: { type: "string" }, mediaType: { enum: [...mediaTypes] }, status: { enum: [...mediaStatuses] }, rightsStatus: { enum: [...mediaRightsStatuses] }, sort: { enum: [...mediaSortValues] }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } },
+              required: [],
+            },
+          },
+          {
+            name: "media.get",
+            description: "メディアアセットを取得します。",
+            inputSchema: { type: "object", properties: { assetId: { type: "string" } }, required: ["assetId"] },
+          },
+          {
+            name: "media.register",
+            description: "メディアアセットを登録します。画像はaltTextを必須とします。",
+            inputSchema: { type: "object", properties: { category: { enum: categoryEnum }, name: { type: "string" }, storageKey: { type: "string" }, publicUrl: { type: "string", format: "uri" }, mediaType: { enum: [...mediaTypes] }, mimeType: { type: "string" }, sizeBytes: { type: "integer", minimum: 1 }, altText: { type: "string" }, title: { type: "string" }, description: { type: "string" }, width: { type: "integer" }, height: { type: "integer" }, durationSeconds: { type: "integer" }, tags: { type: "array", items: { type: "string" } }, rightsStatus: { enum: [...mediaRightsStatuses] }, rightsHolder: { type: "string" }, licenseExpiresAt: { type: "string", format: "date-time" }, status: { enum: [...mediaStatuses] } }, required: ["category", "name", "storageKey", "mediaType", "mimeType", "sizeBytes", "altText"] },
+          },
+          {
+            name: "media.update",
+            description: "メディアアセットのメタデータを更新します。",
+            inputSchema: { type: "object", properties: { assetId: { type: "string" }, name: { type: "string" }, publicUrl: { type: "string", format: "uri" }, altText: { type: "string" }, title: { type: "string" }, description: { type: "string" }, width: { type: "integer" }, height: { type: "integer" }, durationSeconds: { type: "integer" }, tags: { type: "array", items: { type: "string" } }, rightsStatus: { enum: [...mediaRightsStatuses] }, rightsHolder: { type: "string" }, licenseExpiresAt: { type: "string", format: "date-time" }, status: { enum: [...mediaStatuses] } }, required: ["assetId"] },
+          },
+          {
+            name: "media.archive",
+            description: "メディアアセットを論理アーカイブします。",
+            inputSchema: { type: "object", properties: { assetId: { type: "string" } }, required: ["assetId"] },
+          },
+          {
+            name: "media.transform",
+            description: "画像・動画の変換アセットを作成します。実体変換はストレージアダプターへ委譲できます。",
+            inputSchema: { type: "object", properties: { assetId: { type: "string" }, format: { type: "string" }, width: { type: "integer" }, height: { type: "integer" }, quality: { type: "integer", minimum: 1, maximum: 100 } }, required: ["assetId"] },
           },
           {
             name: "auth.login",
@@ -1251,6 +1383,52 @@ async function handleMcp(
       return;
     }
 
+    if (name === "media.list") {
+      const result = media.listAssets(principal, {
+        search: parseOptionalStringValue(argumentsObject.search, "search"),
+        mediaType: parseOptionalEnumValue(argumentsObject.mediaType, "mediaType", mediaTypes),
+        status: parseOptionalEnumValue(argumentsObject.status, "status", mediaStatuses),
+        rightsStatus: parseOptionalEnumValue(argumentsObject.rightsStatus, "rightsStatus", mediaRightsStatuses),
+        sort: parseOptionalEnumValue(argumentsObject.sort, "sort", mediaSortValues),
+      }, parsePaginationArguments(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "media.get") {
+      if (typeof argumentsObject.assetId !== "string") throw new Error("assetIdを指定してください。");
+      const result = media.getAsset(principal, argumentsObject.assetId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "media.register") {
+      const result = media.registerAsset(principal, parseMediaRegisterInput(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "media.update") {
+      if (typeof argumentsObject.assetId !== "string") throw new Error("assetIdを指定してください。");
+      const result = media.updateAsset(principal, argumentsObject.assetId, parseMediaUpdateInput(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "media.archive") {
+      if (typeof argumentsObject.assetId !== "string") throw new Error("assetIdを指定してください。");
+      const result = media.archiveAsset(principal, argumentsObject.assetId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "media.transform") {
+      if (typeof argumentsObject.assetId !== "string") throw new Error("assetIdを指定してください。");
+      const result = media.transformAsset(principal, argumentsObject.assetId, parseMediaTransformInput(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "content.propose") {
       if (!isCategorySlug(argumentsObject.category) || !isContentType(argumentsObject.contentType) || !isContentAudience(argumentsObject.audience) || typeof argumentsObject.topic !== "string") {
         throw new Error("category、contentType、audience、topicが必要です。");
@@ -1521,6 +1699,7 @@ export function createHttpServer(
   portal: PortalService,
   content = new ContentService(portal),
   publication = new PublicationService(portal, content),
+  media = new MediaService(portal),
 ): Server {
   const authRateLimiter = new FixedWindowRateLimiter(10, 10 * 60 * 1000);
   return createServer(async (request, response) => {
@@ -1878,6 +2057,64 @@ export function createHttpServer(
           });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "掲載審査キューを取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/media") {
+        try {
+          writeJson(response, 200, media.listAssets(principal, {
+            search: parseQueryString(url, "search"),
+            mediaType: parseOptionalEnumValue(url.searchParams.get("mediaType"), "mediaType", mediaTypes),
+            status: parseOptionalEnumValue(url.searchParams.get("status"), "status", mediaStatuses),
+            rightsStatus: parseOptionalEnumValue(url.searchParams.get("rightsStatus"), "rightsStatus", mediaRightsStatuses),
+            sort: parseOptionalEnumValue(url.searchParams.get("sort"), "sort", mediaSortValues),
+          }, parsePaginationQuery(url)));
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "メディア一覧を取得できませんでした。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/media") {
+        try {
+          const item = media.registerAsset(principal, parseMediaRegisterInput(await readJson(request)));
+          writeJson(response, 201, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "メディアを登録できませんでした。" });
+        }
+        return;
+      }
+
+      const mediaTransformMatch = url.pathname.match(/^\/api\/v1\/media\/([^/]+)\/transform$/);
+      if (request.method === "POST" && mediaTransformMatch) {
+        const assetId = mediaTransformMatch[1];
+        if (!assetId) {
+          writeJson(response, 400, { error: "assetIdを指定してください。" });
+          return;
+        }
+        try {
+          const item = media.transformAsset(principal, assetId, parseMediaTransformInput(await readJson(request)));
+          writeJson(response, 201, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "メディアを変換できませんでした。" });
+        }
+        return;
+      }
+
+      const mediaMatch = url.pathname.match(/^\/api\/v1\/media\/([^/]+)$/);
+      if (mediaMatch && (request.method === "GET" || request.method === "PATCH" || request.method === "DELETE")) {
+        const assetId = mediaMatch[1];
+        if (!assetId) {
+          writeJson(response, 400, { error: "assetIdを指定してください。" });
+          return;
+        }
+        try {
+          if (request.method === "GET") writeJson(response, 200, { item: media.getAsset(principal, assetId) });
+          else if (request.method === "PATCH") writeJson(response, 200, { item: media.updateAsset(principal, assetId, parseMediaUpdateInput(await readJson(request))) });
+          else writeJson(response, 200, { item: media.archiveAsset(principal, assetId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "メディアを操作できませんでした。" });
         }
         return;
       }
@@ -2649,7 +2886,7 @@ export function createHttpServer(
       }
 
       if (request.method === "POST" && url.pathname === "/mcp") {
-        await handleMcp(request, response, auth, portal, content, publication, authRateLimiter);
+        await handleMcp(request, response, auth, portal, content, publication, media, authRateLimiter);
         return;
       }
 

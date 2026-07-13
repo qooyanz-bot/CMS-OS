@@ -238,6 +238,26 @@
             </form>
             <p id="job-management-message" class="message" role="status"></p>
           </div>
+
+          <div id="media-management-panel" class="card action-card" hidden>
+            <div class="section-kicker">MEDIA LIBRARY</div>
+            <h2>メディアアセット管理</h2>
+            <p class="muted">画像・動画・PDFを登録し、altText・権利情報・変換条件を管理します。実体ファイルの保存はBuilderOS Adapterへ委譲できます。</p>
+            <form id="media-management-form" class="content-form">
+              <label>表示名<input name="name" required minlength="1" maxlength="200" /></label>
+              <label>ストレージキー<input name="storageKey" required placeholder="providers/legal/hero.jpg" /></label>
+              <label>種別<select name="mediaType"><option value="image">画像</option><option value="video">動画</option><option value="pdf">PDF</option></select></label>
+              <label>MIMEタイプ<input name="mimeType" required value="image/jpeg" /></label>
+              <label>サイズ（bytes）<input name="sizeBytes" required type="number" min="1" /></label>
+              <label>altText<input name="altText" required /></label>
+              <label>公開URL（任意）<input name="publicUrl" type="url" /></label>
+              <label>権利状態<select name="rightsStatus"><option value="unknown">未確認</option><option value="owned">自社保有</option><option value="licensed">ライセンス</option><option value="expired">期限切れ</option></select></label>
+              <label class="wide">タグ（カンマ区切り）<input name="tags" placeholder="hero, office" /></label>
+              <button class="button primary" type="submit">メディアを登録</button>
+            </form>
+            <p id="media-management-message" class="message" role="status"></p>
+            <div id="media-list" class="editor-list" aria-live="polite"></div>
+          </div>
         </aside>
       </section>
 

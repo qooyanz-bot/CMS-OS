@@ -104,6 +104,49 @@ export interface VisibleProvider extends Record<string, unknown> {
   location: string;
 }
 
+export const mediaTypes = ["image", "video", "pdf"] as const;
+export type MediaType = (typeof mediaTypes)[number];
+
+export const mediaStatuses = ["draft", "published", "archived"] as const;
+export type MediaStatus = (typeof mediaStatuses)[number];
+
+export const mediaRightsStatuses = ["unknown", "owned", "licensed", "expired"] as const;
+export type MediaRightsStatus = (typeof mediaRightsStatuses)[number];
+
+export interface MediaTransformSpec {
+  format?: string;
+  width?: number;
+  height?: number;
+  quality?: number;
+}
+
+export interface MediaAsset {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  name: string;
+  storageKey: string;
+  publicUrl?: string;
+  mediaType: MediaType;
+  mimeType: string;
+  sizeBytes: number;
+  altText: string;
+  title: string;
+  description?: string;
+  width?: number;
+  height?: number;
+  durationSeconds?: number;
+  tags: string[];
+  rightsStatus: MediaRightsStatus;
+  rightsHolder?: string;
+  licenseExpiresAt?: string;
+  status: MediaStatus;
+  derivedFromAssetId?: string;
+  transform?: MediaTransformSpec;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const providerListingStatuses = ["draft", "pending_review", "published", "suspended"] as const;
 export type ProviderListingStatus = (typeof providerListingStatuses)[number];
 

@@ -12,6 +12,7 @@
     { "name": "Health", "description": "稼働確認" },
     { "name": "Auth", "description": "ログインとカテゴリ・ロールコンテキスト" },
     { "name": "Portal", "description": "カテゴリ別表示と事業者検索" },
+    { "name": "Media", "description": "画像・動画・PDFアセット管理" },
     { "name": "Content", "description": "AI企画、下書き、清書、事実確認、SEO、承認" },
     { "name": "Publication", "description": "承認済みコンテンツの静的ビルド" },
     { "name": "Requests", "description": "発注依頼" },
@@ -272,6 +273,70 @@
         ],
         "security": [{ "OperatorKey": [] }],
         "responses": { "200": { "description": "審査キュー", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderListingReviewListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/media": {
+      "get": {
+        "tags": ["Media"],
+        "operationId": "listMediaAssets",
+        "summary": "メディアアセット一覧",
+        "parameters": [
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "mediaType", "in": "query", "schema": { "type": "string", "enum": ["image", "video", "pdf"] } },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["draft", "published", "archived"] } },
+          { "name": "rightsStatus", "in": "query", "schema": { "type": "string", "enum": ["unknown", "owned", "licensed", "expired"] } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["updatedAt_desc", "name_asc", "size_desc"] } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+          { "name": "cursor", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "メディアアセット一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "post": {
+        "tags": ["Media"],
+        "operationId": "registerMediaAsset",
+        "summary": "メディアアセット登録",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaRegisterRequest" } } } },
+        "responses": { "201": { "description": "登録済みメディアアセット", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/media/{assetId}": {
+      "get": {
+        "tags": ["Media"],
+        "operationId": "getMediaAsset",
+        "summary": "メディアアセット取得",
+        "parameters": [{ "$ref": "#/components/parameters/MediaAssetIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "メディアアセット", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "patch": {
+        "tags": ["Media"],
+        "operationId": "updateMediaAsset",
+        "summary": "メディアメタデータ更新",
+        "parameters": [{ "$ref": "#/components/parameters/MediaAssetIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaUpdateRequest" } } } },
+        "responses": { "200": { "description": "更新済みメディアアセット", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "delete": {
+        "tags": ["Media"],
+        "operationId": "archiveMediaAsset",
+        "summary": "メディアアセット論理アーカイブ",
+        "parameters": [{ "$ref": "#/components/parameters/MediaAssetIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "アーカイブ済みメディアアセット", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/media/{assetId}/transform": {
+      "post": {
+        "tags": ["Media"],
+        "operationId": "transformMediaAsset",
+        "summary": "メディア変換アセット作成",
+        "parameters": [{ "$ref": "#/components/parameters/MediaAssetIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaTransformRequest" } } } },
+        "responses": { "201": { "description": "変換アセット", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
       }
     },
     "/api/v1/content/proposals": {
@@ -763,6 +828,7 @@
       "ContentIdPath": { "name": "contentId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "ContentVersionPath": { "name": "version", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
       "PublicationIdPath": { "name": "publicationId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "MediaAssetIdPath": { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "PublicationScheduleIdPath": { "name": "scheduleId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "ProviderIdPath": { "name": "providerId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "DirectoryIdPath": { "name": "directoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
@@ -890,7 +956,13 @@
       "ApplicationStatusUpdate": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["submitted", "screening", "closed"] } }, "additionalProperties": false },
       "Application": { "type": "object", "required": ["id", "category", "jobId", "providerId", "candidateId", "message", "status", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "jobId": { "type": "string" }, "providerId": { "type": "string" }, "candidateId": { "type": "string" }, "message": { "type": "string" }, "status": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
       "ApplicationResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Application" } } },
-      "ApplicationListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Application" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } }
+      "ApplicationListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Application" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
+      "MediaAsset": { "type": "object", "required": ["id", "category", "providerId", "name", "storageKey", "mediaType", "mimeType", "sizeBytes", "altText", "title", "tags", "rightsStatus", "status", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "name": { "type": "string" }, "storageKey": { "type": "string" }, "publicUrl": { "type": "string", "format": "uri" }, "mediaType": { "type": "string", "enum": ["image", "video", "pdf"] }, "mimeType": { "type": "string" }, "sizeBytes": { "type": "integer", "minimum": 1 }, "altText": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "width": { "type": "integer" }, "height": { "type": "integer" }, "durationSeconds": { "type": "integer" }, "tags": { "type": "array", "items": { "type": "string" } }, "rightsStatus": { "type": "string", "enum": ["unknown", "owned", "licensed", "expired"] }, "rightsHolder": { "type": "string" }, "licenseExpiresAt": { "type": "string", "format": "date-time" }, "status": { "type": "string", "enum": ["draft", "published", "archived"] }, "derivedFromAssetId": { "type": "string" }, "transform": { "type": "object", "properties": { "format": { "type": "string" }, "width": { "type": "integer" }, "height": { "type": "integer" }, "quality": { "type": "integer", "minimum": 1, "maximum": 100 } }, "additionalProperties": false }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "MediaRegisterRequest": { "type": "object", "required": ["category", "name", "storageKey", "mediaType", "mimeType", "sizeBytes", "altText"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string", "minLength": 1, "maxLength": 200 }, "storageKey": { "type": "string", "minLength": 1, "maxLength": 500 }, "publicUrl": { "type": "string", "format": "uri" }, "mediaType": { "type": "string", "enum": ["image", "video", "pdf"] }, "mimeType": { "type": "string" }, "sizeBytes": { "type": "integer", "minimum": 1 }, "altText": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "width": { "type": "integer" }, "height": { "type": "integer" }, "durationSeconds": { "type": "integer" }, "tags": { "type": "array", "items": { "type": "string" } }, "rightsStatus": { "type": "string", "enum": ["unknown", "owned", "licensed", "expired"] }, "rightsHolder": { "type": "string" }, "licenseExpiresAt": { "type": "string", "format": "date-time" }, "status": { "type": "string", "enum": ["draft", "published", "archived"] } }, "additionalProperties": false },
+      "MediaUpdateRequest": { "type": "object", "properties": { "name": { "type": "string" }, "publicUrl": { "type": "string", "format": "uri" }, "altText": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "width": { "type": "integer" }, "height": { "type": "integer" }, "durationSeconds": { "type": "integer" }, "tags": { "type": "array", "items": { "type": "string" } }, "rightsStatus": { "type": "string", "enum": ["unknown", "owned", "licensed", "expired"] }, "rightsHolder": { "type": "string" }, "licenseExpiresAt": { "type": "string", "format": "date-time" }, "status": { "type": "string", "enum": ["draft", "published", "archived"] } }, "additionalProperties": false, "minProperties": 1 },
+      "MediaTransformRequest": { "type": "object", "properties": { "format": { "type": "string" }, "width": { "type": "integer", "minimum": 1 }, "height": { "type": "integer", "minimum": 1 }, "quality": { "type": "integer", "minimum": 1, "maximum": 100 } }, "additionalProperties": false, "minProperties": 1 },
+      "MediaResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/MediaAsset" } } },
+      "MediaListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/MediaAsset" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } }
     }
   }
 }
