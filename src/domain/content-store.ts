@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { ContentProposal, ContentRecord } from "./types.js";
-import type { JsonStateStore } from "../infrastructure/json-state-store.js";
+import type { StateStore } from "../infrastructure/json-state-store.js";
 
 export class ContentStore {
   private readonly proposals: ContentProposal[];
   private readonly contents: ContentRecord[];
 
-  public constructor(private readonly stateStore?: JsonStateStore) {
+  public constructor(private readonly stateStore?: StateStore) {
     this.proposals = stateStore?.load<ContentProposal[]>("content-proposals.json", []) ?? [];
     this.contents = stateStore?.load<ContentRecord[]>("content-records.json", []) ?? [];
   }

@@ -1,7 +1,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-export class JsonStateStore {
+export interface StateStore {
+  load<T>(name: string, fallback: T): T;
+  save<T>(name: string, value: T): void;
+}
+
+export class JsonStateStore implements StateStore {
   public constructor(private readonly directory: string) {
     mkdirSync(directory, { recursive: true });
   }

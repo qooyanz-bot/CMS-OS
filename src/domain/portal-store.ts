@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CategorySlug, JobApplication, JobPosting, ServiceRequest } from "./types.js";
-import type { JsonStateStore } from "../infrastructure/json-state-store.js";
+import type { StateStore } from "../infrastructure/json-state-store.js";
 
 const defaultJobs: JobPosting[] = [
   {
@@ -30,7 +30,7 @@ export class PortalStore {
   private readonly jobs: JobPosting[];
   private readonly applications: JobApplication[];
 
-  public constructor(private readonly stateStore?: JsonStateStore) {
+  public constructor(private readonly stateStore?: StateStore) {
     this.requests = stateStore?.load<ServiceRequest[]>("portal-requests.json", []) ?? [];
     this.jobs = stateStore ? stateStore.load<JobPosting[]>("portal-jobs.json", defaultJobs) : defaultJobs;
     this.applications = stateStore?.load<JobApplication[]>("portal-applications.json", []) ?? [];

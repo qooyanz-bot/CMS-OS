@@ -1,6 +1,6 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { Account, AuthenticatedPrincipal, CategorySlug, PortalRole } from "./types.js";
-import type { JsonStateStore } from "../infrastructure/json-state-store.js";
+import type { StateStore } from "../infrastructure/json-state-store.js";
 
 interface Session {
   tokenHash: string;
@@ -41,7 +41,7 @@ export class InMemoryAuthService {
   private readonly accounts = new Map<string, Account>();
   private readonly sessions = new Map<string, Session>();
 
-  public constructor(private readonly stateStore?: JsonStateStore) {
+  public constructor(private readonly stateStore?: StateStore) {
     const storedAccounts = stateStore?.load<Account[]>("auth-accounts.json", []) ?? [];
     if (storedAccounts.length > 0) {
       storedAccounts.forEach((account) => this.addAccount(account));
