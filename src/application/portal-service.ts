@@ -123,6 +123,28 @@ export class PortalService {
     );
   }
 
+  public updateRequestStatus(
+    principal: AuthenticatedPrincipal | null,
+    requestId: string,
+    status: ServiceRequest["status"],
+  ): ServiceRequest {
+    const request = this.store.getRequest(requestId);
+    if (!request) throw new PortalServiceError(404, "依頼が見つかりません。");
+    if (!principal || principal.category !== request.category) throw new PortalServiceError(404, "依頼が見つかりません。");
+    this.assertAction(principal, request.category, "request.status.update");
+    const isOwner = principal.role === "orderer" && request.ordererId === principal.accountId;
+    const isAssignedProvider = principal.role === "provider" && request.providerId === principal.providerId;
+    if (!isOwner && !isAssignedProvider) throw new PortalServiceError(404, "依頼が見つかりません。");
+    if (request.status === status) return request;
+    if (isOwner && status !== "closed") throw new PortalServiceError(403, "発注者は依頼を終了状態に変更できます。");
+    const validTransition = (request.status === "submitted" && (status === "accepted" || status === "closed"))
+      || (request.status === "accepted" && status === "closed");
+    if (!validTransition) throw new PortalServiceError(409, "依頼の状態遷移が不正です。");
+    const updated = this.store.updateRequest(request.id, status);
+    if (!updated) throw new PortalServiceError(404, "依頼が見つかりません。");
+    return updated;
+  }
+
   public listJobs(category: CategorySlug, principal: AuthenticatedPrincipal | null): JobPosting[] {
     return this.store.listJobs(category).map((job) => {
       if (principal?.role === "provider" && principal.providerId === job.providerId) return job;
@@ -170,5 +192,26 @@ export class PortalService {
         ? application.candidateId === principal.accountId
         : application.providerId === principal.providerId,
     );
+  }
+
+  public updateApplicationStatus(
+    principal: AuthenticatedPrincipal | null,
+    applicationId: string,
+    status: JobApplication["status"],
+  ): JobApplication {
+    const application = this.store.getApplication(applicationId);
+    if (!application) throw new PortalServiceError(404, "応募情報が見つかりません。");
+    if (!principal || principal.category !== application.category) throw new PortalServiceError(404, "応募情報が見つかりません。");
+    this.assertAction(principal, application.category, "application.status.update");
+    if (principal.role !== "provider" || principal.providerId !== application.providerId) {
+      throw new PortalServiceError(404, "応募情報が見つかりません。");
+    }
+    if (application.status === status) return application;
+    const validTransition = (application.status === "submitted" && (status === "screening" || status === "closed"))
+      || (application.status === "screening" && status === "closed");
+    if (!validTransition) throw new PortalServiceError(409, "応募の状態遷移が不正です。");
+    const updated = this.store.updateApplication(application.id, status);
+    if (!updated) throw new PortalServiceError(404, "応募情報が見つかりません。");
+    return updated;
   }
 }

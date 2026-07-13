@@ -13,7 +13,7 @@ import {
   parseOptionalStringArray,
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
-import { categorySlugs, type CategorySlug, type ContentSeo, type PortalRole } from "../domain/types.js";
+import { applicationStatuses, categorySlugs, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type PortalRole, type RequestStatus } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -70,6 +70,14 @@ function getBearerToken(request: IncomingMessage): string | undefined {
 
 function isCategorySlug(value: unknown): value is CategorySlug {
   return typeof value === "string" && (categorySlugs as readonly string[]).includes(value);
+}
+
+function isRequestStatus(value: unknown): value is RequestStatus {
+  return typeof value === "string" && (requestStatuses as readonly string[]).includes(value);
+}
+
+function isApplicationStatus(value: unknown): value is ApplicationStatus {
+  return typeof value === "string" && (applicationStatuses as readonly string[]).includes(value);
 }
 
 const categoryEnum = [...categorySlugs];
@@ -290,6 +298,11 @@ async function handleMcp(
             inputSchema: { type: "object", properties: {} },
           },
           {
+            name: "request.update_status",
+            description: "依頼の所有者または担当事業者が、受付・完了状態を更新します。",
+            inputSchema: { type: "object", properties: { requestId: { type: "string" }, status: { enum: ["submitted", "accepted", "closed"] } }, required: ["requestId", "status"] },
+          },
+          {
             name: "job.search",
             description: "カテゴリ別の公開求人を検索します。",
             inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
@@ -307,6 +320,11 @@ async function handleMcp(
             name: "application.list",
             description: "リクルーター本人、または事業者自身の求人への応募一覧を取得します。",
             inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "application.update_status",
+            description: "担当事業者が応募を選考中または終了へ更新します。",
+            inputSchema: { type: "object", properties: { applicationId: { type: "string" }, status: { enum: ["submitted", "screening", "closed"] } }, required: ["applicationId", "status"] },
           },
           {
             name: "content.propose",
@@ -594,6 +612,15 @@ async function handleMcp(
       return;
     }
 
+    if (name === "request.update_status") {
+      if (typeof argumentsObject.requestId !== "string" || !isRequestStatus(argumentsObject.status)) {
+        throw new Error("requestIdと有効なstatusが必要です。");
+      }
+      const result = portal.updateRequestStatus(principal, argumentsObject.requestId, argumentsObject.status);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "job.search") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
       const result = portal.listJobs(argumentsObject.category, principal);
@@ -612,6 +639,15 @@ async function handleMcp(
 
     if (name === "application.list") {
       const result = portal.listApplications(principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "application.update_status") {
+      if (typeof argumentsObject.applicationId !== "string" || !isApplicationStatus(argumentsObject.status)) {
+        throw new Error("applicationIdと有効なstatusが必要です。");
+      }
+      const result = portal.updateApplicationStatus(principal, argumentsObject.applicationId, argumentsObject.status);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1215,6 +1251,27 @@ export function createHttpServer(
         return;
       }
 
+      const requestMatch = url.pathname.match(/^\/api\/v1\/requests\/([^/]+)$/);
+      if (request.method === "PATCH" && requestMatch) {
+        const requestId = requestMatch[1];
+        if (!requestId) {
+          writeJson(response, 400, { error: "requestIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (!isRequestStatus(body.status)) {
+          writeJson(response, 400, { error: "statusが不正です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: portal.updateRequestStatus(principal, requestId, body.status) });
+        } catch (error) {
+          const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
+          writeJson(response, statusCode, { error: error instanceof Error ? error.message : "依頼の状態を更新できません。" });
+        }
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/v1/jobs") {
         const category = url.searchParams.get("category");
         if (!isCategorySlug(category)) {
@@ -1257,6 +1314,27 @@ export function createHttpServer(
         } catch (error) {
           const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
           writeJson(response, statusCode, { error: error instanceof Error ? error.message : "応募情報を取得できません。" });
+        }
+        return;
+      }
+
+      const applicationStatusMatch = url.pathname.match(/^\/api\/v1\/applications\/([^/]+)$/);
+      if (request.method === "PATCH" && applicationStatusMatch) {
+        const applicationId = applicationStatusMatch[1];
+        if (!applicationId) {
+          writeJson(response, 400, { error: "applicationIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (!isApplicationStatus(body.status)) {
+          writeJson(response, 400, { error: "statusが不正です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: portal.updateApplicationStatus(principal, applicationId, body.status) });
+        } catch (error) {
+          const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
+          writeJson(response, statusCode, { error: error instanceof Error ? error.message : "応募の状態を更新できません。" });
         }
         return;
       }

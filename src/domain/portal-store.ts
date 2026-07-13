@@ -52,6 +52,18 @@ export class PortalStore {
     return this.requests.filter((request) => request.category === category);
   }
 
+  public getRequest(requestId: string): ServiceRequest | undefined {
+    return this.requests.find((request) => request.id === requestId);
+  }
+
+  public updateRequest(requestId: string, status: ServiceRequest["status"]): ServiceRequest | undefined {
+    const request = this.getRequest(requestId);
+    if (!request) return undefined;
+    request.status = status;
+    this.stateStore?.save("portal-requests.json", this.requests);
+    return request;
+  }
+
   public listJobs(category: CategorySlug): JobPosting[] {
     return this.jobs.filter((job) => job.category === category && job.status === "published");
   }
@@ -78,5 +90,17 @@ export class PortalStore {
 
   public listApplications(category: CategorySlug): JobApplication[] {
     return this.applications.filter((application) => application.category === category);
+  }
+
+  public getApplication(applicationId: string): JobApplication | undefined {
+    return this.applications.find((application) => application.id === applicationId);
+  }
+
+  public updateApplication(applicationId: string, status: JobApplication["status"]): JobApplication | undefined {
+    const application = this.getApplication(applicationId);
+    if (!application) return undefined;
+    application.status = status;
+    this.stateStore?.save("portal-applications.json", this.applications);
+    return application;
   }
 }

@@ -78,9 +78,11 @@ export interface VisibleProvider extends Record<string, unknown> {
   location: string;
 }
 
-export type RequestStatus = "submitted" | "accepted" | "closed";
+export const requestStatuses = ["submitted", "accepted", "closed"] as const;
+export type RequestStatus = (typeof requestStatuses)[number];
 export type JobStatus = "published" | "closed";
-export type ApplicationStatus = "submitted" | "screening" | "closed";
+export const applicationStatuses = ["submitted", "screening", "closed"] as const;
+export type ApplicationStatus = (typeof applicationStatuses)[number];
 
 export interface ServiceRequest {
   id: string;

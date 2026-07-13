@@ -70,9 +70,11 @@ GET  /api/v1/categories/{category}/experience
 GET  /api/v1/providers?category=beauty&theme=カラー
 POST /api/v1/requests
 GET  /api/v1/requests
+PATCH /api/v1/requests/{requestId}
 GET  /api/v1/jobs?category=legal
 POST /api/v1/jobs/{jobId}/applications
 GET  /api/v1/applications
+PATCH /api/v1/applications/{applicationId}
 POST /mcp
 ```
 

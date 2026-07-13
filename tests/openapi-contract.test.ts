@@ -42,9 +42,11 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/publications/publish",
       "/api/v1/publications/deploy",
       "/api/v1/requests",
+      "/api/v1/requests/{requestId}",
       "/api/v1/jobs",
       "/api/v1/jobs/{jobId}/applications",
       "/api/v1/applications",
+      "/api/v1/applications/{applicationId}",
       "/mcp",
     ];
     for (const path of requiredPaths) {

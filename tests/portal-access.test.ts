@@ -123,6 +123,8 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(search.status, 200);
     assert.equal(search.body.result.structuredContent[0].name, "CMS-OS美容室（サンプル）");
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "request.create"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "request.update_status"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "application.update_status"));
 
     const ordererLogin = await request("/api/v1/auth/login", {
       method: "POST",
@@ -149,10 +151,23 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(mcpRequest.status, 200);
     assert.equal(mcpRequest.body.result.structuredContent.providerId, "provider-beauty-demo");
 
+    const closedRequest = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${ordererLogin.body.accessToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 5,
+        method: "tools/call",
+        params: { name: "request.update_status", arguments: { requestId: mcpRequest.body.result.structuredContent.id, status: "closed" } },
+      }),
+    });
+    assert.equal(closedRequest.status, 200);
+    assert.equal(closedRequest.body.result.structuredContent.status, "closed");
+
     const applicationTools = await request("/mcp", {
       method: "POST",
       headers: { authorization: `Bearer ${ordererLogin.body.accessToken}` },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/list", params: {} }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 6, method: "tools/list", params: {} }),
     });
     assert.ok(applicationTools.body.result.tools.some((tool: { name: string }) => tool.name === "application.list"));
   });
@@ -201,6 +216,14 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(requests.status, 200);
     assert.ok(requests.body.items.some((item: { providerId: string }) => item.providerId === "provider-legal-demo"));
+    const requestId = requests.body.items[0].id as string;
+    const accepted = await request(`/api/v1/requests/${requestId}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({ status: "accepted" }),
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.item.status, "accepted");
 
     const beautyProviderLogin = await request("/api/v1/auth/login", {
       method: "POST",
@@ -239,5 +262,12 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(providerApplications.status, 200);
     assert.equal(providerApplications.body.items[0].jobId, "job-legal-demo");
+    const screening = await request(`/api/v1/applications/${providerApplications.body.items[0].id}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({ status: "screening" }),
+    });
+    assert.equal(screening.status, 200);
+    assert.equal(screening.body.item.status, "screening");
   });
 });
