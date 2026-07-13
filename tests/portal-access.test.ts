@@ -130,7 +130,14 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(orderer.body.item.experience.allowedActions.includes("request.create"));
 
     const tools = await request("/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 46, method: "tools/list" }) });
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "category.list"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "category.get"));
+    const mcpCategories = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 45, method: "tools/call", params: { name: "category.list", arguments: {} } }),
+    });
+    assert.equal(mcpCategories.status, 200);
+    assert.ok(mcpCategories.body.result.structuredContent.items.some((item: { slug: string }) => item.slug === "legal"));
     const mcpCategory = await request("/mcp", {
       method: "POST",
       headers: { authorization: `Bearer ${legalOrdererToken}` },

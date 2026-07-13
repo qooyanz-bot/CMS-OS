@@ -322,6 +322,11 @@ async function handleMcp(
       result: {
         tools: [
           {
+            name: "category.list",
+            description: "利用可能なカテゴリ一覧を取得します。",
+            inputSchema: { type: "object", properties: {}, required: [] },
+          },
+          {
             name: "category.resolve_experience",
             description: "カテゴリと認証コンテキストに応じた表示モジュールと操作権限を取得します。",
             inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
@@ -626,6 +631,11 @@ async function handleMcp(
             inputSchema: { type: "object", properties: {} },
           },
           {
+            name: "content.get",
+            description: "事業者自身のコンテンツを1件取得します。",
+            inputSchema: { type: "object", properties: { contentId: { type: "string" } }, required: ["contentId"] },
+          },
+          {
             name: "content.versions",
             description: "コンテンツの版履歴を取得します。",
             inputSchema: { type: "object", properties: { contentId: { type: "string" } }, required: ["contentId"] },
@@ -896,6 +906,12 @@ async function handleMcp(
 
     if (name === "auth.config") {
       const result = auth.getAuthCapabilities();
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "category.list") {
+      const result = { items: portal.listCategories() };
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1236,6 +1252,13 @@ async function handleMcp(
 
     if (name === "content.list") {
       const result = { proposals: content.listProposals(principal), items: content.listContent(principal) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.get") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = content.getContent(principal, argumentsObject.contentId);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }

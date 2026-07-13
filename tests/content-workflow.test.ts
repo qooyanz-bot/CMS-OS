@@ -196,6 +196,7 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     const names = tools.body.result.tools.map((tool: { name: string }) => tool.name);
     assert.ok(names.includes("content.propose"));
     assert.ok(names.includes("content.list"));
+    assert.ok(names.includes("content.get"));
     assert.ok(names.includes("content.versions"));
     assert.ok(names.includes("content.version_get"));
     assert.ok(names.includes("content.version_restore"));
@@ -259,6 +260,13 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
       headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
       body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "content.draft", arguments: { proposalId: proposal.body.result.structuredContent.id } } }),
     });
+    const fetched = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "content.get", arguments: { contentId: draft.body.result.structuredContent.id } } }),
+    });
+    assert.equal(fetched.status, 200);
+    assert.equal(fetched.body.result.structuredContent.id, draft.body.result.structuredContent.id);
     const updated = await request("/mcp", {
       method: "POST",
       headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
