@@ -51,6 +51,9 @@ POST /api/v1/content/{contentId}/polish
 POST /api/v1/content/{contentId}/seo-audit
 POST /api/v1/content/{contentId}/fact-check
 POST /api/v1/content/{contentId}/approve
+GET  /api/v1/content/{contentId}/versions
+GET  /api/v1/content/{contentId}/versions/{version}
+POST /api/v1/content/{contentId}/versions/{version}/restore
 POST /api/v1/publications/publish
 ```
 
@@ -62,6 +65,9 @@ POST /api/v1/publications/publish
 - `content.list`
 - `content.draft`
 - `content.update`
+- `content.versions`
+- `content.version_get`
+- `content.version_restore`
 - `content.duplicate`
 - `content.archive`
 - `content.restore`
@@ -72,6 +78,12 @@ POST /api/v1/publications/publish
 - `publication.publish`
 
 MCPはREST APIと同じ`ContentService`を呼び出します。MCP専用の本文生成ロジックや、APIを迂回する権限判定は持たせません。
+
+## コンテンツ版管理
+
+本文、要約、SEO、確認済み一次情報を変更するたびに、現在のコンテンツとは別に版スナップショットを保存します。状態変更も版履歴に記録しますが、SEO監査とファクトチェックの証跡更新は版数を進めません。
+
+版の復元は既存版を上書きせず、現在のコンテンツに復元内容を適用した新しい下書き版を作成します。復元時には`lastSeoAudit`と`lastFactCheck`を破棄するため、承認・公開前に事実確認とSEO監査を再実行します。公開済みコンテンツは直接復元できず、複製してから編集します。
 
 ## 公開承認ゲート
 

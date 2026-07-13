@@ -65,6 +65,8 @@ describe("CMS-OSファイル永続化", () => {
       sourceFacts: ["確認済みのテスト情報です。"],
     });
     assert.ok(proposal.id);
+    const draft = content1.createDraft(providerLogin.principal, proposal.id);
+    assert.ok(draft.id);
 
     const state2 = new JsonStateStore(directory);
     const auth2 = new InMemoryAuthService(state2);
@@ -76,6 +78,8 @@ describe("CMS-OSファイル永続化", () => {
     assert.equal(restoredRequests[0]?.id, request.id);
     const restoredProposals = content2.listProposals(auth2.authenticate(providerLogin.accessToken));
     assert.equal(restoredProposals[0]?.id, proposal.id);
+    assert.equal(content2.getContent(auth2.authenticate(providerLogin.accessToken), draft.id)?.version, 1);
+    assert.equal(content2.listVersions(auth2.authenticate(providerLogin.accessToken), draft.id)[0]?.version, 1);
     const restoredNotifications = portal2.listNotifications(auth2.authenticate(providerLogin.accessToken));
     assert.ok(restoredNotifications.items.some((item) => item.resourceId === inquiry.id));
     const restoredGuides = portal2.listDirectoryGuides("legal", auth2.authenticate(providerLogin.accessToken));

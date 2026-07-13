@@ -137,6 +137,7 @@ const elements = {
   contentMessage: document.querySelector("#content-message"),
   proposals: document.querySelector("#proposal-list"),
   contents: document.querySelector("#content-list"),
+  contentVersions: document.querySelector("#content-version-list"),
   publicationHistory: document.querySelector("#publication-history-list"),
   contentPreview: document.querySelector("#content-preview"),
   providerManagementPanel: document.querySelector("#provider-management-panel"),
@@ -777,11 +778,47 @@ function renderProposals(items) {
 function renderContents(items) {
   state.contents = items;
   elements.contents.innerHTML = items.length
-    ? items.map((content) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(content.status)}</span><span>v${escapeHtml(content.version)}</span></div><h3>${escapeHtml(content.title)}</h3><p>${escapeHtml(content.summary)}</p><div class="editor-actions"><button class="button ghost content-action" data-action="preview" data-content-id="${escapeHtml(content.id)}">本文を見る</button>${content.status !== "approved" && content.status !== "published" ? `<button class="button ghost content-action" data-action="fact" data-content-id="${escapeHtml(content.id)}">事実確認</button>` : ""}${content.status === "drafted" || content.status === "polished" ? `<button class="button ghost content-action" data-action="polish" data-content-id="${escapeHtml(content.id)}">清書</button>` : ""}${content.status === "polished" || content.status === "seo_reviewed" ? `<button class="button ghost content-action" data-action="audit" data-content-id="${escapeHtml(content.id)}">SEO監査</button>` : ""}${content.status === "seo_reviewed" ? `<button class="button primary content-action" data-action="approve" data-content-id="${escapeHtml(content.id)}">承認</button>` : ""}${content.status === "approved" ? `<button class="button primary content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>` : ""}</div></article>`).join("")
+    ? items.map((content) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(content.status)}</span><span>v${escapeHtml(content.version)}</span></div><h3>${escapeHtml(content.title)}</h3><p>${escapeHtml(content.summary)}</p><div class="editor-actions"><button class="button ghost content-action" data-action="preview" data-content-id="${escapeHtml(content.id)}">本文を見る</button><button class="button ghost content-action" data-action="versions" data-content-id="${escapeHtml(content.id)}">版履歴</button>${content.status !== "approved" && content.status !== "published" ? `<button class="button ghost content-action" data-action="fact" data-content-id="${escapeHtml(content.id)}">事実確認</button>` : ""}${content.status === "drafted" || content.status === "polished" ? `<button class="button ghost content-action" data-action="polish" data-content-id="${escapeHtml(content.id)}">清書</button>` : ""}${content.status === "polished" || content.status === "seo_reviewed" ? `<button class="button ghost content-action" data-action="audit" data-content-id="${escapeHtml(content.id)}">SEO監査</button>` : ""}${content.status === "seo_reviewed" ? `<button class="button primary content-action" data-action="approve" data-content-id="${escapeHtml(content.id)}">承認</button>` : ""}${content.status === "approved" ? `<button class="button primary content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>` : ""}</div></article>`).join("")
     : '<p class="empty">下書きがまだありません。</p>';
   document.querySelectorAll(".content-action").forEach((button) => {
     button.addEventListener("click", () => handleContentAction(button.dataset.action, button.dataset.contentId));
   });
+}
+
+const contentVersionReasonLabels = { created: "作成", updated: "更新", polished: "清書", workflow: "状態変更", restored: "復元", migrated: "移行" };
+
+function renderContentVersions(items) {
+  elements.contentVersions.innerHTML = items.length
+    ? items.map((version) => `<article class="editor-item"><div class="meta"><span>v${escapeHtml(version.version)}</span><span>${escapeHtml(contentVersionReasonLabels[version.reason] ?? version.reason)}</span><span>${escapeHtml(version.createdAt.slice(0, 10))}</span></div><h4>${escapeHtml(version.title)}</h4><p>${escapeHtml(version.status)} / ${escapeHtml(version.actorId ?? "system")}</p><button class="button ghost content-version-restore-button" data-content-id="${escapeHtml(version.contentId)}" data-version="${escapeHtml(version.version)}">この版を下書きとして復元</button></article>`).join("")
+    : '<p class="empty">版履歴がまだありません。</p>';
+  document.querySelectorAll(".content-version-restore-button").forEach((button) => {
+    button.addEventListener("click", () => handleContentVersionRestore(button.dataset.contentId, Number(button.dataset.version)));
+  });
+}
+
+async function reloadContentVersions(contentId) {
+  if (!contentId) {
+    elements.contentVersions.innerHTML = "";
+    return;
+  }
+  try {
+    const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}/versions`);
+    renderContentVersions(body.items);
+  } catch (error) {
+    elements.contentVersions.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function handleContentVersionRestore(contentId, version) {
+  if (!contentId || !Number.isInteger(version)) return;
+  try {
+    await api(`/api/v1/content/${encodeURIComponent(contentId)}/versions/${version}/restore`, { method: "POST", body: JSON.stringify({}) });
+    setContentMessage("指定した版を下書きとして復元しました。事実確認とSEO監査を再実行してください。");
+    await reloadContent();
+    await reloadContentVersions(contentId);
+  } catch (error) {
+    setContentMessage(error.message);
+  }
 }
 
 const publicationStatusLabels = { built: "ビルド済み", deployed: "デプロイ済み", published: "公開済み", rolled_back: "ロールバック済み" };
@@ -826,7 +863,10 @@ async function handlePublicationRollback(publicationId) {
 async function reloadContent() {
   const visible = state.token && state.role === "provider" && state.experience?.allowedActions.includes("content.propose");
   elements.contentPanel.hidden = !visible;
-  if (!visible) return;
+  if (!visible) {
+    elements.contentVersions.innerHTML = "";
+    return;
+  }
   const proposals = await api("/api/v1/content/proposals");
   const contents = await api("/api/v1/content");
   renderProposals(proposals.items);
@@ -841,6 +881,11 @@ async function handleContentAction(action, contentId) {
       const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}`);
       elements.contentPreview.hidden = false;
       elements.contentPreview.textContent = body.item.body;
+      return;
+    }
+    if (action === "versions") {
+      await reloadContentVersions(contentId);
+      elements.contentVersions.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
     if (action === "polish") {

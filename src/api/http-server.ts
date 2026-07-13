@@ -626,6 +626,21 @@ async function handleMcp(
             inputSchema: { type: "object", properties: {} },
           },
           {
+            name: "content.versions",
+            description: "コンテンツの版履歴を取得します。",
+            inputSchema: { type: "object", properties: { contentId: { type: "string" } }, required: ["contentId"] },
+          },
+          {
+            name: "content.version_get",
+            description: "指定したコンテンツ版のスナップショットを取得します。",
+            inputSchema: { type: "object", properties: { contentId: { type: "string" }, version: { type: "integer", minimum: 1 } }, required: ["contentId", "version"] },
+          },
+          {
+            name: "content.version_restore",
+            description: "指定したコンテンツ版を新しい下書き版として復元します。",
+            inputSchema: { type: "object", properties: { contentId: { type: "string" }, version: { type: "integer", minimum: 1 } }, required: ["contentId", "version"] },
+          },
+          {
             name: "content.draft",
             description: "企画案から対象ポジション向けの下書きを生成します。",
             inputSchema: {
@@ -1149,6 +1164,27 @@ async function handleMcp(
 
     if (name === "content.list") {
       const result = { proposals: content.listProposals(principal), items: content.listContent(principal) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.versions") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = { items: content.listVersions(principal, argumentsObject.contentId) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.version_get") {
+      if (typeof argumentsObject.contentId !== "string" || typeof argumentsObject.version !== "number") throw new Error("contentIdとversionが必要です。");
+      const result = content.getVersion(principal, argumentsObject.contentId, argumentsObject.version);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.version_restore") {
+      if (typeof argumentsObject.contentId !== "string" || typeof argumentsObject.version !== "number") throw new Error("contentIdとversionが必要です。");
+      const result = content.restoreVersion(principal, argumentsObject.contentId, argumentsObject.version);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1814,6 +1850,42 @@ export function createHttpServer(
           writeJson(response, 202, { item: result });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを公開できません。" });
+        }
+        return;
+      }
+
+      const contentVersionRestoreMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/versions\/(\d+)\/restore$/);
+      if (request.method === "POST" && contentVersionRestoreMatch) {
+        const contentId = contentVersionRestoreMatch[1];
+        const versionNumber = Number(contentVersionRestoreMatch[2]);
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: content.restoreVersion(principal, contentId, versionNumber) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツ版を復元できません。" });
+        }
+        return;
+      }
+
+      const contentVersionsMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/versions(?:\/(\d+))?$/);
+      if (request.method === "GET" && contentVersionsMatch) {
+        const contentId = contentVersionsMatch[1];
+        const versionParam = contentVersionsMatch[2];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          if (versionParam === undefined) {
+            writeJson(response, 200, { items: content.listVersions(principal, contentId) });
+          } else {
+            writeJson(response, 200, { item: content.getVersion(principal, contentId, Number(versionParam)) });
+          }
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツ版を取得できません。" });
         }
         return;
       }

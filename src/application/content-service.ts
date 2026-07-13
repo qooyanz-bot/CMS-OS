@@ -12,6 +12,7 @@ import {
   type ContentRecord,
   type ContentSeo,
   type ContentType,
+  type ContentVersionRecord,
   type FactCheckResult,
   type SeoAuditResult,
 } from "../domain/types.js";
@@ -174,7 +175,7 @@ export class ContentService {
       sourceFacts: proposal.sourceFacts,
       proposalId: proposal.id,
       status: "drafted",
-    });
+    }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
   }
 
   public listContent(principal: AuthenticatedPrincipal | null): ContentRecord[] {
@@ -188,6 +189,32 @@ export class ContentService {
     this.assertProvider(principal, content.category);
     if (content.providerId !== principal!.providerId) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return content;
+  }
+
+  public listVersions(principal: AuthenticatedPrincipal | null, contentId: string): ContentVersionRecord[] {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.version_read");
+    return this.store.listVersions(content.id);
+  }
+
+  public getVersion(principal: AuthenticatedPrincipal | null, contentId: string, versionNumber: number): ContentVersionRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.version_read");
+    this.assertVersionNumber(versionNumber);
+    const version = this.store.getVersion(content.id, versionNumber);
+    if (!version) throw new ContentServiceError(404, "指定されたコンテンツ版が見つかりません。");
+    return version;
+  }
+
+  public restoreVersion(principal: AuthenticatedPrincipal | null, contentId: string, versionNumber: number): ContentRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.version_restore");
+    this.assertVersionNumber(versionNumber);
+    if (content.status === "published") throw new ContentServiceError(409, "公開済みコンテンツは直接復元できません。複製してから編集してください。");
+    if (content.status === "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツは先に復元してください。");
+    const restored = this.store.restoreVersion(content.id, versionNumber, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
+    if (!restored) throw new ContentServiceError(404, "指定されたコンテンツ版が見つかりません。");
+    return restored;
   }
 
   public updateContent(
@@ -222,7 +249,7 @@ export class ContentService {
     if (Object.keys(patch).length === 0) throw new ContentServiceError(400, "更新対象のフィールドを1つ以上指定してください。");
     if (content.status === "seo_reviewed" || content.status === "approved") patch.status = "drafted";
 
-    const updated = this.store.updateContent(content.id, patch);
+    const updated = this.store.updateContent(content.id, patch, { reason: "updated", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return updated;
   }
@@ -246,7 +273,7 @@ export class ContentService {
       sourceFacts: [...content.sourceFacts],
       proposalId: content.proposalId,
       status: "drafted",
-    });
+    }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
   }
 
   public archiveContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
@@ -254,7 +281,7 @@ export class ContentService {
     this.portal.assertAction(principal, content.category, "content.archive");
     if (content.status === "published") throw new ContentServiceError(409, "公開済みコンテンツは公開取消を確認してからアーカイブしてください。");
     if (content.status === "archived") return content;
-    const archived = this.store.updateContent(content.id, { status: "archived" });
+    const archived = this.store.updateContent(content.id, { status: "archived" }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!archived) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return archived;
   }
@@ -263,7 +290,7 @@ export class ContentService {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "content.restore");
     if (content.status !== "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツだけを復元できます。");
-    const restored = this.store.updateContent(content.id, { status: "drafted" });
+    const restored = this.store.updateContent(content.id, { status: "drafted" }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!restored) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return restored;
   }
@@ -273,7 +300,7 @@ export class ContentService {
     this.portal.assertAction(principal, content.category, "publication.publish");
     if (content.status === "published") return content;
     if (content.status !== "approved") throw new ContentServiceError(409, "承認済みコンテンツだけを公開できます。");
-    const published = this.store.updateContent(content.id, { status: "published" });
+    const published = this.store.updateContent(content.id, { status: "published" }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!published) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return published;
   }
@@ -291,7 +318,7 @@ export class ContentService {
       body: `${normalizedBody}${instructionNote}`,
       status: "polished",
       seo: { ...content.seo, title: limit(content.seo.title.trim(), 60), description: limit(content.seo.description.trim(), 160) },
-    });
+    }, { reason: "polished", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return updated;
   }
@@ -314,7 +341,7 @@ export class ContentService {
     if (content.lastSeoAudit.issues.some((issue) => issue.severity === "error")) {
       throw new ContentServiceError(409, "SEO監査に重大な問題があるため承認できません。");
     }
-    const updated = this.store.updateContent(content.id, { status: "approved" });
+    const updated = this.store.updateContent(content.id, { status: "approved" }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return updated;
   }
@@ -395,6 +422,10 @@ export class ContentService {
     const normalized = value.trim();
     if (!normalized) throw new ContentServiceError(400, `${fieldName}は空にできません。`);
     return limit(normalized, maxLength);
+  }
+
+  private assertVersionNumber(versionNumber: number): void {
+    if (!Number.isInteger(versionNumber) || versionNumber < 1) throw new ContentServiceError(400, "versionは1以上の整数で指定してください。");
   }
 
   private assertProvider(principal: AuthenticatedPrincipal | null, category: CategorySlug | undefined): void {

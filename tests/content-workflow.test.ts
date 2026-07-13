@@ -85,6 +85,17 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(updated.body.item.summary, "候補者が仕事内容と成長機会を確認できる紹介文です。");
     assert.equal(updated.body.item.version, 2);
 
+    const versionsAfterUpdate = await request(`/api/v1/content/${draft.body.item.id}/versions`, {
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(versionsAfterUpdate.status, 200);
+    assert.deepEqual(versionsAfterUpdate.body.items.map((item: { version: number }) => item.version), [2, 1]);
+    const initialVersion = await request(`/api/v1/content/${draft.body.item.id}/versions/1`, {
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(initialVersion.status, 200);
+    assert.equal(initialVersion.body.item.version, 1);
+
     const factCheck = await request(`/api/v1/content/${draft.body.item.id}/fact-check`, {
       method: "POST",
       headers: { authorization: `Bearer ${providerToken}` },
@@ -151,6 +162,17 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(duplicate.body.item.status, "drafted");
     assert.notEqual(duplicate.body.item.id, draft.body.item.id);
 
+    const restoredVersion = await request(`/api/v1/content/${duplicate.body.item.id}/versions/1/restore`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({}),
+    });
+    assert.equal(restoredVersion.status, 200);
+    assert.equal(restoredVersion.body.item.status, "drafted");
+    assert.equal(restoredVersion.body.item.version, 2);
+    assert.equal(restoredVersion.body.item.lastSeoAudit, undefined);
+    assert.equal(restoredVersion.body.item.lastFactCheck, undefined);
+
     const archived = await request(`/api/v1/content/${duplicate.body.item.id}`, {
       method: "DELETE",
       headers: { authorization: `Bearer ${providerToken}` },
@@ -174,6 +196,9 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     const names = tools.body.result.tools.map((tool: { name: string }) => tool.name);
     assert.ok(names.includes("content.propose"));
     assert.ok(names.includes("content.list"));
+    assert.ok(names.includes("content.versions"));
+    assert.ok(names.includes("content.version_get"));
+    assert.ok(names.includes("content.version_restore"));
     assert.ok(names.includes("content.draft"));
     assert.ok(names.includes("content.update"));
     assert.ok(names.includes("content.duplicate"));
@@ -219,5 +244,13 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     });
     assert.equal(updated.status, 200);
     assert.equal(updated.body.result.structuredContent.summary, "メニュー選びを支援する紹介文です。");
+
+    const versions = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "content.versions", arguments: { contentId: draft.body.result.structuredContent.id } } }),
+    });
+    assert.equal(versions.status, 200);
+    assert.ok(Array.isArray(versions.body.result.structuredContent.items));
   });
 });

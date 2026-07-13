@@ -249,6 +249,23 @@ export interface ContentRecord {
   updatedAt: string;
 }
 
+export type ContentVersionReason = "created" | "updated" | "polished" | "workflow" | "restored" | "migrated";
+
+export interface ContentVersionRecord {
+  id: string;
+  contentId: string;
+  version: number;
+  title: string;
+  summary: string;
+  body: string;
+  seo: ContentSeo;
+  sourceFacts: string[];
+  status: ContentWorkflowStatus;
+  reason: ContentVersionReason;
+  actorId?: string;
+  createdAt: string;
+}
+
 export type SeoIssueSeverity = "error" | "warning" | "info";
 
 export interface SeoAuditIssue {
