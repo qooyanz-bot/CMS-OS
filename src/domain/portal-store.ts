@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { listProviders as listCatalogProviders } from "./catalog.js";
-import type { CategorySlug, InquiryStatus, JobApplication, JobPosting, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceRequest } from "./types.js";
+import type { CategorySlug, InquiryStatus, JobApplication, JobPosting, PortalNotification, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceRequest } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 
 const defaultJobs: JobPosting[] = [
@@ -48,6 +48,7 @@ export class PortalStore {
   private readonly jobs: JobPosting[];
   private readonly applications: JobApplication[];
   private readonly inquiries: ProviderInquiry[];
+  private readonly notifications: PortalNotification[];
 
   public constructor(private readonly stateStore?: StateStore) {
     const catalogProviders = listCatalogProviders("legal").concat(
@@ -66,6 +67,7 @@ export class PortalStore {
     this.jobs = savedJobs.map((job) => ({ ...job }));
     this.applications = stateStore?.load<JobApplication[]>("portal-applications.json", []) ?? [];
     this.inquiries = stateStore?.load<ProviderInquiry[]>("portal-inquiries.json", []) ?? [];
+    this.notifications = stateStore?.load<PortalNotification[]>("portal-notifications.json", []) ?? [];
   }
 
   public listProviders(category: CategorySlug): ProviderRecord[] {
@@ -215,5 +217,40 @@ export class PortalStore {
     inquiry.updatedAt = new Date().toISOString();
     this.stateStore?.save("portal-inquiries.json", this.inquiries);
     return inquiry;
+  }
+
+  public listProvidersForReview(category?: CategorySlug, status?: ProviderListingStatus): ProviderRecord[] {
+    return this.providers
+      .filter((provider) => !category || provider.category === category)
+      .filter((provider) => !status || (provider.listingStatus ?? "published") === status)
+      .map(cloneProvider);
+  }
+
+  public createNotification(input: Omit<PortalNotification, "id" | "createdAt" | "readAt">): PortalNotification {
+    const notification: PortalNotification = {
+      ...input,
+      id: `notification-${randomUUID()}`,
+      createdAt: new Date().toISOString(),
+    };
+    this.notifications.push(notification);
+    this.stateStore?.save("portal-notifications.json", this.notifications);
+    return { ...notification };
+  }
+
+  public listNotifications(): PortalNotification[] {
+    return this.notifications.map((notification) => ({ ...notification }));
+  }
+
+  public getNotification(notificationId: string): PortalNotification | undefined {
+    return this.notifications.find((notification) => notification.id === notificationId);
+  }
+
+  public markNotification(notificationId: string, read: boolean): PortalNotification | undefined {
+    const notification = this.getNotification(notificationId);
+    if (!notification) return undefined;
+    if (read) notification.readAt = new Date().toISOString();
+    else delete notification.readAt;
+    this.stateStore?.save("portal-notifications.json", this.notifications);
+    return { ...notification };
   }
 }

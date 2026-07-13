@@ -140,6 +140,36 @@ export interface ProviderInquiry {
   updatedAt: string;
 }
 
+export type NotificationRecipientType = "account" | "provider";
+export type NotificationType = "inquiry_received" | "inquiry_status_changed" | "listing_submitted" | "listing_reviewed";
+
+export interface PortalNotification {
+  id: string;
+  category: CategorySlug;
+  recipientType: NotificationRecipientType;
+  recipientId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  resourceType: "inquiry" | "provider_listing";
+  resourceId: string;
+  createdAt: string;
+  readAt?: string;
+}
+
+export interface ProviderListingReviewItem {
+  id: string;
+  category: CategorySlug;
+  name: string;
+  themes: string[];
+  location: string;
+  listingStatus: ProviderListingStatus;
+  listingSubmittedAt?: string;
+  listingReviewedAt?: string;
+  listingReviewNote?: string;
+  publicFields: Record<string, string | string[]>;
+}
+
 export const contentTypes = ["company", "blog", "job", "pr", "ir"] as const;
 export type ContentType = (typeof contentTypes)[number];
 

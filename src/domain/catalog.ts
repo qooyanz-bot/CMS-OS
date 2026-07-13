@@ -21,6 +21,8 @@ const commonActions = [
   "inquiry.create",
   "inquiry.read",
   "inquiry.status.update",
+  "notification.read",
+  "notification.update",
 ];
 
 type GenericCategorySlug = Exclude<CategorySlug, "legal" | "beauty">;
@@ -49,6 +51,8 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
     "listing.submit",
     "inquiry.read",
     "inquiry.status.update",
+    "notification.read",
+    "notification.update",
     "request.status.update",
     "application.status.update",
     "job.manage",
@@ -176,6 +180,8 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "listing.submit",
           "inquiry.read",
           "inquiry.status.update",
+          "notification.read",
+          "notification.update",
           "request.status.update",
           "application.status.update",
           "job.manage",
@@ -251,6 +257,8 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "booking.read",
           "inquiry.read",
           "inquiry.status.update",
+          "notification.read",
+          "notification.update",
           "request.status.update",
           "application.status.update",
           "job.manage",

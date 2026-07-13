@@ -10,6 +10,7 @@ const state = {
   requests: [],
   applications: [],
   inquiries: [],
+  notifications: [],
   proposals: [],
   contents: [],
 };
@@ -58,6 +59,8 @@ const elements = {
   inquiryList: document.querySelector("#inquiry-list"),
   inquiryManagementPanel: document.querySelector("#inquiry-management-panel"),
   inquiryManagementList: document.querySelector("#inquiry-management-list"),
+  notificationPanel: document.querySelector("#notification-panel"),
+  notificationList: document.querySelector("#notification-list"),
   requestInboxPanel: document.querySelector("#request-inbox-panel"),
   requestList: document.querySelector("#request-list"),
   applicationPanel: document.querySelector("#application-panel"),
@@ -244,6 +247,25 @@ function renderInquiries(items) {
   });
 }
 
+function renderNotifications(items) {
+  state.notifications = items;
+  elements.notificationList.innerHTML = items.length
+    ? items.map((notification) => `<article class="role-item${notification.readAt ? "" : " unread"}" data-notification-id="${escapeHtml(notification.id)}"><div class="meta"><span>${notification.readAt ? "既読" : "未読"}</span><span>${escapeHtml(notification.createdAt.slice(0, 10))}</span></div><h3>${escapeHtml(notification.title)}</h3><p>${escapeHtml(notification.message)}</p>${notification.readAt ? "" : `<div class="role-actions"><button class="button ghost notification-read-button" data-notification-id="${escapeHtml(notification.id)}">既読にする</button></div>`}</article>`).join("")
+    : '<p class="empty">新しい通知はありません。</p>';
+  document.querySelectorAll(".notification-read-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const notificationId = button.dataset.notificationId;
+      if (!notificationId) return;
+      try {
+        await api(`/api/v1/notifications/${encodeURIComponent(notificationId)}`, { method: "PATCH", body: JSON.stringify({ read: true }) });
+        await reloadRoleData();
+      } catch (error) {
+        setMessage(error.message);
+      }
+    });
+  });
+}
+
 function renderApplications(items) {
   state.applications = items;
   elements.applicationList.innerHTML = items.length
@@ -277,16 +299,19 @@ async function reloadRoleData() {
   const canSeeRequests = Boolean(state.token && (state.role === "orderer" || state.role === "provider"));
   const canSeeApplications = Boolean(state.token && (state.role === "candidate" || state.role === "provider"));
   const canSeeInquiries = Boolean(state.token && state.experience?.allowedActions.includes("inquiry.read"));
+  const canSeeNotifications = Boolean(state.token && state.experience?.allowedActions.includes("notification.read"));
   elements.requestInboxPanel.hidden = !canSeeRequests;
   elements.applicationPanel.hidden = !canSeeApplications;
   elements.inquiryStatusPanel.hidden = !canSeeInquiries || state.role === "provider";
   elements.inquiryManagementPanel.hidden = !canSeeInquiries || state.role !== "provider";
+  elements.notificationPanel.hidden = !canSeeNotifications;
   if (!canSeeRequests) elements.requestList.innerHTML = "";
   if (!canSeeApplications) elements.applicationList.innerHTML = "";
   if (!canSeeInquiries) {
     elements.inquiryList.innerHTML = "";
     elements.inquiryManagementList.innerHTML = "";
   }
+  if (!canSeeNotifications) elements.notificationList.innerHTML = "";
 
   if (canSeeRequests) {
     try {
@@ -308,6 +333,14 @@ async function reloadRoleData() {
     try {
       const body = await api("/api/v1/inquiries");
       renderInquiries(body.items);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+  if (canSeeNotifications) {
+    try {
+      const body = await api("/api/v1/notifications?limit=50");
+      renderNotifications(body.items);
     } catch (error) {
       setMessage(error.message);
     }

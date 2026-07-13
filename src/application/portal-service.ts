@@ -13,6 +13,8 @@ import type {
   JobApplication,
   JobPosting,
   PortalRole,
+  PortalNotification,
+  ProviderListingReviewItem,
   ProviderInquiry,
   ProviderListingStatus,
   ProviderRecord,
@@ -22,6 +24,11 @@ import type {
 import { jobStatuses } from "../domain/types.js";
 
 export type ProviderUpdateInput = Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "publicFields">>;
+
+export interface PortalPage<T> {
+  items: T[];
+  page: { limit: number; nextCursor?: string };
+}
 
 function providerListingStatus(provider: ProviderRecord): ProviderListingStatus {
   return provider.listingStatus ?? "published";
@@ -75,6 +82,18 @@ export class PortalService {
     private readonly auth: AuthService,
     private readonly store = new PortalStore(),
   ) {}
+
+  private notify(input: Omit<PortalNotification, "id" | "createdAt" | "readAt">): void {
+    this.store.createNotification(input);
+  }
+
+  private paginate<T>(items: T[], limit: number, cursor: number): PortalPage<T> {
+    const safeLimit = Math.min(Math.max(Math.trunc(limit) || 50, 1), 100);
+    const safeCursor = Math.max(Math.trunc(cursor) || 0, 0);
+    const pageItems = items.slice(safeCursor, safeCursor + safeLimit);
+    const nextCursor = safeCursor + pageItems.length < items.length ? String(safeCursor + pageItems.length) : undefined;
+    return { items: pageItems, page: { limit: safeLimit, ...(nextCursor ? { nextCursor } : {}) } };
+  }
 
   public listCategories(): Array<{ slug: CategorySlug; label: string; navigation: Array<{ id: string; label: string }> }> {
     return listCategoryPolicies().map((policy) => ({
@@ -182,6 +201,16 @@ export class PortalService {
       ...(input.publicFields !== undefined ? { publicFields: input.publicFields } : {}),
     });
     if (!updated) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    this.notify({
+      category: updated.category,
+      recipientType: "account",
+      recipientId: principal.accountId,
+      type: "listing_submitted",
+      title: "掲載審査へ送信しました",
+      message: `${updated.name}の掲載情報を審査へ送信しました。`,
+      resourceType: "provider_listing",
+      resourceId: updated.id,
+    });
     return projectProvider(updated, "provider", principal.providerId);
   }
 
@@ -230,6 +259,16 @@ export class PortalService {
       listingReviewNote: normalizedNote,
     });
     if (!updated) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    this.notify({
+      category: updated.category,
+      recipientType: "provider",
+      recipientId: updated.id,
+      type: "listing_reviewed",
+      title: "掲載審査の結果が更新されました",
+      message: `${updated.name}の掲載状態が「${status}」になりました。${normalizedNote ? ` 審査メモ: ${normalizedNote}` : ""}`,
+      resourceType: "provider_listing",
+      resourceId: updated.id,
+    });
     return projectProvider(updated, "provider", updated.id);
   }
 
@@ -307,13 +346,24 @@ export class PortalService {
     }
     const provider = this.store.listProviders(input.category).find((candidate) => candidate.id === input.providerId);
     if (!provider || !isPublicProvider(provider)) throw new PortalServiceError(404, "問い合わせ可能な事業者が見つかりません。");
-    return this.store.createInquiry({
+    const inquiry = this.store.createInquiry({
       category: input.category,
       providerId: provider.id,
       senderId: principal.accountId,
       subject: input.subject.trim(),
       message: input.message.trim(),
     });
+    this.notify({
+      category: inquiry.category,
+      recipientType: "provider",
+      recipientId: inquiry.providerId,
+      type: "inquiry_received",
+      title: "新しい問い合わせがあります",
+      message: inquiry.subject,
+      resourceType: "inquiry",
+      resourceId: inquiry.id,
+    });
+    return inquiry;
   }
 
   public listInquiries(principal: AuthenticatedPrincipal | null): ProviderInquiry[] {
@@ -346,7 +396,72 @@ export class PortalService {
     if (!validTransition) throw new PortalServiceError(409, "問い合わせの状態遷移が不正です。");
     const updated = this.store.updateInquiry(inquiry.id, status);
     if (!updated) throw new PortalServiceError(404, "問い合わせが見つかりません。");
+    this.notify({
+      category: updated.category,
+      recipientType: isProvider ? "account" : "provider",
+      recipientId: isProvider ? updated.senderId : updated.providerId,
+      type: "inquiry_status_changed",
+      title: "問い合わせの状態が更新されました",
+      message: `${updated.subject}が「${status}」になりました。`,
+      resourceType: "inquiry",
+      resourceId: updated.id,
+    });
     return updated;
+  }
+
+  public listNotifications(
+    principal: AuthenticatedPrincipal | null,
+    pagination: { limit?: number; cursor?: number } = {},
+  ): PortalPage<PortalNotification> {
+    if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
+    this.assertAction(principal, principal.category, "notification.read");
+    const recipientType = principal.role === "provider" ? "provider" : "account";
+    const recipientId = principal.role === "provider" ? principal.providerId : principal.accountId;
+    const notifications = this.store.listNotifications()
+      .filter((notification) => notification.category === principal.category && notification.recipientType === recipientType && notification.recipientId === recipientId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    return this.paginate(notifications, pagination.limit ?? 50, pagination.cursor ?? 0);
+  }
+
+  public markNotificationRead(
+    principal: AuthenticatedPrincipal | null,
+    notificationId: string,
+    read: boolean,
+  ): PortalNotification {
+    if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
+    const notification = this.store.getNotification(notificationId);
+    if (!notification) throw new PortalServiceError(404, "通知が見つかりません。");
+    this.assertAction(principal, notification.category, "notification.update");
+    const recipientType = principal.role === "provider" ? "provider" : "account";
+    const recipientId = principal.role === "provider" ? principal.providerId : principal.accountId;
+    if (notification.category !== principal.category || notification.recipientType !== recipientType || notification.recipientId !== recipientId) {
+      throw new PortalServiceError(404, "通知が見つかりません。");
+    }
+    const updated = this.store.markNotification(notification.id, read);
+    if (!updated) throw new PortalServiceError(404, "通知が見つかりません。");
+    return updated;
+  }
+
+  public listListingReviewQueue(
+    operatorAuthorized: boolean,
+    category?: CategorySlug,
+    status: ProviderListingStatus = "pending_review",
+    pagination: { limit?: number; cursor?: number } = {},
+  ): PortalPage<ProviderListingReviewItem> {
+    if (!operatorAuthorized) throw new PortalServiceError(403, "掲載審査の権限がありません。");
+    const providers = this.store.listProvidersForReview(category, status).map((provider) => ({
+      id: provider.id,
+      category: provider.category,
+      name: provider.name,
+      themes: [...provider.themes],
+      location: provider.location,
+      listingStatus: providerListingStatus(provider),
+      ...(provider.listingSubmittedAt ? { listingSubmittedAt: provider.listingSubmittedAt } : {}),
+      ...(provider.listingReviewedAt ? { listingReviewedAt: provider.listingReviewedAt } : {}),
+      ...(provider.listingReviewNote ? { listingReviewNote: provider.listingReviewNote } : {}),
+      publicFields: { ...provider.publicFields },
+    }));
+    return this.paginate(providers, pagination.limit ?? 50, pagination.cursor ?? 0);
   }
 
   public listJobs(category: CategorySlug, principal: AuthenticatedPrincipal | null): JobPosting[] {

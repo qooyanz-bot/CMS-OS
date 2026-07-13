@@ -74,12 +74,15 @@ GET  /api/v1/providers/{providerId}
 PATCH /api/v1/providers/{providerId}
 POST /api/v1/providers/{providerId}/listing-submission
 PATCH /api/v1/providers/{providerId}/listing-review
+GET  /api/v1/provider-listing-reviews
 POST /api/v1/requests
 GET  /api/v1/requests
 PATCH /api/v1/requests/{requestId}
 POST /api/v1/inquiries
 GET  /api/v1/inquiries
 PATCH /api/v1/inquiries/{inquiryId}
+GET  /api/v1/notifications
+PATCH /api/v1/notifications/{notificationId}
 GET  /api/v1/jobs?category=legal
 POST /api/v1/jobs
 PATCH /api/v1/jobs/{jobId}
@@ -105,6 +108,10 @@ POST /mcp
 掲載状態は `draft`（下書き）、`pending_review`（審査中）、`published`（公開中）、`suspended`（停止中）で管理します。事業者本人が `POST /api/v1/providers/{providerId}/listing-submission` またはMCPの `provider.listing_submit` を実行すると審査中になり、公開検索から除外されます。運営審査はログインロールとは分離し、`CMS_OS_OPERATOR_KEY` と `x-cms-os-operator-key` ヘッダーを使う `PATCH /api/v1/providers/{providerId}/listing-review` またはMCPの `provider.listing_review` で行います。
 
 問い合わせは `POST /api/v1/inquiries` またはMCPの `inquiry.create` で作成します。送信者は自分の問い合わせ、事業者は自社宛ての問い合わせだけを取得できます。状態は `open`（受付中）→ `responded`（返信済み）→ `closed`（終了）で、RESTとMCPは同じ状態遷移・所有者検証を利用します。
+
+問い合わせの作成・返信・終了、掲載審査の送信・結果を通知として保存します。`GET /api/v1/notifications` はログイン中の本人または自社事業者の通知だけを返し、`limit` と `cursor` によるページングに対応します。通知は本人の操作で既読・未読を切り替えられます。
+
+運営は `GET /api/v1/provider-listing-reviews` またはMCPの `provider.listing_review_queue` で審査待ち掲載情報を取得できます。カテゴリ、掲載状態、limit、cursorで絞り込みます。運営キーはブラウザUIへ渡さず、API/MCP連携側で管理します。
 
 ## 依頼・求人応募の権限
 
@@ -132,6 +139,7 @@ POST /mcp
 - 問い合わせフォーム：ユーザー、発注者、リクルーターが検索結果から送信
 - 問い合わせ管理：事業者は自社宛て問い合わせを返信済み・終了へ更新
 - 掲載審査送信：事業者が自社掲載を審査へ送信し、状態と審査メモを確認
+- 通知一覧：問い合わせ・掲載審査に関する本人向け通知を表示し、既読化
 - 一般ユーザー、発注者、リクルーターには事業者管理フォームを表示しない
 
 APIを操作する最小のブラウザUIを同梱しています。カテゴリを選択すると、そのカテゴリの表示モジュール、事業者、求人が切り替わります。ログイン後にカテゴリを変更した場合は、カテゴリコンテキストの混在を避けるため自動的にログアウトします。

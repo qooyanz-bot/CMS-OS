@@ -37,6 +37,14 @@ describe("CMS-OSファイル永続化", () => {
     });
     assert.ok(request.id);
 
+    const inquiry = portal1.createInquiry(ordererLogin.principal, {
+      category: "legal",
+      providerId: "provider-legal-demo",
+      subject: "永続化テスト問い合わせ",
+      message: "問い合わせと通知が再起動後にも残ることを確認します。",
+    });
+    assert.ok(inquiry.id);
+
     const providerLogin = auth1.login("lawyer@example.com", "demo-password", "legal", "provider");
     if (!providerLogin || !("accessToken" in providerLogin)) throw new Error("事業者ログインにMFAチャレンジが返されました。");
     const proposal = content1.createProposal(providerLogin.principal, {
@@ -58,5 +66,7 @@ describe("CMS-OSファイル永続化", () => {
     assert.equal(restoredRequests[0]?.id, request.id);
     const restoredProposals = content2.listProposals(auth2.authenticate(providerLogin.accessToken));
     assert.equal(restoredProposals[0]?.id, proposal.id);
+    const restoredNotifications = portal2.listNotifications(auth2.authenticate(providerLogin.accessToken));
+    assert.ok(restoredNotifications.items.some((item) => item.resourceId === inquiry.id));
   });
 });

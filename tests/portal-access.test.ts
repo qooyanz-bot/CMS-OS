@@ -123,6 +123,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.update"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.listing_submit"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.listing_review"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.listing_review_queue"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "job.create"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "job.update"));
     const providerSearchTool = tools.body.result.tools.find((tool: { name: string }) => tool.name === "provider.search");
@@ -144,6 +145,8 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "inquiry.create"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "inquiry.list"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "inquiry.update_status"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "notification.list"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "notification.mark_read"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "application.update_status"));
 
     const ordererLogin = await request("/api/v1/auth/login", {
@@ -327,6 +330,37 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(closed.status, 200);
     assert.equal(closed.body.item.status, "closed");
 
+    const notifications = await request("/api/v1/notifications?limit=10", {
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+    });
+    assert.equal(notifications.status, 200);
+    assert.ok(notifications.body.items.some((item: { resourceId: string; type: string }) => item.resourceId === created.body.item.id && item.type === "inquiry_status_changed"));
+    assert.equal(notifications.body.page.limit, 10);
+    const unread = notifications.body.items.find((item: { resourceId: string; readAt?: string }) => item.resourceId === created.body.item.id && !item.readAt);
+    if (!unread) throw new Error("テスト用未読通知が見つかりません。");
+    const marked = await request(`/api/v1/notifications/${unread.id}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ read: true }),
+    });
+    assert.equal(marked.status, 200);
+    assert.ok(marked.body.item.readAt);
+
+    const mcpNotifications = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 21, method: "tools/call", params: { name: "notification.list", arguments: { limit: 1 } } }),
+    });
+    assert.equal(mcpNotifications.status, 200);
+    assert.equal(mcpNotifications.body.result.structuredContent.page.limit, 1);
+    const mcpMarked = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "notification.mark_read", arguments: { notificationId: marked.body.item.id, read: false } } }),
+    });
+    assert.equal(mcpMarked.status, 200);
+    assert.equal(mcpMarked.body.result.structuredContent.readAt, undefined);
+
     const mcpCreated = await request("/mcp", {
       method: "POST",
       headers: { authorization: `Bearer ${legalOrdererToken}` },
@@ -356,6 +390,26 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(submitted.status, 200);
     assert.equal(submitted.body.item.listingStatus, "pending_review");
+
+    const reviewQueue = await request("/api/v1/provider-listing-reviews?category=legal&limit=1", {
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+    });
+    assert.equal(reviewQueue.status, 200);
+    assert.equal(reviewQueue.body.page.limit, 1);
+    assert.ok(reviewQueue.body.items.some((item: { id: string; listingStatus: string }) => item.id === "provider-legal-demo" && item.listingStatus === "pending_review"));
+
+    const mcpReviewQueue = await request("/mcp", {
+      method: "POST",
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 30,
+        method: "tools/call",
+        params: { name: "provider.listing_review_queue", arguments: { category: "legal", limit: 1 } },
+      }),
+    });
+    assert.equal(mcpReviewQueue.status, 200);
+    assert.equal(mcpReviewQueue.body.result.structuredContent.page.limit, 1);
 
     const hidden = await request("/api/v1/providers/provider-legal-demo");
     assert.equal(hidden.status, 404);

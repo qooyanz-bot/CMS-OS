@@ -160,6 +160,29 @@ function parseStringMap(value: unknown, fieldName: string): Record<string, strin
   return result;
 }
 
+function parsePaginationValue(value: unknown, fieldName: string, fallback: number): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  const raw = typeof value === "number" ? String(value) : value;
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) throw new Error(`${fieldName}は0以上の整数で指定してください。`);
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`${fieldName}が不正です。`);
+  return parsed;
+}
+
+function parsePaginationQuery(url: URL): { limit: number; cursor: number } {
+  const limit = parsePaginationValue(url.searchParams.get("limit"), "limit", 50);
+  const cursor = parsePaginationValue(url.searchParams.get("cursor"), "cursor", 0);
+  if (limit < 1 || limit > 100) throw new Error("limitは1以上100以下で指定してください。");
+  return { limit, cursor };
+}
+
+function parsePaginationArguments(argumentsObject: Record<string, unknown>): { limit: number; cursor: number } {
+  const limit = parsePaginationValue(argumentsObject.limit, "limit", 50);
+  const cursor = parsePaginationValue(argumentsObject.cursor, "cursor", 0);
+  if (limit < 1 || limit > 100) throw new Error("limitは1以上100以下で指定してください。");
+  return { limit, cursor };
+}
+
 function serviceErrorStatus(error: unknown): number {
   return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError ? error.statusCode : 400;
 }
@@ -280,6 +303,15 @@ async function handleMcp(
             },
           },
           {
+            name: "provider.listing_review_queue",
+            description: "運営審査キーで審査対象の事業者掲載情報をページ単位で取得します。x-cms-os-operator-keyヘッダーが必要です。",
+            inputSchema: {
+              type: "object",
+              properties: { category: { enum: categoryEnum }, status: { enum: ["draft", "pending_review", "published", "suspended"] }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } },
+              required: [],
+            },
+          },
+          {
             name: "auth.login",
             description: "ログインします。",
             inputSchema: {
@@ -392,6 +424,16 @@ async function handleMcp(
             name: "inquiry.update_status",
             description: "問い合わせの送信者または担当事業者が、返信済みまたは終了へ更新します。",
             inputSchema: { type: "object", properties: { inquiryId: { type: "string" }, status: { enum: ["open", "responded", "closed"] } }, required: ["inquiryId", "status"] },
+          },
+          {
+            name: "notification.list",
+            description: "ログイン中の本人または事業者に届いた通知を新しい順でページ取得します。",
+            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
+          },
+          {
+            name: "notification.mark_read",
+            description: "本人または自社事業者に届いた通知を既読・未読へ更新します。",
+            inputSchema: { type: "object", properties: { notificationId: { type: "string" }, read: { type: "boolean" } }, required: ["notificationId", "read"] },
           },
           {
             name: "job.search",
@@ -702,6 +744,19 @@ async function handleMcp(
       return;
     }
 
+    if (name === "provider.listing_review_queue") {
+      if (argumentsObject.category !== undefined && !isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
+      if (argumentsObject.status !== undefined && !isProviderListingStatus(argumentsObject.status)) throw new Error("statusが不正です。");
+      const result = portal.listListingReviewQueue(
+        hasOperatorKey(request),
+        isCategorySlug(argumentsObject.category) ? argumentsObject.category : undefined,
+        isProviderListingStatus(argumentsObject.status) ? argumentsObject.status : "pending_review",
+        parsePaginationArguments(argumentsObject),
+      );
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "auth.switch_context") {
       const token = getBearerToken(request);
       if (!token || !isCategorySlug(argumentsObject.category) || !isPortalRole(argumentsObject.role)) {
@@ -811,6 +866,21 @@ async function handleMcp(
         throw new Error("inquiryIdと有効なstatusが必要です。");
       }
       const result = portal.updateInquiryStatus(principal, argumentsObject.inquiryId, argumentsObject.status);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "notification.list") {
+      const result = portal.listNotifications(principal, parsePaginationArguments(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "notification.mark_read") {
+      if (typeof argumentsObject.notificationId !== "string" || typeof argumentsObject.read !== "boolean") {
+        throw new Error("notificationIdとreadが必要です。");
+      }
+      const result = portal.markNotificationRead(principal, argumentsObject.notificationId, argumentsObject.read);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1284,6 +1354,32 @@ export function createHttpServer(
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/v1/provider-listing-reviews") {
+        const categoryValue = url.searchParams.get("category");
+        const statusValue = url.searchParams.get("status");
+        if (categoryValue !== null && !isCategorySlug(categoryValue)) {
+          writeJson(response, 400, { error: "categoryが不正です。" });
+          return;
+        }
+        if (statusValue !== null && !isProviderListingStatus(statusValue)) {
+          writeJson(response, 400, { error: "statusが不正です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, {
+            ...portal.listListingReviewQueue(
+              hasOperatorKey(request),
+              categoryValue && isCategorySlug(categoryValue) ? categoryValue : undefined,
+              statusValue && isProviderListingStatus(statusValue) ? statusValue : "pending_review",
+              parsePaginationQuery(url),
+            ),
+          });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "掲載審査キューを取得できません。" });
+        }
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/v1/content/proposals") {
         const body = await readJson(request);
         if (!isCategorySlug(body.category) || !isContentType(body.contentType) || !isContentAudience(body.audience) || typeof body.topic !== "string") {
@@ -1639,6 +1735,35 @@ export function createHttpServer(
           writeJson(response, 200, { item: portal.updateInquiryStatus(principal, inquiryId, body.status) });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "問い合わせの状態を更新できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/notifications") {
+        try {
+          writeJson(response, 200, { ...portal.listNotifications(principal, parsePaginationQuery(url)) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "通知を取得できません。" });
+        }
+        return;
+      }
+
+      const notificationMatch = url.pathname.match(/^\/api\/v1\/notifications\/([^/]+)$/);
+      if (request.method === "PATCH" && notificationMatch) {
+        const notificationId = notificationMatch[1];
+        if (!notificationId) {
+          writeJson(response, 400, { error: "notificationIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (typeof body.read !== "boolean") {
+          writeJson(response, 400, { error: "readはbooleanで指定してください。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: portal.markNotificationRead(principal, notificationId, body.read) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "通知を更新できません。" });
         }
         return;
       }
