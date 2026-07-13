@@ -43,7 +43,17 @@ const genericCategoryDefinitions: GenericCategoryDefinition[] = [
   { slug: "regional-revitalization", label: "地方創生・移住・空き家再生", themeLabel: "地域テーマ", themes: ["移住支援", "空き家活用", "地域事業開発"] },
 ];
 
+const genericCategoryDisplayProfiles: Record<GenericCategorySlug, { user: string; orderer: string; provider: string; candidate: string }> = {
+  "ai-business": { user: "aiUseCases", orderer: "automationRequest", provider: "aiSolutionManagement", candidate: "aiCareer" },
+  "labor-shortage": { user: "talentGuide", orderer: "recruitmentRequest", provider: "recruitmentManagement", candidate: "careerSupport" },
+  tourism: { user: "destinationGuide", orderer: "travelPlanning", provider: "tourismExperienceManagement", candidate: "hospitalityJobs" },
+  "mobility-dx": { user: "mobilityGuide", orderer: "fleetRequest", provider: "fleetManagement", candidate: "mobilityCareer" },
+  gx: { user: "decarbonizationGuide", orderer: "gxPlanning", provider: "gxManagement", candidate: "sustainabilityCareer" },
+  "regional-revitalization": { user: "regionalGuide", orderer: "regionalProject", provider: "regionalProjectManagement", candidate: "communityCareer" },
+};
+
 function createGenericCategoryPolicy(definition: GenericCategoryDefinition): CategoryPolicy {
+  const displayProfile = genericCategoryDisplayProfiles[definition.slug];
   const providerActions = [
     "profile.read",
     "profile.update",
@@ -94,7 +104,7 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
     ],
     roles: {
       user: {
-        visibleModules: ["themeGuide", "providerSearch", "providerProfile", "faq"],
+        visibleModules: ["themeGuide", displayProfile.user, "providerSearch", "providerProfile", "faq"],
         visibleFields: ["publicFields", "verificationStatus", "lastVerifiedAt"],
         allowedActions: [...commonActions],
         notices: ["掲載情報は公開された事実と最終確認日を基準に表示します。"],
@@ -102,6 +112,7 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
       orderer: {
         visibleModules: [
           "themeGuide",
+          displayProfile.orderer,
           "providerSearch",
           "providerProfile",
           "faq",
@@ -117,6 +128,7 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
       },
       provider: {
         visibleModules: [
+          displayProfile.provider,
           "providerDashboard",
           "listingManagement",
           "inquiryManagement",
@@ -129,7 +141,7 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
         notices: ["掲載情報、実績、求人、コンテンツを分けて管理し、公開前に確認できます。"],
       },
       candidate: {
-        visibleModules: ["jobSearch", "providerProfile", "culture", "application", "applicationStatus"],
+        visibleModules: [displayProfile.candidate, "jobSearch", "providerProfile", "culture", "application", "applicationStatus"],
         visibleFields: ["publicFields", "candidateFields", "verificationStatus", "lastVerifiedAt"],
         allowedActions: [...commonActions, "job.search", "application.create", "application.read"],
         notices: ["応募書類と選考情報は、応募先事業者と本人以外には表示されません。"],

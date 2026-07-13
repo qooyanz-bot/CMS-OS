@@ -55,10 +55,19 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(slugs.includes("gx"));
 
     const experience = await request("/api/v1/categories/ai-business/experience");
+    const tourism = await request("/api/v1/categories/tourism/experience");
+    const gx = await request("/api/v1/categories/gx/experience");
     const providers = await request("/api/v1/providers?category=ai-business");
 
     assert.equal(experience.status, 200);
+    assert.equal(tourism.status, 200);
+    assert.equal(gx.status, 200);
     assert.ok(experience.body.experience.visibleModules.includes("providerSearch"));
+    assert.ok(experience.body.experience.visibleModules.includes("aiUseCases"));
+    assert.ok(tourism.body.experience.visibleModules.includes("destinationGuide"));
+    assert.ok(gx.body.experience.visibleModules.includes("decarbonizationGuide"));
+    assert.notDeepEqual(experience.body.experience.visibleModules, tourism.body.experience.visibleModules);
+    assert.notDeepEqual(tourism.body.experience.visibleModules, gx.body.experience.visibleModules);
     assert.ok(!experience.body.experience.visibleModules.includes("legalDisclaimer"));
     assert.equal(providers.status, 200);
     assert.equal(providers.body.items[0].id, "provider-ai-business-demo");
