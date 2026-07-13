@@ -135,11 +135,20 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
         jsonrpc: "2.0",
         id: 2,
         method: "tools/call",
-        params: { name: "provider.search", arguments: { category: "beauty", theme: "カラー" } },
+        params: { name: "provider.search", arguments: { category: "beauty", theme: "カラー", sort: "name_asc", limit: 1 } },
       }),
     });
     assert.equal(search.status, 200);
-    assert.equal(search.body.result.structuredContent[0].name, "CMS-OS美容室（サンプル）");
+    assert.equal(search.body.result.structuredContent.items[0].name, "CMS-OS美容室（サンプル）");
+    assert.equal(search.body.result.structuredContent.page.limit, 1);
+
+    const filteredProviders = await request("/api/v1/providers?category=beauty&theme=%E3%82%AB%E3%83%A9%E3%83%BC&sort=name_asc&limit=1");
+    assert.equal(filteredProviders.status, 200);
+    assert.equal(filteredProviders.body.page.limit, 1);
+    assert.equal(filteredProviders.body.items.length, 1);
+    assert.ok(filteredProviders.body.items[0].themes.includes("カラー"));
+    const invalidProviderSort = await request("/api/v1/providers?category=beauty&sort=unknown");
+    assert.equal(invalidProviderSort.status, 400);
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "request.create"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "request.update_status"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "inquiry.create"));
@@ -229,6 +238,17 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(mcpRequests.body.result.structuredContent.page.limit, 1);
 
+    const filteredRequests = await request("/api/v1/requests?status=submitted&sort=createdAt_asc&limit=1", {
+      headers: { authorization: `Bearer ${ordererLogin.body.accessToken}` },
+    });
+    assert.equal(filteredRequests.status, 200);
+    assert.equal(filteredRequests.body.page.limit, 1);
+    assert.ok(filteredRequests.body.items.every((item: { status: string }) => item.status === "submitted"));
+    const invalidRequestLimit = await request("/api/v1/requests?limit=101", {
+      headers: { authorization: `Bearer ${ordererLogin.body.accessToken}` },
+    });
+    assert.equal(invalidRequestLimit.status, 400);
+
     const userLogin = await request("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({ email: "user@example.com", password: "demo-password", category: "legal", role: "user" }),
@@ -299,6 +319,11 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(mcpJobs.body.result.structuredContent.page.limit, 1);
 
+    const filteredJobs = await request("/api/v1/jobs?category=legal&location=%E6%9D%B1%E4%BA%AC&sort=location_asc&limit=1");
+    assert.equal(filteredJobs.status, 200);
+    assert.equal(filteredJobs.body.page.limit, 1);
+    assert.ok(filteredJobs.body.items.every((item: { location: string }) => item.location.includes("東京")));
+
     const candidateLogin = await request("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({ email: "candidate@example.com", password: "demo-password", category: "legal", role: "candidate" }),
@@ -320,6 +345,12 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(providerApplications.status, 200);
     assert.equal(providerApplications.body.page.limit, 50);
     assert.equal(providerApplications.body.items[0].jobId, "job-legal-demo");
+    const filteredApplications = await request("/api/v1/applications?jobId=job-legal-demo&status=submitted&sort=createdAt_asc&limit=1", {
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+    });
+    assert.equal(filteredApplications.status, 200);
+    assert.equal(filteredApplications.body.page.limit, 1);
+    assert.ok(filteredApplications.body.items.every((item: { status: string }) => item.status === "submitted"));
     const applicationNotifications = await request("/api/v1/notifications?limit=10", {
       headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
     });
@@ -343,7 +374,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
         jsonrpc: "2.0",
         id: 9,
         method: "tools/call",
-        params: { name: "application.list", arguments: { limit: 1 } },
+        params: { name: "application.list", arguments: { status: "screening", sort: "status", limit: 1 } },
       }),
     });
     assert.equal(mcpApplications.body.result.structuredContent.page.limit, 1);

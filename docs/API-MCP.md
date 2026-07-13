@@ -69,6 +69,7 @@ POST /api/v1/content/{contentId}/approve
 POST /api/v1/publications/build
 POST /api/v1/publications/deploy
 POST /api/v1/publications/publish
+GET  /api/v1/providers?category=legal&limit=50&cursor=0
 GET  /api/v1/providers/{providerId}
 PATCH /api/v1/providers/{providerId}
 POST /api/v1/providers/{providerId}/listing-submission
@@ -102,6 +103,19 @@ PATCH /api/v1/jobs/{jobId}
 運営審査キューは `GET /api/v1/provider-listing-reviews` または `provider.listing_review_queue` で取得します。`category`、`status`、`limit`、`cursor` で絞り込み・ページングできます。審査キューと掲載審査更新は、ログインロールではなく運営キーで保護します。
 
 依頼、求人、応募の一覧も `limit`（1〜100）と `cursor` による共通ページ形式 `{ items, page }` を返します。MCPでは `request.list`、`job.search`、`application.list` に同じ引数を渡します。依頼作成・状態変更、応募作成・状態変更も通知を作成し、対象の発注者、事業者、リクルーターへ投影します。
+
+## ポータル一覧の検索・ソート・フィルター
+
+一覧系のRESTとMCPは、ページングと検索条件を同じドメインサービスで処理します。指定した条件はすべてAND条件で組み合わせます。`limit` は1〜100、`cursor` は次ページの開始位置です。
+
+| 一覧 | 検索・フィルター | `sort` |
+|---|---|---|
+| `provider.search` / `GET /api/v1/providers` | `search`、`theme`、`location` | `relevance`、`name_asc`、`location_asc` |
+| `request.list` / `GET /api/v1/requests` | `search`、`status` | `createdAt_desc`、`createdAt_asc`、`title_asc` |
+| `job.search` / `GET /api/v1/jobs` | `search`、`employmentType`、`location`、`status` | `title_asc`、`title_desc`、`location_asc` |
+| `application.list` / `GET /api/v1/applications` | `search`、`jobId`、`status` | `createdAt_desc`、`createdAt_asc`、`status` |
+
+RESTの応答は `{ items, page }`、MCPの`structuredContent`も同じ形式です。認証が必要な一覧では、フィルター適用前にロール・カテゴリ・本人所有のアクセス制御を行い、他カテゴリや他ユーザーのデータが検索条件で露出しないようにします。
 
 ## MCP方針
 

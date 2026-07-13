@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { URL } from "node:url";
 import { AuthServiceError, type AuthService } from "../domain/auth.js";
 import { getCategoryPolicy } from "../domain/catalog.js";
-import { PortalService, PortalServiceError } from "../application/portal-service.js";
+import { applicationSortValues, jobSortValues, PortalService, PortalServiceError, providerSortValues, requestSortValues } from "../application/portal-service.js";
 import {
   ContentService,
   ContentServiceError,
@@ -183,6 +183,23 @@ function parsePaginationArguments(argumentsObject: Record<string, unknown>): { l
   return { limit, cursor };
 }
 
+function parseOptionalStringValue(value: unknown, fieldName: string): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") throw new Error(`${fieldName}は文字列で指定してください。`);
+  return value.trim() || undefined;
+}
+
+function parseOptionalEnumValue<T extends string>(value: unknown, fieldName: string, allowed: readonly T[]): T | undefined {
+  const normalized = parseOptionalStringValue(value, fieldName);
+  if (normalized === undefined) return undefined;
+  if (!allowed.includes(normalized as T)) throw new Error(`${fieldName}の指定値が不正です。`);
+  return normalized as T;
+}
+
+function parseQueryString(url: URL, fieldName: string): string | undefined {
+  return parseOptionalStringValue(url.searchParams.get(fieldName), fieldName);
+}
+
 function serviceErrorStatus(error: unknown): number {
   return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError ? error.statusCode : 400;
 }
@@ -264,6 +281,9 @@ async function handleMcp(
                 search: { type: "string" },
                 theme: { type: "string" },
                 location: { type: "string" },
+                sort: { enum: [...providerSortValues] },
+                limit: { type: "integer", minimum: 1, maximum: 100 },
+                cursor: { type: "integer", minimum: 0 },
               },
               required: ["category"],
             },
@@ -399,7 +419,7 @@ async function handleMcp(
           {
             name: "request.list",
             description: "発注者自身の依頼、または事業者に割り当てられた依頼を取得します。",
-            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
+            inputSchema: { type: "object", properties: { search: { type: "string" }, status: { enum: [...requestStatuses] }, sort: { enum: [...requestSortValues] }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
           },
           {
             name: "request.update_status",
@@ -438,7 +458,7 @@ async function handleMcp(
           {
             name: "job.search",
             description: "カテゴリ別の公開求人を検索します。",
-            inputSchema: { type: "object", properties: { category: { enum: categoryEnum }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: ["category"] },
+            inputSchema: { type: "object", properties: { category: { enum: categoryEnum }, search: { type: "string" }, employmentType: { type: "string" }, location: { type: "string" }, status: { enum: [...jobStatuses] }, sort: { enum: [...jobSortValues] }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: ["category"] },
           },
           {
             name: "job.create",
@@ -484,7 +504,7 @@ async function handleMcp(
           {
             name: "application.list",
             description: "リクルーター本人、または事業者自身の求人への応募一覧を取得します。",
-            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
+            inputSchema: { type: "object", properties: { search: { type: "string" }, jobId: { type: "string" }, status: { enum: [...applicationStatuses] }, sort: { enum: [...applicationSortValues] }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
           },
           {
             name: "application.update_status",
@@ -693,11 +713,12 @@ async function handleMcp(
 
     if (name === "provider.search") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
-      const result = portal.searchProviders(argumentsObject.category, principal, {
-        search: typeof argumentsObject.search === "string" ? argumentsObject.search : undefined,
-        theme: typeof argumentsObject.theme === "string" ? argumentsObject.theme : undefined,
-        location: typeof argumentsObject.location === "string" ? argumentsObject.location : undefined,
-      });
+      const result = portal.searchProvidersPage(argumentsObject.category, principal, {
+        search: parseOptionalStringValue(argumentsObject.search, "search"),
+        theme: parseOptionalStringValue(argumentsObject.theme, "theme"),
+        location: parseOptionalStringValue(argumentsObject.location, "location"),
+        sort: parseOptionalEnumValue(argumentsObject.sort, "sort", providerSortValues),
+      }, parsePaginationArguments(argumentsObject));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -827,7 +848,11 @@ async function handleMcp(
     }
 
     if (name === "request.list") {
-      const result = portal.listRequestsPage(principal, parsePaginationArguments(argumentsObject));
+      const result = portal.listRequestsPage(principal, parsePaginationArguments(argumentsObject), {
+        search: parseOptionalStringValue(argumentsObject.search, "search"),
+        status: parseOptionalEnumValue(argumentsObject.status, "status", requestStatuses),
+        sort: parseOptionalEnumValue(argumentsObject.sort, "sort", requestSortValues),
+      });
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -887,7 +912,13 @@ async function handleMcp(
 
     if (name === "job.search") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
-      const result = portal.listJobsPage(argumentsObject.category, principal, parsePaginationArguments(argumentsObject));
+      const result = portal.listJobsPage(argumentsObject.category, principal, parsePaginationArguments(argumentsObject), {
+        search: parseOptionalStringValue(argumentsObject.search, "search"),
+        employmentType: parseOptionalStringValue(argumentsObject.employmentType, "employmentType"),
+        location: parseOptionalStringValue(argumentsObject.location, "location"),
+        status: parseOptionalEnumValue(argumentsObject.status, "status", jobStatuses),
+        sort: parseOptionalEnumValue(argumentsObject.sort, "sort", jobSortValues),
+      });
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -937,7 +968,12 @@ async function handleMcp(
     }
 
     if (name === "application.list") {
-      const result = portal.listApplicationsPage(principal, parsePaginationArguments(argumentsObject));
+      const result = portal.listApplicationsPage(principal, parsePaginationArguments(argumentsObject), {
+        search: parseOptionalStringValue(argumentsObject.search, "search"),
+        jobId: parseOptionalStringValue(argumentsObject.jobId, "jobId"),
+        status: parseOptionalEnumValue(argumentsObject.status, "status", applicationStatuses),
+        sort: parseOptionalEnumValue(argumentsObject.sort, "sort", applicationSortValues),
+      });
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1256,13 +1292,18 @@ export function createHttpServer(
           writeJson(response, 400, { error: "categoryが有効なカテゴリである必要があります。" });
           return;
         }
-        writeJson(response, 200, {
-          items: portal.searchProviders(category, principal, {
-            search: url.searchParams.get("search") ?? undefined,
-            theme: url.searchParams.get("theme") ?? undefined,
-            location: url.searchParams.get("location") ?? undefined,
-          }),
-        });
+        try {
+          writeJson(response, 200, {
+            ...portal.searchProvidersPage(category, principal, {
+              search: parseQueryString(url, "search"),
+              theme: parseQueryString(url, "theme"),
+              location: parseQueryString(url, "location"),
+              sort: parseOptionalEnumValue(url.searchParams.get("sort"), "sort", providerSortValues),
+            }, parsePaginationQuery(url)),
+          });
+        } catch (error) {
+          writeJson(response, 400, { error: error instanceof Error ? error.message : "事業者を取得できません。" });
+        }
         return;
       }
 
@@ -1656,7 +1697,13 @@ export function createHttpServer(
 
       if (request.method === "GET" && url.pathname === "/api/v1/requests") {
         try {
-          writeJson(response, 200, { ...portal.listRequestsPage(principal, parsePaginationQuery(url)) });
+          writeJson(response, 200, {
+            ...portal.listRequestsPage(principal, parsePaginationQuery(url), {
+              search: parseQueryString(url, "search"),
+              status: parseOptionalEnumValue(url.searchParams.get("status"), "status", requestStatuses),
+              sort: parseOptionalEnumValue(url.searchParams.get("sort"), "sort", requestSortValues),
+            }),
+          });
         } catch (error) {
           const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
           writeJson(response, statusCode, { error: error instanceof Error ? error.message : "依頼を取得できません。" });
@@ -1801,7 +1848,15 @@ export function createHttpServer(
           return;
         }
         try {
-          writeJson(response, 200, { ...portal.listJobsPage(category, principal, parsePaginationQuery(url)) });
+          writeJson(response, 200, {
+            ...portal.listJobsPage(category, principal, parsePaginationQuery(url), {
+              search: parseQueryString(url, "search"),
+              employmentType: parseQueryString(url, "employmentType"),
+              location: parseQueryString(url, "location"),
+              status: parseOptionalEnumValue(url.searchParams.get("status"), "status", jobStatuses),
+              sort: parseOptionalEnumValue(url.searchParams.get("sort"), "sort", jobSortValues),
+            }),
+          });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "求人を取得できません。" });
         }
@@ -1880,7 +1935,14 @@ export function createHttpServer(
 
       if (request.method === "GET" && url.pathname === "/api/v1/applications") {
         try {
-          writeJson(response, 200, { ...portal.listApplicationsPage(principal, parsePaginationQuery(url)) });
+          writeJson(response, 200, {
+            ...portal.listApplicationsPage(principal, parsePaginationQuery(url), {
+              search: parseQueryString(url, "search"),
+              jobId: parseQueryString(url, "jobId"),
+              status: parseOptionalEnumValue(url.searchParams.get("status"), "status", applicationStatuses),
+              sort: parseOptionalEnumValue(url.searchParams.get("sort"), "sort", applicationSortValues),
+            }),
+          });
         } catch (error) {
           const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
           writeJson(response, statusCode, { error: error instanceof Error ? error.message : "応募情報を取得できません。" });

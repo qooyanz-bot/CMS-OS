@@ -75,6 +75,18 @@ describe("CMS-OS OpenAPI契約", () => {
     const jobPath = specification.paths["/api/v1/jobs/{jobId}"];
     assert.ok(jobPath);
     assert.ok(jobPath.patch);
+    const listQueryParameters: Record<string, string[]> = {
+      "/api/v1/providers": ["search", "theme", "location", "sort", "limit", "cursor"],
+      "/api/v1/requests": ["search", "status", "sort", "limit", "cursor"],
+      "/api/v1/jobs": ["search", "employmentType", "location", "status", "sort", "limit", "cursor"],
+      "/api/v1/applications": ["search", "jobId", "status", "sort", "limit", "cursor"],
+    };
+    for (const [path, expectedParameters] of Object.entries(listQueryParameters)) {
+      const operation = specification.paths[path]?.get as { parameters?: Array<{ name?: string }> } | undefined;
+      assert.ok(operation);
+      const names = new Set((operation.parameters ?? []).map((parameter) => parameter.name).filter((name): name is string => Boolean(name)));
+      for (const parameter of expectedParameters) assert.ok(names.has(parameter), `${path}に${parameter}クエリがありません`);
+    }
     for (const path of ["/api/v1/categories/{category}/experience", "/api/v1/providers", "/api/v1/jobs", "/mcp"]) {
       const pathItem = specification.paths[path] ?? {};
       const operation = (pathItem.get ?? Object.values(pathItem)[0]) as { security?: unknown };

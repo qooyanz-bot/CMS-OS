@@ -21,9 +21,42 @@ import type {
   ServiceRequest,
   VisibleProvider,
 } from "../domain/types.js";
-import { jobStatuses } from "../domain/types.js";
+import { applicationStatuses, jobStatuses, requestStatuses } from "../domain/types.js";
 
 export type ProviderUpdateInput = Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "publicFields">>;
+
+export const providerSortValues = ["relevance", "name_asc", "location_asc"] as const;
+export const requestSortValues = ["createdAt_desc", "createdAt_asc", "title_asc"] as const;
+export const jobSortValues = ["title_asc", "title_desc", "location_asc"] as const;
+export const applicationSortValues = ["createdAt_desc", "createdAt_asc", "status"] as const;
+
+export type ProviderSearchFilters = {
+  search?: string | undefined;
+  theme?: string | undefined;
+  location?: string | undefined;
+  sort?: (typeof providerSortValues)[number] | undefined;
+};
+
+export type RequestListFilters = {
+  search?: string | undefined;
+  status?: (typeof requestStatuses)[number] | undefined;
+  sort?: (typeof requestSortValues)[number] | undefined;
+};
+
+export type JobListFilters = {
+  search?: string | undefined;
+  employmentType?: string | undefined;
+  location?: string | undefined;
+  status?: (typeof jobStatuses)[number] | undefined;
+  sort?: (typeof jobSortValues)[number] | undefined;
+};
+
+export type ApplicationListFilters = {
+  search?: string | undefined;
+  jobId?: string | undefined;
+  status?: (typeof applicationStatuses)[number] | undefined;
+  sort?: (typeof applicationSortValues)[number] | undefined;
+};
 
 export interface PortalPage<T> {
   items: T[];
@@ -55,6 +88,24 @@ const protectedPublicFieldKeys = new Set([
   "constructor",
   "prototype",
 ]);
+
+const jaCollator = new Intl.Collator("ja-JP", { numeric: true, sensitivity: "base" });
+
+function compareText(left: string, right: string): number {
+  return jaCollator.compare(left, right);
+}
+
+function normalizeFilterText(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLocaleLowerCase("ja-JP");
+  return normalized || undefined;
+}
+
+function assertAllowedFilter<T extends string>(value: T | undefined, allowed: readonly T[], fieldName: string): T | undefined {
+  if (value !== undefined && !allowed.includes(value)) {
+    throw new PortalServiceError(400, `${fieldName}の指定値が不正です。`);
+  }
+  return value;
+}
 
 function validatePublicFields(fields: Record<string, string | string[]>): void {
   const entries = Object.entries(fields);
@@ -126,14 +177,15 @@ export class PortalService {
   public searchProviders(
     category: CategorySlug,
     principal: AuthenticatedPrincipal | null,
-    filters: { search?: string | undefined; theme?: string | undefined; location?: string | undefined },
+    filters: ProviderSearchFilters = {},
   ): VisibleProvider[] {
     const role = principal?.category === category ? principal.role : "user";
-    const normalizedSearch = filters.search?.trim().toLocaleLowerCase("ja-JP");
-    const normalizedTheme = filters.theme?.trim().toLocaleLowerCase("ja-JP");
-    const normalizedLocation = filters.location?.trim().toLocaleLowerCase("ja-JP");
+    const normalizedSearch = normalizeFilterText(filters.search);
+    const normalizedTheme = normalizeFilterText(filters.theme);
+    const normalizedLocation = normalizeFilterText(filters.location);
+    const sort = assertAllowedFilter(filters.sort, providerSortValues, "sort") ?? "relevance";
 
-    return this.store.listProviders(category)
+    const providers = this.store.listProviders(category)
       .filter((provider) => {
         const ownProvider = principal?.role === "provider" && principal.providerId === provider.id;
         if (!isPublicProvider(provider) && !ownProvider) return false;
@@ -141,8 +193,33 @@ export class PortalService {
         const themeMatches = !normalizedTheme || provider.themes.some((theme) => theme.toLocaleLowerCase("ja-JP") === normalizedTheme);
         const locationMatches = !normalizedLocation || provider.location.toLocaleLowerCase("ja-JP").includes(normalizedLocation);
         return (!normalizedSearch || searchable.includes(normalizedSearch)) && themeMatches && locationMatches;
-      })
+      });
+
+    if (sort === "name_asc") providers.sort((left, right) => compareText(left.name, right.name));
+    if (sort === "location_asc") providers.sort((left, right) => compareText(left.location, right.location) || compareText(left.name, right.name));
+    if (sort === "relevance" && normalizedSearch) {
+      const score = (provider: ProviderRecord): number => {
+        const normalizedName = provider.name.toLocaleLowerCase("ja-JP");
+        const normalizedProviderLocation = provider.location.toLocaleLowerCase("ja-JP");
+        const normalizedThemes = provider.themes.map((theme) => theme.toLocaleLowerCase("ja-JP"));
+        return (normalizedName === normalizedSearch ? 5 : normalizedName.includes(normalizedSearch) ? 3 : 0)
+          + (normalizedThemes.some((theme) => theme === normalizedSearch) ? 4 : normalizedThemes.some((theme) => theme.includes(normalizedSearch)) ? 2 : 0)
+          + (normalizedProviderLocation.includes(normalizedSearch) ? 1 : 0);
+      };
+      providers.sort((left, right) => score(right) - score(left) || compareText(left.name, right.name));
+    }
+
+    return providers
       .map((provider) => projectProvider(provider, role, principal?.providerId));
+  }
+
+  public searchProvidersPage(
+    category: CategorySlug,
+    principal: AuthenticatedPrincipal | null,
+    filters: ProviderSearchFilters = {},
+    pagination: { limit?: number; cursor?: number } = {},
+  ): PortalPage<VisibleProvider> {
+    return this.paginate(this.searchProviders(category, principal, filters), pagination.limit ?? 50, pagination.cursor ?? 0);
   }
 
   public assertAction(principal: AuthenticatedPrincipal | null, category: CategorySlug, action: string): void {
@@ -306,24 +383,35 @@ export class PortalService {
     return request;
   }
 
-  public listRequests(principal: AuthenticatedPrincipal | null): ServiceRequest[] {
+  public listRequests(principal: AuthenticatedPrincipal | null, filters: RequestListFilters = {}): ServiceRequest[] {
     if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
     if (principal.role !== "orderer" && principal.role !== "provider") {
       throw new PortalServiceError(403, "発注者または事業者だけが依頼を確認できます。");
     }
 
-    return this.store.listRequests(principal.category).filter((request) =>
+    const normalizedSearch = normalizeFilterText(filters.search);
+    const status = assertAllowedFilter(filters.status, requestStatuses, "status");
+    const sort = assertAllowedFilter(filters.sort, requestSortValues, "sort") ?? "createdAt_desc";
+    const requests = this.store.listRequests(principal.category).filter((request) =>
       principal.role === "orderer"
         ? request.ordererId === principal.accountId
         : request.providerId === principal.providerId,
-    );
+    ).filter((request) => {
+      const searchable = `${request.title} ${request.description}`.toLocaleLowerCase("ja-JP");
+      return (!status || request.status === status) && (!normalizedSearch || searchable.includes(normalizedSearch));
+    });
+    if (sort === "createdAt_desc") requests.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    if (sort === "createdAt_asc") requests.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    if (sort === "title_asc") requests.sort((left, right) => compareText(left.title, right.title) || right.createdAt.localeCompare(left.createdAt));
+    return requests;
   }
 
   public listRequestsPage(
     principal: AuthenticatedPrincipal | null,
     pagination: { limit?: number; cursor?: number } = {},
+    filters: RequestListFilters = {},
   ): PortalPage<ServiceRequest> {
-    return this.paginate(this.listRequests(principal), pagination.limit ?? 50, pagination.cursor ?? 0);
+    return this.paginate(this.listRequests(principal, filters), pagination.limit ?? 50, pagination.cursor ?? 0);
   }
 
   public updateRequestStatus(
@@ -492,11 +580,26 @@ export class PortalService {
     return this.paginate(providers, pagination.limit ?? 50, pagination.cursor ?? 0);
   }
 
-  public listJobs(category: CategorySlug, principal: AuthenticatedPrincipal | null): JobPosting[] {
+  public listJobs(category: CategorySlug, principal: AuthenticatedPrincipal | null, filters: JobListFilters = {}): JobPosting[] {
     const jobs = principal?.role === "provider" && principal.category === category && principal.providerId
       ? this.store.listJobsForProvider(category, principal.providerId)
       : this.store.listJobs(category);
-    return jobs.map((job) => {
+    const normalizedSearch = normalizeFilterText(filters.search);
+    const normalizedEmploymentType = normalizeFilterText(filters.employmentType);
+    const normalizedLocation = normalizeFilterText(filters.location);
+    const status = assertAllowedFilter(filters.status, jobStatuses, "status");
+    const sort = assertAllowedFilter(filters.sort, jobSortValues, "sort") ?? "title_asc";
+    const filteredJobs = jobs.filter((job) => {
+      const searchable = `${job.title} ${job.description}`.toLocaleLowerCase("ja-JP");
+      return (!normalizedSearch || searchable.includes(normalizedSearch))
+        && (!normalizedEmploymentType || job.employmentType.toLocaleLowerCase("ja-JP").includes(normalizedEmploymentType))
+        && (!normalizedLocation || job.location.toLocaleLowerCase("ja-JP").includes(normalizedLocation))
+        && (!status || job.status === status);
+    });
+    if (sort === "title_asc") filteredJobs.sort((left, right) => compareText(left.title, right.title) || compareText(left.location, right.location));
+    if (sort === "title_desc") filteredJobs.sort((left, right) => compareText(right.title, left.title) || compareText(left.location, right.location));
+    if (sort === "location_asc") filteredJobs.sort((left, right) => compareText(left.location, right.location) || compareText(left.title, right.title));
+    return filteredJobs.map((job) => {
       if (principal?.role === "provider" && principal.category === category && principal.providerId === job.providerId) return job;
       return {
         ...job,
@@ -509,8 +612,9 @@ export class PortalService {
     category: CategorySlug,
     principal: AuthenticatedPrincipal | null,
     pagination: { limit?: number; cursor?: number } = {},
+    filters: JobListFilters = {},
   ): PortalPage<JobPosting> {
-    return this.paginate(this.listJobs(category, principal), pagination.limit ?? 50, pagination.cursor ?? 0);
+    return this.paginate(this.listJobs(category, principal, filters), pagination.limit ?? 50, pagination.cursor ?? 0);
   }
 
   public createJob(
@@ -626,24 +730,39 @@ export class PortalService {
     return application;
   }
 
-  public listApplications(principal: AuthenticatedPrincipal | null): JobApplication[] {
+  public listApplications(principal: AuthenticatedPrincipal | null, filters: ApplicationListFilters = {}): JobApplication[] {
     if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
     if (principal.role !== "candidate" && principal.role !== "provider") {
       throw new PortalServiceError(403, "リクルーターまたは事業者だけが応募情報を確認できます。");
     }
 
-    return this.store.listApplications(principal.category).filter((application) =>
+    const normalizedSearch = normalizeFilterText(filters.search);
+    const normalizedJobId = normalizeFilterText(filters.jobId);
+    const status = assertAllowedFilter(filters.status, applicationStatuses, "status");
+    const sort = assertAllowedFilter(filters.sort, applicationSortValues, "sort") ?? "createdAt_desc";
+    const applications = this.store.listApplications(principal.category).filter((application) =>
       principal.role === "candidate"
         ? application.candidateId === principal.accountId
         : application.providerId === principal.providerId,
-    );
+    ).filter((application) => {
+      const job = this.store.getJob(application.jobId);
+      const searchable = `${application.message} ${application.jobId} ${job?.title ?? ""}`.toLocaleLowerCase("ja-JP");
+      return (!status || application.status === status)
+        && (!normalizedJobId || application.jobId.toLocaleLowerCase("ja-JP") === normalizedJobId)
+        && (!normalizedSearch || searchable.includes(normalizedSearch));
+    });
+    if (sort === "createdAt_desc") applications.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    if (sort === "createdAt_asc") applications.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    if (sort === "status") applications.sort((left, right) => compareText(left.status, right.status) || right.createdAt.localeCompare(left.createdAt));
+    return applications;
   }
 
   public listApplicationsPage(
     principal: AuthenticatedPrincipal | null,
     pagination: { limit?: number; cursor?: number } = {},
+    filters: ApplicationListFilters = {},
   ): PortalPage<JobApplication> {
-    return this.paginate(this.listApplications(principal), pagination.limit ?? 50, pagination.cursor ?? 0);
+    return this.paginate(this.listApplications(principal, filters), pagination.limit ?? 50, pagination.cursor ?? 0);
   }
 
   public updateApplicationStatus(
