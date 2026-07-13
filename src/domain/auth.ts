@@ -1,5 +1,6 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { Account, AuthenticatedPrincipal, CategorySlug, PortalRole } from "./types.js";
+import type { JsonStateStore } from "../infrastructure/json-state-store.js";
 
 interface Session {
   tokenHash: string;
@@ -40,47 +41,58 @@ export class InMemoryAuthService {
   private readonly accounts = new Map<string, Account>();
   private readonly sessions = new Map<string, Session>();
 
-  public constructor() {
-    const passwordHash = createPasswordHash("demo-password");
-    const allCategories = { role: "user" as const, category: "*" as const };
+  public constructor(private readonly stateStore?: JsonStateStore) {
+    const storedAccounts = stateStore?.load<Account[]>("auth-accounts.json", []) ?? [];
+    if (storedAccounts.length > 0) {
+      storedAccounts.forEach((account) => this.addAccount(account));
+    } else {
+      const passwordHash = createPasswordHash("demo-password");
+      const allCategories = { role: "user" as const, category: "*" as const };
 
-    this.addAccount({
-      id: "account-user-demo",
-      email: "user@example.com",
-      passwordHash,
-      displayName: "一般ユーザー（サンプル）",
-      assignments: [allCategories],
-    });
-    this.addAccount({
-      id: "account-orderer-demo",
-      email: "orderer@example.com",
-      passwordHash,
-      displayName: "発注者（サンプル）",
-      assignments: [allCategories, { role: "orderer", category: "legal" }, { role: "orderer", category: "beauty" }],
-    });
-    this.addAccount({
-      id: "account-legal-provider-demo",
-      email: "lawyer@example.com",
-      passwordHash,
-      displayName: "士業事業者（サンプル）",
-      providerId: "provider-legal-demo",
-      assignments: [allCategories, { role: "provider", category: "legal" }],
-    });
-    this.addAccount({
-      id: "account-beauty-provider-demo",
-      email: "beauty@example.com",
-      passwordHash,
-      displayName: "美容事業者（サンプル）",
-      providerId: "provider-beauty-demo",
-      assignments: [allCategories, { role: "provider", category: "beauty" }],
-    });
-    this.addAccount({
-      id: "account-candidate-demo",
-      email: "candidate@example.com",
-      passwordHash,
-      displayName: "リクルーター（サンプル）",
-      assignments: [allCategories, { role: "candidate", category: "legal" }, { role: "candidate", category: "beauty" }],
-    });
+      this.addAccount({
+        id: "account-user-demo",
+        email: "user@example.com",
+        passwordHash,
+        displayName: "一般ユーザー（サンプル）",
+        assignments: [allCategories],
+      });
+      this.addAccount({
+        id: "account-orderer-demo",
+        email: "orderer@example.com",
+        passwordHash,
+        displayName: "発注者（サンプル）",
+        assignments: [allCategories, { role: "orderer", category: "legal" }, { role: "orderer", category: "beauty" }],
+      });
+      this.addAccount({
+        id: "account-legal-provider-demo",
+        email: "lawyer@example.com",
+        passwordHash,
+        displayName: "士業事業者（サンプル）",
+        providerId: "provider-legal-demo",
+        assignments: [allCategories, { role: "provider", category: "legal" }],
+      });
+      this.addAccount({
+        id: "account-beauty-provider-demo",
+        email: "beauty@example.com",
+        passwordHash,
+        displayName: "美容事業者（サンプル）",
+        providerId: "provider-beauty-demo",
+        assignments: [allCategories, { role: "provider", category: "beauty" }],
+      });
+      this.addAccount({
+        id: "account-candidate-demo",
+        email: "candidate@example.com",
+        passwordHash,
+        displayName: "リクルーター（サンプル）",
+        assignments: [allCategories, { role: "candidate", category: "legal" }, { role: "candidate", category: "beauty" }],
+      });
+      this.persistAccounts();
+    }
+
+    const sessions = stateStore?.load<Session[]>("auth-sessions.json", []) ?? [];
+    for (const session of sessions) {
+      if (session.expiresAt > Date.now() && this.accounts.has(session.accountId)) this.sessions.set(session.tokenHash, session);
+    }
   }
 
   private addAccount(account: Account): void {
@@ -104,6 +116,7 @@ export class InMemoryAuthService {
       role,
       expiresAt,
     });
+    this.persistSessions();
 
     return {
       accessToken,
@@ -117,7 +130,10 @@ export class InMemoryAuthService {
 
     const session = this.sessions.get(hashToken(accessToken));
     if (!session || session.expiresAt <= Date.now()) {
-      if (session) this.sessions.delete(session.tokenHash);
+      if (session) {
+        this.sessions.delete(session.tokenHash);
+        this.persistSessions();
+      }
       return null;
     }
 
@@ -138,11 +154,23 @@ export class InMemoryAuthService {
 
     session.category = category;
     session.role = role;
+    this.persistSessions();
     return this.toPrincipal(account, category, role);
   }
 
   public logout(accessToken: string | undefined): void {
-    if (accessToken) this.sessions.delete(hashToken(accessToken));
+    if (accessToken) {
+      this.sessions.delete(hashToken(accessToken));
+      this.persistSessions();
+    }
+  }
+
+  private persistAccounts(): void {
+    this.stateStore?.save("auth-accounts.json", [...this.accounts.values()]);
+  }
+
+  private persistSessions(): void {
+    this.stateStore?.save("auth-sessions.json", [...this.sessions.values()]);
   }
 
   private toPrincipal(account: Account, category: CategorySlug, role: PortalRole): AuthenticatedPrincipal {

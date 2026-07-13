@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { ContentProposal, ContentRecord } from "./types.js";
+import type { JsonStateStore } from "../infrastructure/json-state-store.js";
 
 export class ContentStore {
-  private readonly proposals: ContentProposal[] = [];
-  private readonly contents: ContentRecord[] = [];
+  private readonly proposals: ContentProposal[];
+  private readonly contents: ContentRecord[];
+
+  public constructor(private readonly stateStore?: JsonStateStore) {
+    this.proposals = stateStore?.load<ContentProposal[]>("content-proposals.json", []) ?? [];
+    this.contents = stateStore?.load<ContentRecord[]>("content-records.json", []) ?? [];
+  }
 
   public createProposal(input: Omit<ContentProposal, "id" | "createdAt">): ContentProposal {
     const proposal: ContentProposal = {
@@ -12,6 +18,7 @@ export class ContentStore {
       createdAt: new Date().toISOString(),
     };
     this.proposals.push(proposal);
+    this.stateStore?.save("content-proposals.json", this.proposals);
     return proposal;
   }
 
@@ -33,6 +40,7 @@ export class ContentStore {
       updatedAt: now,
     };
     this.contents.push(content);
+    this.stateStore?.save("content-records.json", this.contents);
     return content;
   }
 
@@ -48,6 +56,7 @@ export class ContentStore {
     const content = this.getContent(contentId);
     if (!content) return undefined;
     Object.assign(content, patch, { version: content.version + 1, updatedAt: new Date().toISOString() });
+    this.stateStore?.save("content-records.json", this.contents);
     return content;
   }
 }
