@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS cms_contents (
   body TEXT NOT NULL,
   seo JSONB NOT NULL DEFAULT '{}'::jsonb,
   source_facts JSONB NOT NULL DEFAULT '[]'::jsonb,
-  status TEXT NOT NULL CHECK (status IN ('proposed', 'drafted', 'polished', 'seo_reviewed', 'approved', 'published')),
+  status TEXT NOT NULL CHECK (status IN ('proposed', 'drafted', 'polished', 'seo_reviewed', 'approved', 'published', 'archived')),
   version INTEGER NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { PortalService } from "./portal-service.js";
 import { ContentStore } from "../domain/content-store.js";
 import {
@@ -9,6 +10,7 @@ import {
   type ContentJsonLdType,
   type ContentProposal,
   type ContentRecord,
+  type ContentSeo,
   type ContentType,
   type SeoAuditResult,
 } from "../domain/types.js";
@@ -187,6 +189,94 @@ export class ContentService {
     return content;
   }
 
+  public updateContent(
+    principal: AuthenticatedPrincipal | null,
+    contentId: string,
+    input: {
+      title?: string;
+      summary?: string;
+      body?: string;
+      seo?: Partial<ContentSeo>;
+      sourceFacts?: string[];
+    },
+  ): ContentRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.update");
+    if (content.status === "published") throw new ContentServiceError(409, "公開済みコンテンツは編集できません。複製して編集してください。");
+    if (content.status === "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツは復元してから編集してください。");
+
+    const patch: Partial<ContentRecord> = {};
+    if (input.title !== undefined) patch.title = this.normalizeEditableText(input.title, "title", 160);
+    if (input.summary !== undefined) patch.summary = this.normalizeEditableText(input.summary, "summary", 320);
+    if (input.body !== undefined) patch.body = this.normalizeEditableText(input.body, "body", 200_000);
+    if (input.sourceFacts !== undefined) patch.sourceFacts = trimList(input.sourceFacts);
+    if (input.seo !== undefined) {
+      const seo: ContentSeo = { ...content.seo, ...input.seo };
+      seo.title = this.normalizeEditableText(seo.title, "seo.title", 60);
+      seo.description = this.normalizeEditableText(seo.description, "seo.description", 160);
+      seo.ogTitle = this.normalizeEditableText(seo.ogTitle, "seo.ogTitle", 60);
+      seo.ogDescription = this.normalizeEditableText(seo.ogDescription, "seo.ogDescription", 160);
+      patch.seo = seo;
+    }
+    if (Object.keys(patch).length === 0) throw new ContentServiceError(400, "更新対象のフィールドを1つ以上指定してください。");
+    if (content.status === "seo_reviewed" || content.status === "approved") patch.status = "drafted";
+
+    const updated = this.store.updateContent(content.id, patch);
+    if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return updated;
+  }
+
+  public duplicateContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.duplicate");
+    if (content.status === "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツは複製できません。復元してから実行してください。");
+    const copySuffix = randomUUID().slice(0, 8);
+
+    return this.store.createContent({
+      category: content.category,
+      providerId: content.providerId,
+      contentType: content.contentType,
+      audience: content.audience,
+      title: `${content.title}（複製）`,
+      slug: `${content.slug}-copy-${copySuffix}`,
+      summary: content.summary,
+      body: content.body,
+      seo: { ...content.seo, canonicalPath: `${content.seo.canonicalPath}-copy-${copySuffix}` },
+      sourceFacts: [...content.sourceFacts],
+      proposalId: content.proposalId,
+      status: "drafted",
+    });
+  }
+
+  public archiveContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.archive");
+    if (content.status === "published") throw new ContentServiceError(409, "公開済みコンテンツは公開取消を確認してからアーカイブしてください。");
+    if (content.status === "archived") return content;
+    const archived = this.store.updateContent(content.id, { status: "archived" });
+    if (!archived) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return archived;
+  }
+
+  public restoreContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.restore");
+    if (content.status !== "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツだけを復元できます。");
+    const restored = this.store.updateContent(content.id, { status: "drafted" });
+    if (!restored) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return restored;
+  }
+
+  public markPublished(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "publication.publish");
+    if (content.status === "published") return content;
+    if (content.status !== "approved") throw new ContentServiceError(409, "承認済みコンテンツだけを公開できます。");
+    const published = this.store.updateContent(content.id, { status: "published" });
+    if (!published) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return published;
+  }
+
   public polishContent(principal: AuthenticatedPrincipal | null, contentId: string, instructions?: string): ContentRecord {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "content.polish");
@@ -270,6 +360,12 @@ export class ContentService {
     this.assertProvider(principal, proposal.category);
     if (proposal.providerId !== principal!.providerId) throw new ContentServiceError(404, "企画案が見つかりません。");
     return proposal;
+  }
+
+  private normalizeEditableText(value: string, fieldName: string, maxLength: number): string {
+    const normalized = value.trim();
+    if (!normalized) throw new ContentServiceError(400, `${fieldName}は空にできません。`);
+    return limit(normalized, maxLength);
   }
 
   private assertProvider(principal: AuthenticatedPrincipal | null, category: CategorySlug | undefined): void {

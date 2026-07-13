@@ -121,7 +121,7 @@ export type ContentType = (typeof contentTypes)[number];
 export const contentAudiences = ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] as const;
 export type ContentAudience = (typeof contentAudiences)[number];
 
-export type ContentWorkflowStatus = "proposed" | "drafted" | "polished" | "seo_reviewed" | "approved" | "published";
+export type ContentWorkflowStatus = "proposed" | "drafted" | "polished" | "seo_reviewed" | "approved" | "published" | "archived";
 export type ContentJsonLdType = "Organization" | "Article" | "BlogPosting" | "JobPosting" | "NewsArticle" | "FAQPage";
 
 export interface ContentProposal {

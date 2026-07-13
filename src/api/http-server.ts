@@ -13,7 +13,7 @@ import {
   parseOptionalStringArray,
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
-import { categorySlugs, type CategorySlug, type PortalRole } from "../domain/types.js";
+import { categorySlugs, type CategorySlug, type ContentSeo, type PortalRole } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -80,6 +80,38 @@ function isPortalRole(value: unknown): value is PortalRole {
 
 function mcpText(value: unknown): { type: "text"; text: string } {
   return { type: "text", text: JSON.stringify(value) };
+}
+
+function parseContentSeoPatch(value: unknown): Partial<ContentSeo> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("seoはオブジェクトで指定してください。");
+  const input = value as Record<string, unknown>;
+  const result: Partial<ContentSeo> = {};
+  const stringFields: Array<keyof Pick<ContentSeo, "title" | "description" | "canonicalPath" | "ogTitle" | "ogDescription">> = [
+    "title",
+    "description",
+    "canonicalPath",
+    "ogTitle",
+    "ogDescription",
+  ];
+  for (const field of stringFields) {
+    if (input[field] !== undefined) {
+      if (typeof input[field] !== "string") throw new Error(`seo.${field}は文字列で指定してください。`);
+      result[field] = input[field] as string;
+    }
+  }
+  if (input.keywords !== undefined) {
+    if (!Array.isArray(input.keywords) || input.keywords.some((item) => typeof item !== "string")) throw new Error("seo.keywordsは文字列配列で指定してください。");
+    result.keywords = input.keywords as string[];
+  }
+  if (input.faq !== undefined) {
+    if (!Array.isArray(input.faq) || input.faq.some((item) => !item || typeof item !== "object" || typeof (item as Record<string, unknown>).question !== "string" || typeof (item as Record<string, unknown>).answer !== "string")) {
+      throw new Error("seo.faqはquestionとanswerを持つ配列で指定してください。");
+    }
+    result.faq = (input.faq as Array<{ question: string; answer: string }>).map((item) => ({ question: item.question, answer: item.answer }));
+  }
+  if (Object.keys(result).length === 0) throw new Error("seoの更新対象を1つ以上指定してください。");
+  return result;
 }
 
 function serviceErrorStatus(error: unknown): number {
@@ -308,6 +340,37 @@ async function handleMcp(
             },
           },
           {
+            name: "content.update",
+            description: "事業者自身のコンテンツ本文、要約、SEO情報、確認済み情報を更新します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                contentId: { type: "string" },
+                title: { type: "string" },
+                summary: { type: "string" },
+                body: { type: "string" },
+                sourceFacts: { type: "array", items: { type: "string" } },
+                seo: { type: "object", additionalProperties: true },
+              },
+              required: ["contentId"],
+            },
+          },
+          {
+            name: "content.duplicate",
+            description: "事業者自身のコンテンツを新しい下書きとして複製します。",
+            inputSchema: { type: "object", properties: { contentId: { type: "string" } }, required: ["contentId"] },
+          },
+          {
+            name: "content.archive",
+            description: "事業者自身のコンテンツをアーカイブし、公開対象から外します。",
+            inputSchema: { type: "object", properties: { contentId: { type: "string" } }, required: ["contentId"] },
+          },
+          {
+            name: "content.restore",
+            description: "アーカイブ済みコンテンツを下書きとして復元します。",
+            inputSchema: { type: "object", properties: { contentId: { type: "string" } }, required: ["contentId"] },
+          },
+          {
             name: "content.polish",
             description: "事業者の下書きを清書し、読みやすさと表記を整えます。",
             inputSchema: {
@@ -358,6 +421,18 @@ async function handleMcp(
           {
             name: "publication.deploy",
             description: "承認済みコンテンツをBuilderOS Adapter経由でCloudflare Pagesへ公開します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                contentIds: { type: "array", items: { type: "string" } },
+                baseUrl: { type: "string" },
+              },
+              required: [],
+            },
+          },
+          {
+            name: "publication.publish",
+            description: "承認済みコンテンツをBuilderOS Adapter経由でCloudflare Pagesへ公開し、成功時に公開状態へ更新します。",
             inputSchema: {
               type: "object",
               properties: {
@@ -571,6 +646,42 @@ async function handleMcp(
       return;
     }
 
+    if (name === "content.update") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const seo = parseContentSeoPatch(argumentsObject.seo);
+      const sourceFacts = parseOptionalStringArray(argumentsObject.sourceFacts, "sourceFacts");
+      const result = content.updateContent(principal, argumentsObject.contentId, {
+        ...(typeof argumentsObject.title === "string" ? { title: argumentsObject.title } : {}),
+        ...(typeof argumentsObject.summary === "string" ? { summary: argumentsObject.summary } : {}),
+        ...(typeof argumentsObject.body === "string" ? { body: argumentsObject.body } : {}),
+        ...(seo ? { seo } : {}),
+        ...(sourceFacts ? { sourceFacts } : {}),
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.duplicate") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = content.duplicateContent(principal, argumentsObject.contentId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.archive") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = content.archiveContent(principal, argumentsObject.contentId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.restore") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = content.restoreContent(principal, argumentsObject.contentId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "content.polish") {
       if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
       const result = content.polishContent(principal, argumentsObject.contentId, typeof argumentsObject.instructions === "string" ? argumentsObject.instructions : undefined);
@@ -611,6 +722,16 @@ async function handleMcp(
 
     if (name === "publication.deploy") {
       const result = await publication.deploy(
+        principal,
+        parseOptionalStringArray(argumentsObject.contentIds, "contentIds"),
+        typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
+      );
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "publication.publish") {
+      const result = await publication.publish(
         principal,
         parseOptionalStringArray(argumentsObject.contentIds, "contentIds"),
         typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
@@ -940,6 +1061,29 @@ export function createHttpServer(
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/v1/publications/publish") {
+        const body = await readJson(request);
+        if (body.contentIds !== undefined && (!Array.isArray(body.contentIds) || body.contentIds.some((item) => typeof item !== "string"))) {
+          writeJson(response, 400, { error: "contentIdsは文字列配列で指定してください。" });
+          return;
+        }
+        if (body.baseUrl !== undefined && typeof body.baseUrl !== "string") {
+          writeJson(response, 400, { error: "baseUrlは文字列で指定してください。" });
+          return;
+        }
+        try {
+          const result = await publication.publish(
+            principal,
+            Array.isArray(body.contentIds) ? body.contentIds as string[] : undefined,
+            typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+          );
+          writeJson(response, 202, { item: result });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを公開できません。" });
+        }
+        return;
+      }
+
       const contentMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)$/);
       if (request.method === "GET" && contentMatch) {
         const contentId = contentMatch[1];
@@ -951,6 +1095,87 @@ export function createHttpServer(
           writeJson(response, 200, { item: content.getContent(principal, contentId) });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "PATCH" && contentMatch) {
+        const contentId = contentMatch[1];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (body.title !== undefined && typeof body.title !== "string") {
+          writeJson(response, 400, { error: "titleは文字列で指定してください。" });
+          return;
+        }
+        if (body.summary !== undefined && typeof body.summary !== "string") {
+          writeJson(response, 400, { error: "summaryは文字列で指定してください。" });
+          return;
+        }
+        if (body.body !== undefined && typeof body.body !== "string") {
+          writeJson(response, 400, { error: "bodyは文字列で指定してください。" });
+          return;
+        }
+        try {
+          const seo = parseContentSeoPatch(body.seo);
+          const sourceFacts = parseOptionalStringArray(body.sourceFacts, "sourceFacts");
+          writeJson(response, 200, {
+            item: content.updateContent(principal, contentId, {
+              ...(typeof body.title === "string" ? { title: body.title } : {}),
+              ...(typeof body.summary === "string" ? { summary: body.summary } : {}),
+              ...(typeof body.body === "string" ? { body: body.body } : {}),
+              ...(seo ? { seo } : {}),
+              ...(sourceFacts ? { sourceFacts } : {}),
+            }),
+          });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを更新できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "DELETE" && contentMatch) {
+        const contentId = contentMatch[1];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: content.archiveContent(principal, contentId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツをアーカイブできません。" });
+        }
+        return;
+      }
+
+      const duplicateMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/duplicate$/);
+      if (request.method === "POST" && duplicateMatch) {
+        const contentId = duplicateMatch[1];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 201, { item: content.duplicateContent(principal, contentId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを複製できません。" });
+        }
+        return;
+      }
+
+      const restoreMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/restore$/);
+      if (request.method === "POST" && restoreMatch) {
+        const contentId = restoreMatch[1];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: content.restoreContent(principal, contentId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを復元できません。" });
         }
         return;
       }

@@ -134,6 +134,15 @@ describe("CMS-OS承認済み静的公開", () => {
     });
     assert.equal(deployed.status, 202);
     assert.equal(deployed.body.item.deployment.status, "dry_run");
+
+    const published = await request("/api/v1/publications/publish", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ contentIds: [draft.body.item.id], baseUrl: "https://www.example.com" }),
+    });
+    assert.equal(published.status, 202);
+    assert.equal(published.body.item.deployment.status, "dry_run");
+    assert.deepEqual(published.body.item.publishedContentIds, []);
   });
 
   it("静的公開の主要操作をMCPから利用できる", async () => {
@@ -145,5 +154,46 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(names.includes("workflow.approve"));
     assert.ok(names.includes("publication.build"));
     assert.ok(names.includes("publication.deploy"));
+    assert.ok(names.includes("publication.publish"));
+  });
+
+  it("Cloudflare公開受付が成功したときだけコンテンツを公開状態へ進める", async () => {
+    const auth = new InMemoryAuthService();
+    const portal = new PortalService(auth);
+    const content = new ContentService(portal);
+    const login = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
+    if (!login || !("accessToken" in login)) throw new Error("テスト用事業者ログインに失敗しました。");
+
+    const adapter = new BuilderOSAdapter();
+    adapter.deployToCloudflarePages = async (build) => ({
+      status: "submitted",
+      provider: "cloudflare-pages",
+      projectName: "cms-os-test",
+      requestId: "request-test",
+      publicationId: build.publicationId,
+      fileCount: build.files.length,
+      uploadedFileCount: build.files.length,
+    });
+    const publication = new PublicationService(portal, content, adapter, () => ({
+      accountId: "account-test",
+      projectName: "cms-os-test",
+    }));
+
+    const proposal = content.createProposal(login.principal, {
+      category: "legal",
+      contentType: "blog",
+      audience: "customer",
+      topic: "公開状態の検証",
+      sourceFacts: ["確認済みの事実"],
+    });
+    const draft = content.createDraft(login.principal, proposal.id);
+    content.polishContent(login.principal, draft.id);
+    content.auditSeo(login.principal, draft.id);
+    content.approveContent(login.principal, draft.id);
+
+    const result = await publication.publish(login.principal, [draft.id], "https://www.example.com");
+    assert.equal(result.deployment.status, "submitted");
+    assert.deepEqual(result.publishedContentIds, [draft.id]);
+    assert.equal(content.getContent(login.principal, draft.id).status, "published");
   });
 });

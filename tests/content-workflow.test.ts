@@ -76,6 +76,15 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(draft.body.item.seo.jsonLdType, "BlogPosting");
     assert.ok(draft.body.item.body.includes("仕事内容と成長機会"));
 
+    const updated = await request(`/api/v1/content/${draft.body.item.id}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({ summary: "候補者が仕事内容と成長機会を確認できる紹介文です。" }),
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.item.summary, "候補者が仕事内容と成長機会を確認できる紹介文です。");
+    assert.equal(updated.body.item.version, 2);
+
     const factCheck = await request(`/api/v1/content/${draft.body.item.id}/fact-check`, {
       method: "POST",
       headers: { authorization: `Bearer ${providerToken}` },
@@ -91,7 +100,7 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     });
     assert.equal(polished.status, 200);
     assert.equal(polished.body.item.status, "polished");
-    assert.equal(polished.body.item.version, 2);
+    assert.equal(polished.body.item.version, 3);
 
     const audit = await request(`/api/v1/content/${draft.body.item.id}/seo-audit`, {
       method: "POST",
@@ -101,6 +110,28 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(audit.body.item.contentId, draft.body.item.id);
     assert.equal(typeof audit.body.item.score, "number");
     assert.ok(Array.isArray(audit.body.item.issues));
+
+    const duplicate = await request(`/api/v1/content/${draft.body.item.id}/duplicate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(duplicate.status, 201);
+    assert.equal(duplicate.body.item.status, "drafted");
+    assert.notEqual(duplicate.body.item.id, draft.body.item.id);
+
+    const archived = await request(`/api/v1/content/${duplicate.body.item.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(archived.status, 200);
+    assert.equal(archived.body.item.status, "archived");
+
+    const restored = await request(`/api/v1/content/${duplicate.body.item.id}/restore`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(restored.status, 200);
+    assert.equal(restored.body.item.status, "drafted");
   });
 
   it("主要なAI編集操作をMCPから発見でき、事業者自身のコンテンツだけ取得できる", async () => {
@@ -112,9 +143,14 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.ok(names.includes("content.propose"));
     assert.ok(names.includes("content.list"));
     assert.ok(names.includes("content.draft"));
+    assert.ok(names.includes("content.update"));
+    assert.ok(names.includes("content.duplicate"));
+    assert.ok(names.includes("content.archive"));
+    assert.ok(names.includes("content.restore"));
     assert.ok(names.includes("content.polish"));
     assert.ok(names.includes("content.fact_check"));
     assert.ok(names.includes("seo.audit"));
+    assert.ok(names.includes("publication.publish"));
 
     const providerLogin = await request("/api/v1/auth/login", {
       method: "POST",
@@ -128,5 +164,28 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(list.status, 200);
     assert.ok(Array.isArray(list.body.result.structuredContent.items));
     assert.ok(Array.isArray(list.body.result.structuredContent.proposals));
+
+    const proposal = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "content.propose", arguments: { category: "beauty", contentType: "blog", audience: "customer", topic: "美容メニューの選び方" } },
+      }),
+    });
+    const draft = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "content.draft", arguments: { proposalId: proposal.body.result.structuredContent.id } } }),
+    });
+    const updated = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "content.update", arguments: { contentId: draft.body.result.structuredContent.id, summary: "メニュー選びを支援する紹介文です。" } } }),
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.result.structuredContent.summary, "メニュー選びを支援する紹介文です。");
   });
 });

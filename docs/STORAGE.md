@@ -36,7 +36,7 @@ npm run dev
 
 ## PostgreSQL移行
 
-PostgreSQL向けの正規化スキーマは[`db/migrations/001_initial.sql`](../db/migrations/001_initial.sql)、移行期の状態ストアは[`db/migrations/002_state_store.sql`](../db/migrations/002_state_store.sql)にあります。
+PostgreSQL向けの正規化スキーマは[`db/migrations/001_initial.sql`](../db/migrations/001_initial.sql)、移行期の状態ストアは[`db/migrations/002_state_store.sql`](../db/migrations/002_state_store.sql)にあります。既存環境向けのカテゴリ拡張は[`003_expand_category_slugs.sql`](../db/migrations/003_expand_category_slugs.sql)、コンテンツのアーカイブ状態は[`004_content_archive_status.sql`](../db/migrations/004_content_archive_status.sql)で更新します。
 
 接続モードは次の環境変数で起動します。
 

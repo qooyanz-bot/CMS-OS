@@ -32,11 +32,14 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/content/drafts",
       "/api/v1/content",
       "/api/v1/content/{contentId}",
+      "/api/v1/content/{contentId}/duplicate",
+      "/api/v1/content/{contentId}/restore",
       "/api/v1/content/{contentId}/polish",
       "/api/v1/content/{contentId}/seo-audit",
       "/api/v1/content/{contentId}/fact-check",
       "/api/v1/content/{contentId}/approve",
       "/api/v1/publications/build",
+      "/api/v1/publications/publish",
       "/api/v1/publications/deploy",
       "/api/v1/requests",
       "/api/v1/jobs",
@@ -50,6 +53,10 @@ describe("CMS-OS OpenAPI契約", () => {
         if (typeof operation === "object" && operation !== null) assert.ok("responses" in operation, `${path}のレスポンス定義がありません。`);
       }
     }
+    const contentPath = specification.paths["/api/v1/content/{contentId}"];
+    assert.ok(contentPath);
+    assert.ok(contentPath.patch);
+    assert.ok(contentPath.delete);
     for (const path of ["/api/v1/categories/{category}/experience", "/api/v1/providers", "/api/v1/jobs", "/mcp"]) {
       const operation = Object.values(specification.paths[path] ?? {})[0] as { security?: unknown };
       assert.deepEqual(operation.security, [{}, { BearerAuth: [] }], `${path}は任意認証である必要があります。`);

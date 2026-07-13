@@ -444,7 +444,7 @@ export class PublicationService {
     const baseUrl = normalizeBaseUrl(requestedBaseUrl);
     const contents = contentIds && contentIds.length > 0
       ? contentIds.map((contentId) => this.content.getContent(principal, contentId))
-      : this.content.listContent(principal);
+      : this.content.listContent(principal).filter((content) => content.status !== "archived");
     if (contents.length === 0) throw new PublicationServiceError(400, "公開対象のコンテンツがありません。");
 
     const publishedCategories: PublishedCategory[] = this.portal.listCategories();
@@ -513,6 +513,26 @@ export class PublicationService {
     try {
       const deployment = await this.builderosAdapter.deployToCloudflarePages(publication, this.cloudflareOptionsProvider());
       return { publication, deployment };
+    } catch (error) {
+      if (error instanceof BuilderOSAdapterError) {
+        throw new PublicationServiceError(502, error.message);
+      }
+      throw error;
+    }
+  }
+
+  public async publish(
+    principal: AuthenticatedPrincipal | null,
+    contentIds?: string[],
+    requestedBaseUrl?: string,
+  ): Promise<{ publication: PublicationBuildResult; deployment: CloudflarePagesDeploymentResult; publishedContentIds: string[] }> {
+    const publication = this.build(principal, contentIds, requestedBaseUrl);
+    try {
+      const deployment = await this.builderosAdapter.deployToCloudflarePages(publication, this.cloudflareOptionsProvider());
+      const publishedContentIds = deployment.status === "submitted"
+        ? publication.contentIds.map((contentId) => this.content.markPublished(principal, contentId).id)
+        : [];
+      return { publication, deployment, publishedContentIds };
     } catch (error) {
       if (error instanceof BuilderOSAdapterError) {
         throw new PublicationServiceError(502, error.message);
