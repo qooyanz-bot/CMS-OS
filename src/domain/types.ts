@@ -64,6 +64,10 @@ export interface ProviderRecord {
   name: string;
   themes: string[];
   location: string;
+  listingStatus?: ProviderListingStatus;
+  listingSubmittedAt?: string;
+  listingReviewedAt?: string;
+  listingReviewNote?: string;
   publicFields: Record<string, string | string[]>;
   ordererFields: Record<string, string | string[]>;
   providerFields: Record<string, string | string[]>;
@@ -77,6 +81,9 @@ export interface VisibleProvider extends Record<string, unknown> {
   themes: string[];
   location: string;
 }
+
+export const providerListingStatuses = ["draft", "pending_review", "published", "suspended"] as const;
+export type ProviderListingStatus = (typeof providerListingStatuses)[number];
 
 export const requestStatuses = ["submitted", "accepted", "closed"] as const;
 export type RequestStatus = (typeof requestStatuses)[number];
@@ -116,6 +123,21 @@ export interface JobApplication {
   message: string;
   status: ApplicationStatus;
   createdAt: string;
+}
+
+export const inquiryStatuses = ["open", "responded", "closed"] as const;
+export type InquiryStatus = (typeof inquiryStatuses)[number];
+
+export interface ProviderInquiry {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  senderId: string;
+  subject: string;
+  message: string;
+  status: InquiryStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const contentTypes = ["company", "blog", "job", "pr", "ir"] as const;

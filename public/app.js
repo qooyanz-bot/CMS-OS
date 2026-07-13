@@ -9,6 +9,7 @@ const state = {
   providers: [],
   requests: [],
   applications: [],
+  inquiries: [],
   proposals: [],
   contents: [],
 };
@@ -50,6 +51,13 @@ const elements = {
   requestPanel: document.querySelector("#request-panel"),
   requestForm: document.querySelector("#request-form"),
   requestProvider: document.querySelector("#request-provider"),
+  inquiryPanel: document.querySelector("#inquiry-panel"),
+  inquiryForm: document.querySelector("#inquiry-form"),
+  inquiryProvider: document.querySelector("#inquiry-provider"),
+  inquiryStatusPanel: document.querySelector("#inquiry-status-panel"),
+  inquiryList: document.querySelector("#inquiry-list"),
+  inquiryManagementPanel: document.querySelector("#inquiry-management-panel"),
+  inquiryManagementList: document.querySelector("#inquiry-management-list"),
   requestInboxPanel: document.querySelector("#request-inbox-panel"),
   requestList: document.querySelector("#request-list"),
   applicationPanel: document.querySelector("#application-panel"),
@@ -64,6 +72,8 @@ const elements = {
   providerManagementPanel: document.querySelector("#provider-management-panel"),
   providerManagementForm: document.querySelector("#provider-management-form"),
   providerManagementMessage: document.querySelector("#provider-management-message"),
+  listingStatus: document.querySelector("#listing-status"),
+  listingSubmitButton: document.querySelector("#listing-submit-button"),
   jobManagementPanel: document.querySelector("#job-management-panel"),
   jobManagementForm: document.querySelector("#job-management-form"),
   jobManagementMessage: document.querySelector("#job-management-message"),
@@ -158,6 +168,7 @@ function renderExperience(experience) {
   elements.workflowTwo.textContent = isBeauty ? "店舗を比較する" : "事業者を比較する";
   elements.workflowThree.textContent = isBeauty ? "予約する" : isLegal ? "相談する" : "問い合わせる";
   elements.requestPanel.hidden = !experience.allowedActions.includes("request.create");
+  elements.inquiryPanel.hidden = !experience.allowedActions.includes("inquiry.create");
 }
 
 function renderProviders(items) {
@@ -169,14 +180,25 @@ function renderProviders(items) {
           .slice(0, 3)
           .map(([key, value]) => `<span>${escapeHtml(key)}: ${formatValue(value)}</span>`)
           .join("");
-        return `<article class="provider-item"><h3>${escapeHtml(provider.name)}</h3><div class="meta"><span>${escapeHtml(provider.location)}</span><span>${formatValue(provider.themes)}</span>${publicFields}</div></article>`;
+        const contactButton = state.token && state.experience?.allowedActions.includes("inquiry.create")
+          ? `<button class="button ghost inquiry-provider-button" data-provider-id="${escapeHtml(provider.id)}">この事業者へ問い合わせ</button>`
+          : "";
+        return `<article class="provider-item"><h3>${escapeHtml(provider.name)}</h3><div class="meta"><span>${escapeHtml(provider.location)}</span><span>${formatValue(provider.themes)}</span>${publicFields}</div>${contactButton}</article>`;
       }).join("")
     : '<p class="empty">該当する事業者がありません。</p>';
   elements.requestProvider.innerHTML = items.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
+  elements.inquiryProvider.innerHTML = items.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
+  document.querySelectorAll(".inquiry-provider-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      elements.inquiryProvider.value = button.dataset.providerId ?? "";
+      elements.inquiryForm.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  });
 }
 
 const requestStatusLabels = { submitted: "受付中", accepted: "対応中", closed: "終了" };
 const applicationStatusLabels = { submitted: "受付中", screening: "選考中", closed: "終了" };
+const inquiryStatusLabels = { open: "受付中", responded: "返信済み", closed: "終了" };
 
 function roleStatusButtons(actions) {
   return actions.map(([status, label]) => `<button class="button ghost role-status-button" data-status="${escapeHtml(status)}">${escapeHtml(label)}</button>`).join("");
@@ -194,10 +216,30 @@ function renderRequests(items) {
         return `<article class="role-item" data-request-id="${escapeHtml(request.id)}"><div class="meta"><span>${escapeHtml(requestStatusLabels[request.status] ?? request.status)}</span></div><h3>${escapeHtml(request.title)}</h3><p>${escapeHtml(request.description)}</p><div class="role-actions">${roleStatusButtons(actions)}</div></article>`;
       }).join("")
     : '<p class="empty">表示できる依頼はありません。</p>';
-  document.querySelectorAll(".role-status-button").forEach((button) => {
+  document.querySelectorAll("[data-request-id] .role-status-button").forEach((button) => {
     button.addEventListener("click", () => {
       const requestItem = button.closest("[data-request-id]");
       if (requestItem?.dataset.requestId) void updateRoleStatus("requests", requestItem.dataset.requestId, button.dataset.status ?? "");
+    });
+  });
+}
+
+function renderInquiries(items) {
+  state.inquiries = items;
+  const isProvider = state.role === "provider";
+  const target = isProvider ? elements.inquiryManagementList : elements.inquiryList;
+  target.innerHTML = items.length
+    ? items.map((inquiry) => {
+        const actions = isProvider
+          ? inquiry.status === "open" ? [["responded", "返信済みにする"], ["closed", "終了"]] : inquiry.status === "responded" ? [["closed", "終了"]] : []
+          : inquiry.status === "closed" ? [] : [["closed", "問い合わせを終了"]];
+        return `<article class="role-item" data-inquiry-id="${escapeHtml(inquiry.id)}"><div class="meta"><span>${escapeHtml(inquiryStatusLabels[inquiry.status] ?? inquiry.status)}</span><span>事業者ID: ${escapeHtml(inquiry.providerId)}</span></div><h3>${escapeHtml(inquiry.subject)}</h3><p>${escapeHtml(inquiry.message)}</p><div class="role-actions">${roleStatusButtons(actions)}</div></article>`;
+      }).join("")
+    : '<p class="empty">表示できる問い合わせはありません。</p>';
+  document.querySelectorAll("[data-inquiry-id] .role-status-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const inquiryItem = button.closest("[data-inquiry-id]");
+      if (inquiryItem?.dataset.inquiryId) void updateRoleStatus("inquiries", inquiryItem.dataset.inquiryId, button.dataset.status ?? "");
     });
   });
 }
@@ -234,10 +276,17 @@ async function updateRoleStatus(resource, resourceId, status) {
 async function reloadRoleData() {
   const canSeeRequests = Boolean(state.token && (state.role === "orderer" || state.role === "provider"));
   const canSeeApplications = Boolean(state.token && (state.role === "candidate" || state.role === "provider"));
+  const canSeeInquiries = Boolean(state.token && state.experience?.allowedActions.includes("inquiry.read"));
   elements.requestInboxPanel.hidden = !canSeeRequests;
   elements.applicationPanel.hidden = !canSeeApplications;
+  elements.inquiryStatusPanel.hidden = !canSeeInquiries || state.role === "provider";
+  elements.inquiryManagementPanel.hidden = !canSeeInquiries || state.role !== "provider";
   if (!canSeeRequests) elements.requestList.innerHTML = "";
   if (!canSeeApplications) elements.applicationList.innerHTML = "";
+  if (!canSeeInquiries) {
+    elements.inquiryList.innerHTML = "";
+    elements.inquiryManagementList.innerHTML = "";
+  }
 
   if (canSeeRequests) {
     try {
@@ -251,6 +300,14 @@ async function reloadRoleData() {
     try {
       const body = await api("/api/v1/applications");
       renderApplications(body.items);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+  if (canSeeInquiries) {
+    try {
+      const body = await api("/api/v1/inquiries");
+      renderInquiries(body.items);
     } catch (error) {
       setMessage(error.message);
     }
@@ -274,6 +331,8 @@ async function reloadProviderManagement() {
   );
   elements.providerManagementPanel.hidden = !canManage;
   elements.jobManagementPanel.hidden = !Boolean(state.token && state.role === "provider" && state.experience?.allowedActions.includes("job.manage"));
+  elements.listingSubmitButton.hidden = true;
+  elements.listingStatus.textContent = "";
   if (!canManage) return;
   try {
     const body = await api(`/api/v1/providers/${encodeURIComponent(state.principal.providerId)}`);
@@ -285,6 +344,10 @@ async function reloadProviderManagement() {
     if (themesField) themesField.value = body.item.themes.join(", ");
     if (locationField) locationField.value = body.item.location;
     if (publicFieldsField) publicFieldsField.value = "";
+    const listingStatusLabels = { draft: "下書き", pending_review: "審査中", published: "公開中", suspended: "停止中" };
+    const status = body.item.listingStatus ?? "published";
+    elements.listingStatus.textContent = `掲載状態: ${listingStatusLabels[status] ?? status}${body.item.listingReviewNote ? ` / 審査メモ: ${body.item.listingReviewNote}` : ""}`;
+    elements.listingSubmitButton.hidden = !state.experience?.allowedActions.includes("listing.submit") || status === "pending_review";
     setProviderManagementMessage("");
   } catch (error) {
     setProviderManagementMessage(error.message);
@@ -558,6 +621,27 @@ elements.requestForm.addEventListener("submit", async (event) => {
   }
 });
 
+elements.inquiryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(elements.inquiryForm);
+  try {
+    await api("/api/v1/inquiries", {
+      method: "POST",
+      body: JSON.stringify({
+        category: state.category,
+        providerId: form.get("providerId"),
+        subject: form.get("subject"),
+        message: form.get("message"),
+      }),
+    });
+    elements.inquiryForm.reset();
+    setMessage("問い合わせを送信しました。");
+    await reloadRoleData();
+  } catch (error) {
+    setMessage(error.message);
+  }
+});
+
 elements.providerManagementForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.principal?.providerId) return;
@@ -578,6 +662,17 @@ elements.providerManagementForm.addEventListener("submit", async (event) => {
       }),
     });
     setProviderManagementMessage("掲載情報を保存しました。");
+    await reload();
+  } catch (error) {
+    setProviderManagementMessage(error.message);
+  }
+});
+
+elements.listingSubmitButton.addEventListener("click", async () => {
+  if (!state.principal?.providerId) return;
+  try {
+    await api(`/api/v1/providers/${encodeURIComponent(state.principal.providerId)}/listing-submission`, { method: "POST" });
+    setProviderManagementMessage("掲載審査へ送信しました。審査完了まで公開検索からは除外されます。");
     await reload();
   } catch (error) {
     setProviderManagementMessage(error.message);

@@ -29,6 +29,8 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/categories/{category}/experience",
       "/api/v1/providers",
       "/api/v1/providers/{providerId}",
+      "/api/v1/providers/{providerId}/listing-submission",
+      "/api/v1/providers/{providerId}/listing-review",
       "/api/v1/content/proposals",
       "/api/v1/content/drafts",
       "/api/v1/content",
@@ -44,6 +46,8 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/publications/deploy",
       "/api/v1/requests",
       "/api/v1/requests/{requestId}",
+      "/api/v1/inquiries",
+      "/api/v1/inquiries/{inquiryId}",
       "/api/v1/jobs",
       "/api/v1/jobs/{jobId}",
       "/api/v1/jobs/{jobId}/applications",
@@ -74,6 +78,7 @@ describe("CMS-OS OpenAPI契約", () => {
       assert.deepEqual(operation.security, [{}, { BearerAuth: [] }], `${path}は任意認証である必要があります。`);
     }
     assert.deepEqual(specification.components.securitySchemes.BearerAuth, { type: "http", scheme: "bearer", bearerFormat: "opaque-session-token" });
+    assert.deepEqual(specification.components.securitySchemes.OperatorKey, { type: "apiKey", in: "header", name: "x-cms-os-operator-key" });
     for (const path of [
       "/api/v1/auth/login",
       "/api/v1/auth/oidc/start",

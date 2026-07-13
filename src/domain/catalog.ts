@@ -14,7 +14,14 @@ interface CategoryPolicy {
   roles: Record<PortalRole, Omit<CategoryExperience, "category" | "categoryLabel" | "role" | "authenticated" | "navigation">>;
 }
 
-const commonActions = ["profile.read", "provider.search", "favorite.manage"];
+const commonActions = [
+  "profile.read",
+  "provider.search",
+  "favorite.manage",
+  "inquiry.create",
+  "inquiry.read",
+  "inquiry.status.update",
+];
 
 type GenericCategorySlug = Exclude<CategorySlug, "legal" | "beauty">;
 
@@ -39,7 +46,9 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
     "profile.read",
     "profile.update",
     "listing.update",
+    "listing.submit",
     "inquiry.read",
+    "inquiry.status.update",
     "request.status.update",
     "application.status.update",
     "job.manage",
@@ -164,7 +173,9 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "profile.read",
           "profile.update",
           "listing.update",
+          "listing.submit",
           "inquiry.read",
+          "inquiry.status.update",
           "request.status.update",
           "application.status.update",
           "job.manage",
@@ -236,7 +247,10 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "profile.read",
           "profile.update",
           "listing.update",
+          "listing.submit",
           "booking.read",
+          "inquiry.read",
+          "inquiry.status.update",
           "request.status.update",
           "application.status.update",
           "job.manage",
@@ -409,6 +423,10 @@ export function projectProvider(
 
   if (role === "provider" && accountProviderId === provider.id) {
     Object.assign(projected, provider.providerFields);
+    projected.listingStatus = provider.listingStatus ?? "published";
+    if (provider.listingSubmittedAt) projected.listingSubmittedAt = provider.listingSubmittedAt;
+    if (provider.listingReviewedAt) projected.listingReviewedAt = provider.listingReviewedAt;
+    if (provider.listingReviewNote) projected.listingReviewNote = provider.listingReviewNote;
   }
 
   return projected;

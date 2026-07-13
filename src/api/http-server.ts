@@ -13,7 +13,7 @@ import {
   parseOptionalStringArray,
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
-import { applicationStatuses, categorySlugs, jobStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type JobStatus, type PortalRole, type RequestStatus } from "../domain/types.js";
+import { applicationStatuses, categorySlugs, inquiryStatuses, jobStatuses, providerListingStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type InquiryStatus, type JobStatus, type PortalRole, type ProviderListingStatus, type RequestStatus } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -82,6 +82,20 @@ function isApplicationStatus(value: unknown): value is ApplicationStatus {
 
 function isJobStatus(value: unknown): value is JobStatus {
   return typeof value === "string" && (jobStatuses as readonly string[]).includes(value);
+}
+
+function isInquiryStatus(value: unknown): value is InquiryStatus {
+  return typeof value === "string" && (inquiryStatuses as readonly string[]).includes(value);
+}
+
+function isProviderListingStatus(value: unknown): value is ProviderListingStatus {
+  return typeof value === "string" && (providerListingStatuses as readonly string[]).includes(value);
+}
+
+function hasOperatorKey(request: IncomingMessage): boolean {
+  const expected = process.env.CMS_OS_OPERATOR_KEY?.trim();
+  const provided = request.headers["x-cms-os-operator-key"];
+  return Boolean(expected && typeof provided === "string" && provided === expected);
 }
 
 const categoryEnum = [...categorySlugs];
@@ -252,6 +266,20 @@ async function handleMcp(
             },
           },
           {
+            name: "provider.listing_submit",
+            description: "事業者本人の掲載情報を審査待ちへ送信します。公開検索からは審査完了まで除外されます。",
+            inputSchema: { type: "object", properties: { providerId: { type: "string" } }, required: ["providerId"] },
+          },
+          {
+            name: "provider.listing_review",
+            description: "運営審査キーで審査待ち掲載情報を公開、差戻し、または停止へ更新します。x-cms-os-operator-keyヘッダーが必要です。",
+            inputSchema: {
+              type: "object",
+              properties: { providerId: { type: "string" }, status: { enum: ["draft", "published", "suspended"] }, note: { type: "string" } },
+              required: ["providerId", "status"],
+            },
+          },
+          {
             name: "auth.login",
             description: "ログインします。",
             inputSchema: {
@@ -345,6 +373,25 @@ async function handleMcp(
             name: "request.update_status",
             description: "依頼の所有者または担当事業者が、受付・完了状態を更新します。",
             inputSchema: { type: "object", properties: { requestId: { type: "string" }, status: { enum: ["submitted", "accepted", "closed"] } }, required: ["requestId", "status"] },
+          },
+          {
+            name: "inquiry.create",
+            description: "ログイン済みのユーザー、発注者、リクルーターが公開事業者へ問い合わせを送信します。",
+            inputSchema: {
+              type: "object",
+              properties: { category: { enum: categoryEnum }, providerId: { type: "string" }, subject: { type: "string" }, message: { type: "string" } },
+              required: ["category", "providerId", "subject", "message"],
+            },
+          },
+          {
+            name: "inquiry.list",
+            description: "送信者本人の問い合わせ、または事業者本人宛ての問い合わせを取得します。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "inquiry.update_status",
+            description: "問い合わせの送信者または担当事業者が、返信済みまたは終了へ更新します。",
+            inputSchema: { type: "object", properties: { inquiryId: { type: "string" }, status: { enum: ["open", "responded", "closed"] } }, required: ["inquiryId", "status"] },
           },
           {
             name: "job.search",
@@ -634,6 +681,27 @@ async function handleMcp(
       return;
     }
 
+    if (name === "provider.listing_submit") {
+      if (typeof argumentsObject.providerId !== "string") throw new Error("providerIdが必要です。");
+      const result = portal.submitProviderListing(principal, argumentsObject.providerId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "provider.listing_review") {
+      if (typeof argumentsObject.providerId !== "string" || !isProviderListingStatus(argumentsObject.status)) {
+        throw new Error("providerIdと有効な審査結果statusが必要です。");
+      }
+      const result = portal.reviewProviderListing(
+        argumentsObject.providerId,
+        argumentsObject.status,
+        typeof argumentsObject.note === "string" ? argumentsObject.note : undefined,
+        hasOperatorKey(request),
+      );
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "auth.switch_context") {
       const token = getBearerToken(request);
       if (!token || !isCategorySlug(argumentsObject.category) || !isPortalRole(argumentsObject.role)) {
@@ -714,6 +782,35 @@ async function handleMcp(
         throw new Error("requestIdと有効なstatusが必要です。");
       }
       const result = portal.updateRequestStatus(principal, argumentsObject.requestId, argumentsObject.status);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "inquiry.create") {
+      if (!isCategorySlug(argumentsObject.category) || typeof argumentsObject.providerId !== "string" || typeof argumentsObject.subject !== "string" || typeof argumentsObject.message !== "string") {
+        throw new Error("category、providerId、subject、messageが必要です。");
+      }
+      const result = portal.createInquiry(principal, {
+        category: argumentsObject.category,
+        providerId: argumentsObject.providerId,
+        subject: argumentsObject.subject,
+        message: argumentsObject.message,
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "inquiry.list") {
+      const result = portal.listInquiries(principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "inquiry.update_status") {
+      if (typeof argumentsObject.inquiryId !== "string" || !isInquiryStatus(argumentsObject.status)) {
+        throw new Error("inquiryIdと有効なstatusが必要です。");
+      }
+      const result = portal.updateInquiryStatus(principal, argumentsObject.inquiryId, argumentsObject.status);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1146,6 +1243,47 @@ export function createHttpServer(
         return;
       }
 
+      const providerListingSubmitMatch = url.pathname.match(/^\/api\/v1\/providers\/([^/]+)\/listing-submission$/);
+      if (request.method === "POST" && providerListingSubmitMatch) {
+        const providerId = providerListingSubmitMatch[1];
+        if (!providerId) {
+          writeJson(response, 400, { error: "providerIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: portal.submitProviderListing(principal, providerId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "掲載審査へ送信できません。" });
+        }
+        return;
+      }
+
+      const providerListingReviewMatch = url.pathname.match(/^\/api\/v1\/providers\/([^/]+)\/listing-review$/);
+      if (request.method === "PATCH" && providerListingReviewMatch) {
+        const providerId = providerListingReviewMatch[1];
+        if (!providerId) {
+          writeJson(response, 400, { error: "providerIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (!isProviderListingStatus(body.status) || body.status === "pending_review") {
+          writeJson(response, 400, { error: "statusはdraft、published、suspendedのいずれかで指定してください。" });
+          return;
+        }
+        if (body.note !== undefined && typeof body.note !== "string") {
+          writeJson(response, 400, { error: "noteは文字列で指定してください。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, {
+            item: portal.reviewProviderListing(providerId, body.status, typeof body.note === "string" ? body.note : undefined, hasOperatorKey(request)),
+          });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "掲載審査を更新できません。" });
+        }
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/v1/content/proposals") {
         const body = await readJson(request);
         if (!isCategorySlug(body.category) || !isContentType(body.contentType) || !isContentAudience(body.audience) || typeof body.topic !== "string") {
@@ -1447,6 +1585,60 @@ export function createHttpServer(
         } catch (error) {
           const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
           writeJson(response, statusCode, { error: error instanceof Error ? error.message : "依頼の状態を更新できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/inquiries") {
+        if (!principal) {
+          writeJson(response, 401, { error: "ログインが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (!isCategorySlug(body.category) || typeof body.providerId !== "string" || typeof body.subject !== "string" || typeof body.message !== "string") {
+          writeJson(response, 400, { error: "category、providerId、subject、messageが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 201, {
+            item: portal.createInquiry(principal, {
+              category: body.category,
+              providerId: body.providerId,
+              subject: body.subject,
+              message: body.message,
+            }),
+          });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "問い合わせを作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/inquiries") {
+        try {
+          writeJson(response, 200, { items: portal.listInquiries(principal) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "問い合わせを取得できません。" });
+        }
+        return;
+      }
+
+      const inquiryMatch = url.pathname.match(/^\/api\/v1\/inquiries\/([^/]+)$/);
+      if (request.method === "PATCH" && inquiryMatch) {
+        const inquiryId = inquiryMatch[1];
+        if (!inquiryId) {
+          writeJson(response, 400, { error: "inquiryIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (!isInquiryStatus(body.status)) {
+          writeJson(response, 400, { error: "statusが不正です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: portal.updateInquiryStatus(principal, inquiryId, body.status) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "問い合わせの状態を更新できません。" });
         }
         return;
       }

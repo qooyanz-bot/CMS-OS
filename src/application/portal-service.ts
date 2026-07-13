@@ -8,10 +8,13 @@ import { PortalStore } from "../domain/portal-store.js";
 import type {
   AuthenticatedPrincipal,
   CategorySlug,
+  InquiryStatus,
   JobStatus,
   JobApplication,
   JobPosting,
   PortalRole,
+  ProviderInquiry,
+  ProviderListingStatus,
   ProviderRecord,
   ServiceRequest,
   VisibleProvider,
@@ -19,6 +22,14 @@ import type {
 import { jobStatuses } from "../domain/types.js";
 
 export type ProviderUpdateInput = Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "publicFields">>;
+
+function providerListingStatus(provider: ProviderRecord): ProviderListingStatus {
+  return provider.listingStatus ?? "published";
+}
+
+function isPublicProvider(provider: ProviderRecord): boolean {
+  return providerListingStatus(provider) === "published";
+}
 
 const protectedPublicFieldKeys = new Set([
   "id",
@@ -105,6 +116,8 @@ export class PortalService {
 
     return this.store.listProviders(category)
       .filter((provider) => {
+        const ownProvider = principal?.role === "provider" && principal.providerId === provider.id;
+        if (!isPublicProvider(provider) && !ownProvider) return false;
         const searchable = [provider.name, provider.location, ...provider.themes].join(" ").toLocaleLowerCase("ja-JP");
         const themeMatches = !normalizedTheme || provider.themes.some((theme) => theme.toLocaleLowerCase("ja-JP") === normalizedTheme);
         const locationMatches = !normalizedLocation || provider.location.toLocaleLowerCase("ja-JP").includes(normalizedLocation);
@@ -126,6 +139,8 @@ export class PortalService {
   public getProvider(providerId: string, principal: AuthenticatedPrincipal | null): VisibleProvider {
     const provider = this.store.getProvider(providerId);
     if (!provider) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    const ownProvider = principal?.role === "provider" && principal.category === provider.category && principal.providerId === provider.id;
+    if (!isPublicProvider(provider) && !ownProvider) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
     const role = principal?.category === provider.category ? principal.role : "user";
     return projectProvider(provider, role, principal?.providerId);
   }
@@ -170,6 +185,54 @@ export class PortalService {
     return projectProvider(updated, "provider", principal.providerId);
   }
 
+  public submitProviderListing(
+    principal: AuthenticatedPrincipal | null,
+    providerId: string,
+  ): VisibleProvider {
+    const provider = this.store.getProvider(providerId);
+    if (!provider || !principal || principal.category !== provider.category || principal.role !== "provider" || principal.providerId !== provider.id) {
+      throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    }
+    this.assertAction(principal, provider.category, "listing.submit");
+    if (providerListingStatus(provider) === "pending_review") {
+      throw new PortalServiceError(409, "この掲載情報はすでに審査中です。");
+    }
+    const updated = this.store.updateProvider(provider.id, {
+      listingStatus: "pending_review",
+      listingSubmittedAt: new Date().toISOString(),
+      listingReviewNote: "",
+    });
+    if (!updated) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    return projectProvider(updated, "provider", principal.providerId);
+  }
+
+  public reviewProviderListing(
+    providerId: string,
+    status: ProviderListingStatus,
+    note: string | undefined,
+    operatorAuthorized: boolean,
+  ): VisibleProvider {
+    if (!operatorAuthorized) throw new PortalServiceError(403, "掲載審査の権限がありません。");
+    if (status === "pending_review") throw new PortalServiceError(400, "審査結果にpending_reviewは指定できません。");
+    const provider = this.store.getProvider(providerId);
+    if (!provider) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    if (providerListingStatus(provider) !== "pending_review") {
+      throw new PortalServiceError(409, "審査待ちの掲載情報だけを審査できます。");
+    }
+    const normalizedNote = note?.trim() ?? "";
+    if ((status === "draft" || status === "suspended") && normalizedNote.length < 3) {
+      throw new PortalServiceError(400, "差戻しまたは停止には3文字以上の理由が必要です。");
+    }
+    if (normalizedNote.length > 2000) throw new PortalServiceError(400, "審査メモは2000文字以内で指定してください。");
+    const updated = this.store.updateProvider(provider.id, {
+      listingStatus: status,
+      listingReviewedAt: new Date().toISOString(),
+      listingReviewNote: normalizedNote,
+    });
+    if (!updated) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    return projectProvider(updated, "provider", updated.id);
+  }
+
   public createRequest(
     principal: AuthenticatedPrincipal | null,
     input: { category: CategorySlug; providerId: string; title: string; description: string },
@@ -182,7 +245,7 @@ export class PortalService {
       throw new PortalServiceError(400, "titleは3文字以上、descriptionは10文字以上で入力してください。");
     }
     const provider = this.store.listProviders(input.category).find((candidate) => candidate.id === input.providerId);
-    if (!provider) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    if (!provider || !isPublicProvider(provider)) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
 
     return this.store.createRequest({
       category: input.category,
@@ -225,6 +288,64 @@ export class PortalService {
     if (!validTransition) throw new PortalServiceError(409, "依頼の状態遷移が不正です。");
     const updated = this.store.updateRequest(request.id, status);
     if (!updated) throw new PortalServiceError(404, "依頼が見つかりません。");
+    return updated;
+  }
+
+  public createInquiry(
+    principal: AuthenticatedPrincipal | null,
+    input: { category: CategorySlug; providerId: string; subject: string; message: string },
+  ): ProviderInquiry {
+    this.assertAction(principal, input.category, "inquiry.create");
+    if (!principal || principal.role === "provider") {
+      throw new PortalServiceError(403, "事業者以外のログインユーザーが問い合わせを作成できます。");
+    }
+    if (input.subject.trim().length < 3 || input.subject.trim().length > 200) {
+      throw new PortalServiceError(400, "subjectは3文字以上200文字以内で指定してください。");
+    }
+    if (input.message.trim().length < 10 || input.message.trim().length > 5000) {
+      throw new PortalServiceError(400, "messageは10文字以上5000文字以内で指定してください。");
+    }
+    const provider = this.store.listProviders(input.category).find((candidate) => candidate.id === input.providerId);
+    if (!provider || !isPublicProvider(provider)) throw new PortalServiceError(404, "問い合わせ可能な事業者が見つかりません。");
+    return this.store.createInquiry({
+      category: input.category,
+      providerId: provider.id,
+      senderId: principal.accountId,
+      subject: input.subject.trim(),
+      message: input.message.trim(),
+    });
+  }
+
+  public listInquiries(principal: AuthenticatedPrincipal | null): ProviderInquiry[] {
+    if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
+    this.assertAction(principal, principal.category, "inquiry.read");
+    return this.store.listInquiries(principal.category).filter((inquiry) =>
+      principal.role === "provider"
+        ? inquiry.providerId === principal.providerId
+        : inquiry.senderId === principal.accountId,
+    );
+  }
+
+  public updateInquiryStatus(
+    principal: AuthenticatedPrincipal | null,
+    inquiryId: string,
+    status: InquiryStatus,
+  ): ProviderInquiry {
+    const inquiry = this.store.getInquiry(inquiryId);
+    if (!inquiry) throw new PortalServiceError(404, "問い合わせが見つかりません。");
+    if (!principal || principal.category !== inquiry.category) throw new PortalServiceError(404, "問い合わせが見つかりません。");
+    this.assertAction(principal, inquiry.category, "inquiry.status.update");
+    const isSender = principal.role !== "provider" && inquiry.senderId === principal.accountId;
+    const isProvider = principal.role === "provider" && inquiry.providerId === principal.providerId;
+    if (!isSender && !isProvider) throw new PortalServiceError(404, "問い合わせが見つかりません。");
+    if (inquiry.status === status) return inquiry;
+    if (isSender && status !== "closed") throw new PortalServiceError(403, "問い合わせを終了できるのは送信者だけです。");
+    if (isProvider && status !== "responded" && status !== "closed") throw new PortalServiceError(403, "事業者は返信済みまたは終了へ更新できます。");
+    const validTransition = (inquiry.status === "open" && (status === "responded" || status === "closed"))
+      || (inquiry.status === "responded" && status === "closed");
+    if (!validTransition) throw new PortalServiceError(409, "問い合わせの状態遷移が不正です。");
+    const updated = this.store.updateInquiry(inquiry.id, status);
+    if (!updated) throw new PortalServiceError(404, "問い合わせが見つかりません。");
     return updated;
   }
 

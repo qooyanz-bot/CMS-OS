@@ -9,8 +9,10 @@ let server: Server;
 let baseUrl: string;
 let legalProviderToken: string;
 let legalOrdererToken: string;
+const previousOperatorKey = process.env.CMS_OS_OPERATOR_KEY;
 
 before(async () => {
+  process.env.CMS_OS_OPERATOR_KEY = "test-operator-key";
   const auth = new InMemoryAuthService();
   const providerLogin = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
   const ordererLogin = auth.login("orderer@example.com", "demo-password", "legal", "orderer");
@@ -26,6 +28,8 @@ before(async () => {
 });
 
 after(async () => {
+  if (previousOperatorKey === undefined) delete process.env.CMS_OS_OPERATOR_KEY;
+  else process.env.CMS_OS_OPERATOR_KEY = previousOperatorKey;
   await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 });
 
@@ -117,6 +121,8 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.search"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.get"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.update"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.listing_submit"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.listing_review"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "job.create"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "job.update"));
     const providerSearchTool = tools.body.result.tools.find((tool: { name: string }) => tool.name === "provider.search");
@@ -135,6 +141,9 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(search.body.result.structuredContent[0].name, "CMS-OS美容室（サンプル）");
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "request.create"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "request.update_status"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "inquiry.create"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "inquiry.list"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "inquiry.update_status"));
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "application.update_status"));
 
     const ordererLogin = await request("/api/v1/auth/login", {
@@ -280,6 +289,93 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(screening.status, 200);
     assert.equal(screening.body.item.status, "screening");
+  });
+
+  it("ログインユーザーは公開事業者へ問い合わせでき、送信者と事業者だけが状態を更新できる", async () => {
+    const created = await request("/api/v1/inquiries", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({
+        category: "legal",
+        providerId: "provider-legal-demo",
+        subject: "対応エリアについて確認したい",
+        message: "オンライン相談に対応している地域と時間帯を確認したいです。",
+      }),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.item.status, "open");
+
+    const providerInquiries = await request("/api/v1/inquiries", {
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+    });
+    assert.equal(providerInquiries.status, 200);
+    assert.ok(providerInquiries.body.items.some((item: { id: string }) => item.id === created.body.item.id));
+
+    const responded = await request(`/api/v1/inquiries/${created.body.item.id}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({ status: "responded" }),
+    });
+    assert.equal(responded.status, 200);
+    assert.equal(responded.body.item.status, "responded");
+
+    const closed = await request(`/api/v1/inquiries/${created.body.item.id}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ status: "closed" }),
+    });
+    assert.equal(closed.status, 200);
+    assert.equal(closed.body.item.status, "closed");
+
+    const mcpCreated = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 20,
+        method: "tools/call",
+        params: {
+          name: "inquiry.create",
+          arguments: {
+            category: "legal",
+            providerId: "provider-legal-demo",
+            subject: "MCPから問い合わせを送る",
+            message: "MCP経由の問い合わせ導線が利用できるか確認します。",
+          },
+        },
+      }),
+    });
+    assert.equal(mcpCreated.status, 200);
+    assert.equal(mcpCreated.body.result.structuredContent.status, "open");
+  });
+
+  it("掲載情報を審査待ちへ送り、運営審査後に公開へ戻せる", async () => {
+    const submitted = await request("/api/v1/providers/provider-legal-demo/listing-submission", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+    });
+    assert.equal(submitted.status, 200);
+    assert.equal(submitted.body.item.listingStatus, "pending_review");
+
+    const hidden = await request("/api/v1/providers/provider-legal-demo");
+    assert.equal(hidden.status, 404);
+
+    const deniedReview = await request("/api/v1/providers/provider-legal-demo/listing-review", {
+      method: "PATCH",
+      body: JSON.stringify({ status: "published" }),
+    });
+    assert.equal(deniedReview.status, 403);
+
+    const reviewed = await request("/api/v1/providers/provider-legal-demo/listing-review", {
+      method: "PATCH",
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+      body: JSON.stringify({ status: "published", note: "公開情報と掲載条件を確認しました。" }),
+    });
+    assert.equal(reviewed.status, 200);
+    assert.equal(reviewed.body.item.listingStatus, "published");
+
+    const visible = await request("/api/v1/providers/provider-legal-demo");
+    assert.equal(visible.status, 200);
   });
 
   it("莠区･ｭ閠・譛ｬ莠ｺ縺ｮ謗ｲ霈画ュ蝣ｱ縺ｨ蜿｣蜿門ｾ励ｒREST縺ｧ譁ｰ逕滂ｺｺ繧医Μ蜿門ｾ励〒縺阪ｋ", async () => {

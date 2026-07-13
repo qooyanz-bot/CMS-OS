@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { listProviders as listCatalogProviders } from "./catalog.js";
-import type { CategorySlug, JobApplication, JobPosting, ProviderRecord, ServiceRequest } from "./types.js";
+import type { CategorySlug, InquiryStatus, JobApplication, JobPosting, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceRequest } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 
 const defaultJobs: JobPosting[] = [
@@ -34,6 +34,7 @@ function cloneProvider(provider: ProviderRecord): ProviderRecord {
   return {
     ...provider,
     themes: [...provider.themes],
+    listingStatus: provider.listingStatus ?? "published",
     publicFields: cloneFields(provider.publicFields),
     ordererFields: cloneFields(provider.ordererFields),
     providerFields: cloneFields(provider.providerFields),
@@ -46,6 +47,7 @@ export class PortalStore {
   private readonly requests: ServiceRequest[];
   private readonly jobs: JobPosting[];
   private readonly applications: JobApplication[];
+  private readonly inquiries: ProviderInquiry[];
 
   public constructor(private readonly stateStore?: StateStore) {
     const catalogProviders = listCatalogProviders("legal").concat(
@@ -63,6 +65,7 @@ export class PortalStore {
     const savedJobs = stateStore?.load<JobPosting[]>("portal-jobs.json", defaultJobs) ?? defaultJobs;
     this.jobs = savedJobs.map((job) => ({ ...job }));
     this.applications = stateStore?.load<JobApplication[]>("portal-applications.json", []) ?? [];
+    this.inquiries = stateStore?.load<ProviderInquiry[]>("portal-inquiries.json", []) ?? [];
   }
 
   public listProviders(category: CategorySlug): ProviderRecord[] {
@@ -75,13 +78,17 @@ export class PortalStore {
 
   public updateProvider(
     providerId: string,
-    patch: Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "publicFields">>,
+    patch: Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "listingStatus" | "listingSubmittedAt" | "listingReviewedAt" | "listingReviewNote" | "publicFields">>,
   ): ProviderRecord | undefined {
     const provider = this.getProvider(providerId);
     if (!provider) return undefined;
     if (patch.name !== undefined) provider.name = patch.name;
     if (patch.themes !== undefined) provider.themes = [...patch.themes];
     if (patch.location !== undefined) provider.location = patch.location;
+    if (patch.listingStatus !== undefined) provider.listingStatus = patch.listingStatus;
+    if (patch.listingSubmittedAt !== undefined) provider.listingSubmittedAt = patch.listingSubmittedAt;
+    if (patch.listingReviewedAt !== undefined) provider.listingReviewedAt = patch.listingReviewedAt;
+    if (patch.listingReviewNote !== undefined) provider.listingReviewNote = patch.listingReviewNote;
     if (patch.publicFields !== undefined) {
       provider.publicFields = { ...provider.publicFields, ...cloneFields(patch.publicFields) };
     }
@@ -177,5 +184,36 @@ export class PortalStore {
     application.status = status;
     this.stateStore?.save("portal-applications.json", this.applications);
     return application;
+  }
+
+  public createInquiry(input: Omit<ProviderInquiry, "id" | "createdAt" | "updatedAt" | "status">): ProviderInquiry {
+    const now = new Date().toISOString();
+    const inquiry: ProviderInquiry = {
+      ...input,
+      id: `inquiry-${randomUUID()}`,
+      status: "open",
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.inquiries.push(inquiry);
+    this.stateStore?.save("portal-inquiries.json", this.inquiries);
+    return inquiry;
+  }
+
+  public listInquiries(category: CategorySlug): ProviderInquiry[] {
+    return this.inquiries.filter((inquiry) => inquiry.category === category);
+  }
+
+  public getInquiry(inquiryId: string): ProviderInquiry | undefined {
+    return this.inquiries.find((inquiry) => inquiry.id === inquiryId);
+  }
+
+  public updateInquiry(inquiryId: string, status: InquiryStatus): ProviderInquiry | undefined {
+    const inquiry = this.getInquiry(inquiryId);
+    if (!inquiry) return undefined;
+    inquiry.status = status;
+    inquiry.updatedAt = new Date().toISOString();
+    this.stateStore?.save("portal-inquiries.json", this.inquiries);
+    return inquiry;
   }
 }

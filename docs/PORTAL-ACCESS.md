@@ -16,6 +16,8 @@
 - MCPの`tools/list`と`tools/call`
 - 発注者による依頼作成
 - 担当事業者による依頼閲覧
+- 公開事業者への問い合わせ送信と状態管理
+- 事業者掲載情報の審査待ち・公開・差戻し・停止管理
 - カテゴリ別求人検索
 - リクルーターによる求人応募
 
@@ -70,9 +72,14 @@ GET  /api/v1/categories/{category}/experience
 GET  /api/v1/providers?category=beauty&theme=カラー
 GET  /api/v1/providers/{providerId}
 PATCH /api/v1/providers/{providerId}
+POST /api/v1/providers/{providerId}/listing-submission
+PATCH /api/v1/providers/{providerId}/listing-review
 POST /api/v1/requests
 GET  /api/v1/requests
 PATCH /api/v1/requests/{requestId}
+POST /api/v1/inquiries
+GET  /api/v1/inquiries
+PATCH /api/v1/inquiries/{inquiryId}
 GET  /api/v1/jobs?category=legal
 POST /api/v1/jobs
 PATCH /api/v1/jobs/{jobId}
@@ -95,6 +102,10 @@ POST /mcp
 
 `PATCH /api/v1/providers/{providerId}`、`POST /api/v1/jobs`、`PATCH /api/v1/jobs/{jobId}` は、対象カテゴリに所属する事業者本人だけが実行できます。MCPでも `provider.get`、`provider.update`、`job.create`、`job.update` を同じ権限判定で利用できます。
 
+掲載状態は `draft`（下書き）、`pending_review`（審査中）、`published`（公開中）、`suspended`（停止中）で管理します。事業者本人が `POST /api/v1/providers/{providerId}/listing-submission` またはMCPの `provider.listing_submit` を実行すると審査中になり、公開検索から除外されます。運営審査はログインロールとは分離し、`CMS_OS_OPERATOR_KEY` と `x-cms-os-operator-key` ヘッダーを使う `PATCH /api/v1/providers/{providerId}/listing-review` またはMCPの `provider.listing_review` で行います。
+
+問い合わせは `POST /api/v1/inquiries` またはMCPの `inquiry.create` で作成します。送信者は自分の問い合わせ、事業者は自社宛ての問い合わせだけを取得できます。状態は `open`（受付中）→ `responded`（返信済み）→ `closed`（終了）で、RESTとMCPは同じ状態遷移・所有者検証を利用します。
+
 ## 依頼・求人応募の権限
 
 | 操作 | ユーザー | 発注者 | 事業者 | リクルーター |
@@ -102,6 +113,9 @@ POST /mcp
 | 公開事業者検索 | ○ | ○ | ○ | ○ |
 | 依頼作成 | × | ○ | × | × |
 | 担当依頼の閲覧 | × | ○ | ○ | × |
+| 公開事業者への問い合わせ | ○ | ○ | × | ○ |
+| 自分の問い合わせの閲覧・終了 | ○ | ○ | × | ○ |
+| 自社宛て問い合わせの閲覧・返信 | × | × | ○ | × |
 | 公開求人の閲覧 | ○ | ○ | ○ | ○ |
 | 求人への応募 | × | × | × | ○ |
 | 担当求人の応募閲覧 | × | × | ○ | × |
@@ -115,6 +129,9 @@ POST /mcp
 - 求人一覧の状態操作：自社求人を `PATCH /api/v1/jobs/{jobId}` で公開・終了
 - 依頼・応募の状態表示：発注者、事業者、リクルーターの対象データだけを一覧表示
 - 状態操作：事業者の依頼受付・応募選考、発注者の依頼終了を許可された遷移だけ実行
+- 問い合わせフォーム：ユーザー、発注者、リクルーターが検索結果から送信
+- 問い合わせ管理：事業者は自社宛て問い合わせを返信済み・終了へ更新
+- 掲載審査送信：事業者が自社掲載を審査へ送信し、状態と審査メモを確認
 - 一般ユーザー、発注者、リクルーターには事業者管理フォームを表示しない
 
 APIを操作する最小のブラウザUIを同梱しています。カテゴリを選択すると、そのカテゴリの表示モジュール、事業者、求人が切り替わります。ログイン後にカテゴリを変更した場合は、カテゴリコンテキストの混在を避けるため自動的にログアウトします。
