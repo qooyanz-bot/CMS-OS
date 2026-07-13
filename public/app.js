@@ -52,6 +52,7 @@ const elements = {
   providerLocation: document.querySelector("#provider-location-filter"),
   providerSort: document.querySelector("#provider-sort"),
   providers: document.querySelector("#provider-list"),
+  providerPagination: document.querySelector("#provider-pagination"),
   requestPanel: document.querySelector("#request-panel"),
   requestForm: document.querySelector("#request-form"),
   requestProvider: document.querySelector("#request-provider"),
@@ -69,18 +70,21 @@ const elements = {
   requestSearch: document.querySelector("#request-search-filter"),
   requestStatus: document.querySelector("#request-status-filter"),
   requestSort: document.querySelector("#request-sort"),
+  requestPagination: document.querySelector("#request-pagination"),
   applicationPanel: document.querySelector("#application-panel"),
   applicationList: document.querySelector("#application-list"),
   applicationSearch: document.querySelector("#application-search-filter"),
   applicationJob: document.querySelector("#application-job-filter"),
   applicationStatus: document.querySelector("#application-status-filter"),
   applicationSort: document.querySelector("#application-sort"),
+  applicationPagination: document.querySelector("#application-pagination"),
   jobs: document.querySelector("#job-list"),
   jobSearch: document.querySelector("#job-search-filter"),
   jobEmployment: document.querySelector("#job-employment-filter"),
   jobLocation: document.querySelector("#job-location-filter"),
   jobStatus: document.querySelector("#job-status-filter"),
   jobSort: document.querySelector("#job-sort"),
+  jobPagination: document.querySelector("#job-pagination"),
   contentPanel: document.querySelector("#content-editor-panel"),
   contentForm: document.querySelector("#content-proposal-form"),
   contentMessage: document.querySelector("#content-message"),
@@ -189,7 +193,39 @@ function renderExperience(experience) {
   elements.inquiryPanel.hidden = !experience.allowedActions.includes("inquiry.create");
 }
 
-function renderProviders(items) {
+function renderListPagination(target, page = {}, cursor = "", reloadFunction, label) {
+  if (!target) return;
+  target.replaceChildren();
+  const hasPrevious = Boolean(cursor);
+  const hasNext = Boolean(page.nextCursor);
+  if (!hasPrevious && !hasNext) return;
+
+  const nav = document.createElement("nav");
+  nav.setAttribute("aria-label", label);
+  const status = document.createElement("span");
+  status.className = "page-status";
+  status.textContent = hasNext ? "続きの一覧があります" : "一覧の末尾です";
+  nav.append(status);
+
+  const addButton = (text, nextCursor, ariaLabel) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button ghost";
+    button.textContent = text;
+    button.setAttribute("aria-label", ariaLabel);
+    button.addEventListener("click", () => {
+      button.disabled = true;
+      void reloadFunction(nextCursor).catch((error) => setMessage(error.message));
+    });
+    nav.append(button);
+  };
+
+  if (hasPrevious) addButton("先頭へ", "", `${label}の先頭へ戻る`);
+  if (hasNext) addButton("次へ", page.nextCursor, `${label}の次のページを表示`);
+  target.append(nav);
+}
+
+function renderProviders(items, page = {}, cursor = "") {
   state.providers = items;
   elements.providers.innerHTML = items.length
     ? items.map((provider) => {
@@ -212,6 +248,7 @@ function renderProviders(items) {
       elements.inquiryForm.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   });
+  renderListPagination(elements.providerPagination, page, cursor, reloadProviders, "事業者一覧のページ移動");
 }
 
 const requestStatusLabels = { submitted: "受付中", accepted: "対応中", closed: "終了" };
@@ -222,7 +259,7 @@ function roleStatusButtons(actions) {
   return actions.map(([status, label]) => `<button class="button ghost role-status-button" data-status="${escapeHtml(status)}">${escapeHtml(label)}</button>`).join("");
 }
 
-function renderRequests(items) {
+function renderRequests(items, page = {}, cursor = "") {
   state.requests = items;
   elements.requestList.innerHTML = items.length
     ? items.map((request) => {
@@ -240,6 +277,7 @@ function renderRequests(items) {
       if (requestItem?.dataset.requestId) void updateRoleStatus("requests", requestItem.dataset.requestId, button.dataset.status ?? "");
     });
   });
+  renderListPagination(elements.requestPagination, page, cursor, reloadRequests, "依頼一覧のページ移動");
 }
 
 function renderInquiries(items) {
@@ -281,7 +319,7 @@ function renderNotifications(items) {
   });
 }
 
-function renderApplications(items) {
+function renderApplications(items, page = {}, cursor = "") {
   state.applications = items;
   elements.applicationList.innerHTML = items.length
     ? items.map((application) => {
@@ -297,6 +335,7 @@ function renderApplications(items) {
       if (applicationItem?.dataset.applicationId) void updateRoleStatus("applications", applicationItem.dataset.applicationId, button.dataset.status ?? "");
     });
   });
+  renderListPagination(elements.applicationPagination, page, cursor, reloadApplications, "応募一覧のページ移動");
 }
 
 async function updateRoleStatus(resource, resourceId, status) {
@@ -319,40 +358,43 @@ function buildListQuery(values) {
   return params.toString();
 }
 
-async function reloadProviders() {
+async function reloadProviders(cursor = "") {
   const query = buildListQuery({
     category: state.category,
     search: elements.search.value,
     theme: elements.providerTheme.value,
     location: elements.providerLocation.value,
     sort: elements.providerSort.value,
+    cursor,
   });
   const body = await api(`/api/v1/providers?${query}`);
-  renderProviders(body.items);
+  renderProviders(body.items, body.page, cursor);
 }
 
-async function reloadRequests() {
+async function reloadRequests(cursor = "") {
   const query = buildListQuery({
     search: elements.requestSearch.value,
     status: elements.requestStatus.value,
     sort: elements.requestSort.value,
+    cursor,
   });
   const body = await api(`/api/v1/requests?${query}`);
-  renderRequests(body.items);
+  renderRequests(body.items, body.page, cursor);
 }
 
-async function reloadApplications() {
+async function reloadApplications(cursor = "") {
   const query = buildListQuery({
     search: elements.applicationSearch.value,
     jobId: elements.applicationJob.value,
     status: elements.applicationStatus.value,
     sort: elements.applicationSort.value,
+    cursor,
   });
   const body = await api(`/api/v1/applications?${query}`);
-  renderApplications(body.items);
+  renderApplications(body.items, body.page, cursor);
 }
 
-async function reloadJobs() {
+async function reloadJobs(cursor = "") {
   const query = buildListQuery({
     category: state.category,
     search: elements.jobSearch.value,
@@ -360,9 +402,10 @@ async function reloadJobs() {
     location: elements.jobLocation.value,
     status: elements.jobStatus.value,
     sort: elements.jobSort.value,
+    cursor,
   });
   const body = await api(`/api/v1/jobs?${query}`);
-  renderJobs(body.items);
+  renderJobs(body.items, body.page, cursor);
 }
 
 async function reloadRoleData() {
@@ -375,8 +418,14 @@ async function reloadRoleData() {
   elements.inquiryStatusPanel.hidden = !canSeeInquiries || state.role === "provider";
   elements.inquiryManagementPanel.hidden = !canSeeInquiries || state.role !== "provider";
   elements.notificationPanel.hidden = !canSeeNotifications;
-  if (!canSeeRequests) elements.requestList.innerHTML = "";
-  if (!canSeeApplications) elements.applicationList.innerHTML = "";
+  if (!canSeeRequests) {
+    elements.requestList.innerHTML = "";
+    elements.requestPagination.replaceChildren();
+  }
+  if (!canSeeApplications) {
+    elements.applicationList.innerHTML = "";
+    elements.applicationPagination.replaceChildren();
+  }
   if (!canSeeInquiries) {
     elements.inquiryList.innerHTML = "";
     elements.inquiryManagementList.innerHTML = "";
@@ -455,7 +504,7 @@ async function reloadProviderManagement() {
   }
 }
 
-function renderJobs(items) {
+function renderJobs(items, page = {}, cursor = "") {
   const canManageJobs = state.role === "provider" && state.experience?.allowedActions.includes("job.manage");
   elements.jobs.innerHTML = items.length
     ? items.map((job) => `<article class="job-item"><h3>${escapeHtml(job.title)}</h3><div class="meta"><span>${escapeHtml(job.employmentType)}</span><span>${escapeHtml(job.location)}</span></div>${state.experience?.allowedActions.includes("application.create") ? `<button class="button ghost apply-button" data-job-id="${escapeHtml(job.id)}">この求人に応募</button>` : ""}</article>`).join("")
@@ -505,6 +554,7 @@ function renderJobs(items) {
       }
     });
   });
+  renderListPagination(elements.jobPagination, page, cursor, reloadJobs, "求人一覧のページ移動");
 }
 
 function renderProposals(items) {

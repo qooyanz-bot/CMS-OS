@@ -96,6 +96,10 @@ select:focus, input:focus, textarea:focus { border-color: rgba(184, 243, 106, .6
 .editor-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .editor-actions .button { padding: 8px 10px; font-size: 11px; }
 .role-list { display: grid; gap: 10px; margin-top: 18px; }
+.list-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.list-pagination nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; }
+.list-pagination .page-status { margin-right: auto; color: var(--muted); font-size: 11px; }
+.list-pagination .button { width: auto; padding: 8px 11px; font-size: 11px; }
 .role-item { background: rgba(255,255,255,.035); border: 1px solid var(--border); border-radius: 14px; padding: 15px; }
 .role-item.unread { border-color: rgba(184,243,106,.55); box-shadow: 0 0 0 1px rgba(184,243,106,.08); }
 .role-item h3 { margin: 10px 0 7px; font-size: 15px; }

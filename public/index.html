@@ -109,7 +109,8 @@
             <label>地域<input id="provider-location-filter" placeholder="地域を指定" /></label>
             <label>並び順<select id="provider-sort"><option value="relevance">関連度順</option><option value="name_asc">事業者名順</option><option value="location_asc">地域順</option></select></label>
           </div>
-          <div id="provider-list" class="provider-list"></div>
+          <div id="provider-list" class="provider-list" aria-live="polite"></div>
+          <div id="provider-pagination" class="list-pagination" aria-live="polite"></div>
         </div>
 
         <aside class="side-stack">
@@ -155,7 +156,8 @@
               <label>状態<select id="request-status-filter"><option value="">すべて</option><option value="submitted">受付中</option><option value="accepted">対応中</option><option value="closed">完了</option></select></label>
               <label>並び順<select id="request-sort"><option value="createdAt_desc">新しい順</option><option value="createdAt_asc">古い順</option><option value="title_asc">タイトル順</option></select></label>
             </div>
-            <div id="request-list" class="role-list"></div>
+            <div id="request-list" class="role-list" aria-live="polite"></div>
+            <div id="request-pagination" class="list-pagination" aria-live="polite"></div>
           </div>
 
           <div id="application-panel" class="card action-card" hidden>
@@ -167,7 +169,8 @@
               <label>状態<select id="application-status-filter"><option value="">すべて</option><option value="submitted">受付中</option><option value="screening">選考中</option><option value="closed">終了</option></select></label>
               <label>並び順<select id="application-sort"><option value="createdAt_desc">新しい順</option><option value="createdAt_asc">古い順</option><option value="status">状態順</option></select></label>
             </div>
-            <div id="application-list" class="role-list"></div>
+            <div id="application-list" class="role-list" aria-live="polite"></div>
+            <div id="application-pagination" class="list-pagination" aria-live="polite"></div>
           </div>
 
           <div id="job-panel" class="card action-card">
@@ -180,7 +183,8 @@
               <label>状態<select id="job-status-filter"><option value="">すべて</option><option value="published">公開中</option><option value="closed">終了</option></select></label>
               <label>並び順<select id="job-sort"><option value="title_asc">タイトル順</option><option value="title_desc">タイトル逆順</option><option value="location_asc">勤務地順</option></select></label>
             </div>
-            <div id="job-list" class="job-list"></div>
+            <div id="job-list" class="job-list" aria-live="polite"></div>
+            <div id="job-pagination" class="list-pagination" aria-live="polite"></div>
           </div>
           <div id="provider-management-panel" class="card action-card" hidden>
             <div class="section-kicker">PROVIDER PROFILE</div>
