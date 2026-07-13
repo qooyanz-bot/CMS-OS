@@ -68,15 +68,32 @@ POST /api/v1/auth/mfa/complete
 GET  /api/v1/categories
 GET  /api/v1/categories/{category}/experience
 GET  /api/v1/providers?category=beauty&theme=カラー
+GET  /api/v1/providers/{providerId}
+PATCH /api/v1/providers/{providerId}
 POST /api/v1/requests
 GET  /api/v1/requests
 PATCH /api/v1/requests/{requestId}
 GET  /api/v1/jobs?category=legal
+POST /api/v1/jobs
+PATCH /api/v1/jobs/{jobId}
 POST /api/v1/jobs/{jobId}/applications
 GET  /api/v1/applications
 PATCH /api/v1/applications/{applicationId}
 POST /mcp
 ```
+
+## 事業者掲載情報・求人管理
+
+事業者の掲載情報は、カテゴリとロールに応じて次のように投影します。
+
+| ロール | 事業者情報 | 求人情報 |
+|---|---|---|
+| ユーザー | 公開項目のみ | 公開中のみ・providerIdは非公開 |
+| 発注者 | 公開項目＋発注者向け項目 | 公開中のみ・providerIdは非公開 |
+| 事業者 | 自社の公開項目＋事業者向け項目 | 自社求人の公開・終了を含む |
+| リクルーター | 公開項目＋候補者向け項目 | 公開中のみ・providerIdは非公開 |
+
+`PATCH /api/v1/providers/{providerId}`、`POST /api/v1/jobs`、`PATCH /api/v1/jobs/{jobId}` は、対象カテゴリに所属する事業者本人だけが実行できます。MCPでも `provider.get`、`provider.update`、`job.create`、`job.update` を同じ権限判定で利用できます。
 
 ## 依頼・求人応募の権限
 

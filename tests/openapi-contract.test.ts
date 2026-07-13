@@ -28,6 +28,7 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/categories",
       "/api/v1/categories/{category}/experience",
       "/api/v1/providers",
+      "/api/v1/providers/{providerId}",
       "/api/v1/content/proposals",
       "/api/v1/content/drafts",
       "/api/v1/content",
@@ -44,6 +45,7 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/requests",
       "/api/v1/requests/{requestId}",
       "/api/v1/jobs",
+      "/api/v1/jobs/{jobId}",
       "/api/v1/jobs/{jobId}/applications",
       "/api/v1/applications",
       "/api/v1/applications/{applicationId}",
@@ -59,8 +61,16 @@ describe("CMS-OS OpenAPI契約", () => {
     assert.ok(contentPath);
     assert.ok(contentPath.patch);
     assert.ok(contentPath.delete);
+    const providerPath = specification.paths["/api/v1/providers/{providerId}"];
+    assert.ok(providerPath);
+    assert.ok(providerPath.get);
+    assert.ok(providerPath.patch);
+    const jobPath = specification.paths["/api/v1/jobs/{jobId}"];
+    assert.ok(jobPath);
+    assert.ok(jobPath.patch);
     for (const path of ["/api/v1/categories/{category}/experience", "/api/v1/providers", "/api/v1/jobs", "/mcp"]) {
-      const operation = Object.values(specification.paths[path] ?? {})[0] as { security?: unknown };
+      const pathItem = specification.paths[path] ?? {};
+      const operation = (pathItem.get ?? Object.values(pathItem)[0]) as { security?: unknown };
       assert.deepEqual(operation.security, [{}, { BearerAuth: [] }], `${path}は任意認証である必要があります。`);
     }
     assert.deepEqual(specification.components.securitySchemes.BearerAuth, { type: "http", scheme: "bearer", bearerFormat: "opaque-session-token" });

@@ -1,7 +1,6 @@
 import type { AuthService } from "../domain/auth.js";
 import {
   listCategoryPolicies,
-  listProviders,
   projectProvider,
   resolveExperience,
 } from "../domain/catalog.js";
@@ -9,12 +8,49 @@ import { PortalStore } from "../domain/portal-store.js";
 import type {
   AuthenticatedPrincipal,
   CategorySlug,
+  JobStatus,
   JobApplication,
   JobPosting,
   PortalRole,
+  ProviderRecord,
   ServiceRequest,
   VisibleProvider,
 } from "../domain/types.js";
+import { jobStatuses } from "../domain/types.js";
+
+export type ProviderUpdateInput = Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "publicFields">>;
+
+const protectedPublicFieldKeys = new Set([
+  "id",
+  "category",
+  "name",
+  "themes",
+  "location",
+  "publicFields",
+  "ordererFields",
+  "providerFields",
+  "candidateFields",
+  "verificationStatus",
+  "lastVerifiedAt",
+  "listingStatus",
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+function validatePublicFields(fields: Record<string, string | string[]>): void {
+  const entries = Object.entries(fields);
+  if (entries.length > 50) throw new PortalServiceError(400, "公開項目は50項目以内で指定してください。");
+  for (const [key, value] of entries) {
+    if (!key.trim() || key.length > 100 || protectedPublicFieldKeys.has(key)) {
+      throw new PortalServiceError(400, `公開項目キー「${key}」は使用できません。`);
+    }
+    const values = Array.isArray(value) ? value : [value];
+    if (values.length > 20 || values.some((item) => item.length > 1000)) {
+      throw new PortalServiceError(400, `公開項目「${key}」の値が長すぎます。`);
+    }
+  }
+}
 
 export class PortalServiceError extends Error {
   public constructor(public readonly statusCode: number, message: string) {
@@ -67,7 +103,7 @@ export class PortalService {
     const normalizedTheme = filters.theme?.trim().toLocaleLowerCase("ja-JP");
     const normalizedLocation = filters.location?.trim().toLocaleLowerCase("ja-JP");
 
-    return listProviders(category)
+    return this.store.listProviders(category)
       .filter((provider) => {
         const searchable = [provider.name, provider.location, ...provider.themes].join(" ").toLocaleLowerCase("ja-JP");
         const themeMatches = !normalizedTheme || provider.themes.some((theme) => theme.toLocaleLowerCase("ja-JP") === normalizedTheme);
@@ -87,6 +123,53 @@ export class PortalService {
     }
   }
 
+  public getProvider(providerId: string, principal: AuthenticatedPrincipal | null): VisibleProvider {
+    const provider = this.store.getProvider(providerId);
+    if (!provider) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    const role = principal?.category === provider.category ? principal.role : "user";
+    return projectProvider(provider, role, principal?.providerId);
+  }
+
+  public updateProvider(
+    principal: AuthenticatedPrincipal | null,
+    providerId: string,
+    input: ProviderUpdateInput,
+  ): VisibleProvider {
+    const provider = this.store.getProvider(providerId);
+    if (!provider) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    if (!principal || principal.category !== provider.category) {
+      throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    }
+    this.assertAction(principal, provider.category, "listing.update");
+    if (principal.role !== "provider" || principal.providerId !== provider.id) {
+      throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    }
+    if (Object.keys(input).length === 0) {
+      throw new PortalServiceError(400, "更新項目を1つ以上指定してください。");
+    }
+    if (input.name !== undefined && (input.name.trim().length < 2 || input.name.trim().length > 200)) {
+      throw new PortalServiceError(400, "nameは2文字以上200文字以内で指定してください。");
+    }
+    if (input.themes !== undefined) {
+      if (input.themes.length < 1 || input.themes.length > 20 || input.themes.some((theme) => theme.trim().length === 0 || theme.length > 100)) {
+        throw new PortalServiceError(400, "themesは1件以上20件以内で指定してください。");
+      }
+    }
+    if (input.location !== undefined && (input.location.trim().length < 2 || input.location.trim().length > 200)) {
+      throw new PortalServiceError(400, "locationは2文字以上200文字以内で指定してください。");
+    }
+    if (input.publicFields !== undefined) validatePublicFields(input.publicFields);
+
+    const updated = this.store.updateProvider(provider.id, {
+      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+      ...(input.themes !== undefined ? { themes: input.themes.map((theme) => theme.trim()) } : {}),
+      ...(input.location !== undefined ? { location: input.location.trim() } : {}),
+      ...(input.publicFields !== undefined ? { publicFields: input.publicFields } : {}),
+    });
+    if (!updated) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    return projectProvider(updated, "provider", principal.providerId);
+  }
+
   public createRequest(
     principal: AuthenticatedPrincipal | null,
     input: { category: CategorySlug; providerId: string; title: string; description: string },
@@ -98,7 +181,7 @@ export class PortalService {
     if (input.title.trim().length < 3 || input.description.trim().length < 10) {
       throw new PortalServiceError(400, "titleは3文字以上、descriptionは10文字以上で入力してください。");
     }
-    const provider = listProviders(input.category).find((candidate) => candidate.id === input.providerId);
+    const provider = this.store.listProviders(input.category).find((candidate) => candidate.id === input.providerId);
     if (!provider) throw new PortalServiceError(404, "指定された事業者が見つかりません。");
 
     return this.store.createRequest({
@@ -146,13 +229,92 @@ export class PortalService {
   }
 
   public listJobs(category: CategorySlug, principal: AuthenticatedPrincipal | null): JobPosting[] {
-    return this.store.listJobs(category).map((job) => {
-      if (principal?.role === "provider" && principal.providerId === job.providerId) return job;
+    const jobs = principal?.role === "provider" && principal.category === category && principal.providerId
+      ? this.store.listJobsForProvider(category, principal.providerId)
+      : this.store.listJobs(category);
+    return jobs.map((job) => {
+      if (principal?.role === "provider" && principal.category === category && principal.providerId === job.providerId) return job;
       return {
         ...job,
         providerId: "非公開",
       };
     });
+  }
+
+  public createJob(
+    principal: AuthenticatedPrincipal | null,
+    input: { category: CategorySlug; title: string; employmentType: string; location: string; description: string; status?: JobStatus },
+  ): JobPosting {
+    this.assertAction(principal, input.category, "job.manage");
+    if (!principal || principal.role !== "provider" || !principal.providerId) {
+      throw new PortalServiceError(403, "事業者だけが求人を管理できます。");
+    }
+    const provider = this.store.getProvider(principal.providerId);
+    if (!provider || provider.category !== input.category) {
+      throw new PortalServiceError(404, "指定された事業者が見つかりません。");
+    }
+    this.validateJobInput(input);
+    return this.store.createJob({
+      category: input.category,
+      providerId: principal.providerId,
+      title: input.title.trim(),
+      employmentType: input.employmentType.trim(),
+      location: input.location.trim(),
+      description: input.description.trim(),
+      status: input.status ?? "published",
+    });
+  }
+
+  public updateJob(
+    principal: AuthenticatedPrincipal | null,
+    jobId: string,
+    input: Partial<Pick<JobPosting, "title" | "employmentType" | "location" | "description" | "status">>,
+  ): JobPosting {
+    const job = this.store.getJob(jobId);
+    if (!job || !principal || principal.category !== job.category) {
+      throw new PortalServiceError(404, "指定された求人が見つかりません。");
+    }
+    this.assertAction(principal, job.category, "job.manage");
+    if (principal.role !== "provider" || principal.providerId !== job.providerId) {
+      throw new PortalServiceError(404, "指定された求人が見つかりません。");
+    }
+    if (Object.keys(input).length === 0) {
+      throw new PortalServiceError(400, "更新項目を1つ以上指定してください。");
+    }
+    this.validateJobInput({
+      title: input.title ?? job.title,
+      employmentType: input.employmentType ?? job.employmentType,
+      location: input.location ?? job.location,
+      description: input.description ?? job.description,
+      status: input.status ?? job.status,
+    });
+    const updated = this.store.updateJob(job.id, {
+      ...(input.title !== undefined ? { title: input.title.trim() } : {}),
+      ...(input.employmentType !== undefined ? { employmentType: input.employmentType.trim() } : {}),
+      ...(input.location !== undefined ? { location: input.location.trim() } : {}),
+      ...(input.description !== undefined ? { description: input.description.trim() } : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+    });
+    if (!updated) throw new PortalServiceError(404, "指定された求人が見つかりません。");
+    return updated;
+  }
+
+  private validateJobInput(input: { title: string; employmentType: string; location: string; description: string; status?: JobStatus }): void {
+    if (input.title.trim().length < 3 || input.title.trim().length > 200) {
+      throw new PortalServiceError(400, "titleは3文字以上200文字以内で指定してください。");
+    }
+    if (input.employmentType.trim().length < 2 || input.employmentType.trim().length > 100) {
+      throw new PortalServiceError(400, "employmentTypeは2文字以上100文字以内で指定してください。");
+    }
+    if (input.location.trim().length < 2 || input.location.trim().length > 200) {
+      throw new PortalServiceError(400, "locationは2文字以上200文字以内で指定してください。");
+    }
+    if (input.description.trim().length < 10 || input.description.trim().length > 10000) {
+      throw new PortalServiceError(400, "descriptionは10文字以上10000文字以内で指定してください。");
+    }
+    if (input.status !== undefined && !(jobStatuses as readonly string[]).includes(input.status)) {
+      throw new PortalServiceError(400, "statusが不正です。");
+    }
   }
 
   public createApplication(

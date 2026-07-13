@@ -7,9 +7,16 @@ import { createHttpServer } from "../src/api/http-server.js";
 
 let server: Server;
 let baseUrl: string;
+let legalProviderToken: string;
+let legalOrdererToken: string;
 
 before(async () => {
   const auth = new InMemoryAuthService();
+  const providerLogin = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
+  const ordererLogin = auth.login("orderer@example.com", "demo-password", "legal", "orderer");
+  if (!providerLogin || !ordererLogin || !("accessToken" in providerLogin) || !("accessToken" in ordererLogin)) throw new Error("テスト用の事業者トークンを作成できません。");
+  legalProviderToken = providerLogin.accessToken;
+  legalOrdererToken = ordererLogin.accessToken;
   const portal = new PortalService(auth);
   server = createHttpServer(auth, portal);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -108,6 +115,10 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(tools.status, 200);
     assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.search"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.get"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "provider.update"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "job.create"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "job.update"));
     const providerSearchTool = tools.body.result.tools.find((tool: { name: string }) => tool.name === "provider.search");
     assert.ok(providerSearchTool.inputSchema.properties.category.enum.includes("ai-business"));
 
@@ -269,5 +280,115 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(screening.status, 200);
     assert.equal(screening.body.item.status, "screening");
+  });
+
+  it("莠区･ｭ閠・譛ｬ莠ｺ縺ｮ謗ｲ霈画ュ蝣ｱ縺ｨ蜿｣蜿門ｾ励ｒREST縺ｧ譁ｰ逕滂ｺｺ繧医Μ蜿門ｾ励〒縺阪ｋ", async () => {
+    const updated = await request("/api/v1/providers/provider-legal-demo", {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({ publicFields: { portalTestLabel: "verified" } }),
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.item.portalTestLabel, "verified");
+
+    const publicProvider = await request("/api/v1/providers/provider-legal-demo");
+    assert.equal(publicProvider.status, 200);
+    assert.equal(publicProvider.body.item.portalTestLabel, "verified");
+
+    const protectedUpdate = await request("/api/v1/providers/provider-legal-demo", {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({ publicFields: { name: "上書き不可" } }),
+    });
+    assert.equal(protectedUpdate.status, 400);
+
+    const denied = await request("/api/v1/providers/provider-legal-demo", {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ publicFields: { ordererAttempt: "denied" } }),
+    });
+    assert.equal(denied.status, 403);
+  });
+
+  it("莠区･ｭ閠・譛ｬ莠ｺ縺ｮ豎ゆｺｺ縺ｮ菴懈・縺ｨ繧ｯ繝ｭ繝ｼ繧ｺ縺ｮ迥ｶ諷九ｒREST縺ｧ邂｡逅・〒縺阪ｋ", async () => {
+    const created = await request("/api/v1/jobs", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({
+        category: "legal",
+        title: "CMS-OS求人テスト",
+        employmentType: "正社員",
+        location: "東京都",
+        description: "CMS-OSの求人管理APIを検証するための求人です。",
+      }),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.item.status, "published");
+
+    const closed = await request(`/api/v1/jobs/${created.body.item.id}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({ status: "closed" }),
+    });
+    assert.equal(closed.status, 200);
+    assert.equal(closed.body.item.status, "closed");
+
+    const providerJobs = await request("/api/v1/jobs?category=legal", {
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+    });
+    assert.ok(providerJobs.body.items.some((item: { id: string; status: string }) => item.id === created.body.item.id && item.status === "closed"));
+
+    const publicJobs = await request("/api/v1/jobs?category=legal");
+    assert.ok(!publicJobs.body.items.some((item: { id: string }) => item.id === created.body.item.id));
+  });
+
+  it("MCP縺ｧ莠区･ｭ閠・諠・ｱ縺ｨ豎ゆｺｺ繧貞ｮ溯｡後〒縺阪ｋ", async () => {
+    const update = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/call",
+        params: { name: "provider.update", arguments: { providerId: "provider-legal-demo", publicFields: { mcpTestLabel: "ok" } } },
+      }),
+    });
+    assert.equal(update.status, 200);
+    assert.equal(update.body.result.structuredContent.mcpTestLabel, "ok");
+
+    const created = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 11,
+        method: "tools/call",
+        params: {
+          name: "job.create",
+          arguments: {
+            category: "legal",
+            title: "MCP求人テスト",
+            employmentType: "業務委託",
+            location: "オンライン",
+            description: "MCP経由で作成する求人の動作確認です。",
+          },
+        },
+      }),
+    });
+    assert.equal(created.status, 200);
+    assert.equal(created.body.result.structuredContent.status, "published");
+
+    const closed = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 12,
+        method: "tools/call",
+        params: { name: "job.update", arguments: { jobId: created.body.result.structuredContent.id, status: "closed" } },
+      }),
+    });
+    assert.equal(closed.status, 200);
+    assert.equal(closed.body.result.structuredContent.status, "closed");
   });
 });

@@ -167,6 +167,25 @@
         "responses": { "200": { "description": "事業者一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
+    "/api/v1/providers/{providerId}": {
+      "get": {
+        "tags": ["Portal"],
+        "operationId": "getProvider",
+        "summary": "事業者1件の表示情報を取得",
+        "parameters": [{ "$ref": "#/components/parameters/ProviderIdPath" }],
+        "security": [{}, { "BearerAuth": [] }],
+        "responses": { "200": { "description": "事業者情報", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderResponse" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "patch": {
+        "tags": ["Portal"],
+        "operationId": "updateProvider",
+        "summary": "事業者本人の公開掲載情報を更新",
+        "parameters": [{ "$ref": "#/components/parameters/ProviderIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderUpdateRequest" } } } },
+        "responses": { "200": { "description": "事業者情報更新", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/api/v1/content/proposals": {
       "post": {
         "tags": ["Content"],
@@ -350,6 +369,14 @@
       }
     },
     "/api/v1/jobs": {
+      "post": {
+        "tags": ["Recruitment"],
+        "operationId": "createJob",
+        "summary": "事業者本人の求人を作成",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobCreate" } } } },
+        "responses": { "201": { "description": "求人作成", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
       "get": {
         "tags": ["Recruitment"],
         "operationId": "searchJobs",
@@ -357,6 +384,17 @@
         "parameters": [{ "$ref": "#/components/parameters/CategoryQuery" }],
         "security": [{}, { "BearerAuth": [] }],
         "responses": { "200": { "description": "求人一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/jobs/{jobId}": {
+      "patch": {
+        "tags": ["Recruitment"],
+        "operationId": "updateJob",
+        "summary": "事業者本人の求人を更新",
+        "parameters": [{ "$ref": "#/components/parameters/JobIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobUpdate" } } } },
+        "responses": { "200": { "description": "求人更新", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/api/v1/jobs/{jobId}/applications": {
@@ -409,6 +447,7 @@
       "CategoryPath": { "name": "category", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/CategorySlug" } },
       "CategoryQuery": { "name": "category", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/CategorySlug" } },
       "ContentIdPath": { "name": "contentId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "ProviderIdPath": { "name": "providerId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "JobIdPath": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
     },
     "responses": {
@@ -448,6 +487,8 @@
       "ExperienceResponse": { "type": "object", "required": ["experience"], "properties": { "experience": { "$ref": "#/components/schemas/Experience" } } },
       "Provider": { "type": "object", "required": ["id", "category", "name", "themes", "location"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string" }, "themes": { "type": "array", "items": { "type": "string" } }, "location": { "type": "string" } }, "additionalProperties": true },
       "ProviderListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Provider" } } } },
+      "ProviderUpdateRequest": { "type": "object", "properties": { "name": { "type": "string", "minLength": 2 }, "themes": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string" } }, "location": { "type": "string", "minLength": 2 }, "publicFields": { "type": "object", "additionalProperties": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] } } }, "additionalProperties": false },
+      "ProviderResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Provider" } } },
       "ContentProposalRequest": { "type": "object", "required": ["category", "contentType", "audience", "topic"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "contentType": { "$ref": "#/components/schemas/ContentType" }, "audience": { "$ref": "#/components/schemas/ContentAudience" }, "topic": { "type": "string", "minLength": 3 }, "primaryKeyword": { "type": "string" }, "relatedKeywords": { "type": "array", "items": { "type": "string" } }, "sourceFacts": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": false },
       "ContentProposal": { "type": "object", "required": ["id", "category", "providerId", "contentType", "audience", "topic", "searchIntent", "primaryKeyword", "relatedKeywords", "outline", "sourceFacts", "rationale", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "contentType": { "$ref": "#/components/schemas/ContentType" }, "audience": { "$ref": "#/components/schemas/ContentAudience" }, "topic": { "type": "string" }, "searchIntent": { "type": "string" }, "primaryKeyword": { "type": "string" }, "relatedKeywords": { "type": "array", "items": { "type": "string" } }, "outline": { "type": "array", "items": { "type": "string" } }, "sourceFacts": { "type": "array", "items": { "type": "string" } }, "rationale": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
       "ProposalResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/ContentProposal" } } },
@@ -470,7 +511,10 @@
       "ServiceRequest": { "type": "object", "required": ["id", "category", "ordererId", "providerId", "title", "description", "status", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "ordererId": { "type": "string" }, "providerId": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "status": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
       "RequestResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/ServiceRequest" } } },
       "RequestListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ServiceRequest" } } } },
-      "Job": { "type": "object", "required": ["id", "category", "providerId", "title", "employmentType", "location", "description", "status"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "title": { "type": "string" }, "employmentType": { "type": "string" }, "location": { "type": "string" }, "description": { "type": "string" }, "status": { "type": "string" } } },
+      "Job": { "type": "object", "required": ["id", "category", "providerId", "title", "employmentType", "location", "description", "status"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "title": { "type": "string" }, "employmentType": { "type": "string" }, "location": { "type": "string" }, "description": { "type": "string" }, "status": { "type": "string", "enum": ["published", "closed"] } } },
+      "JobCreate": { "type": "object", "required": ["category", "title", "employmentType", "location", "description"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "title": { "type": "string", "minLength": 3 }, "employmentType": { "type": "string", "minLength": 2 }, "location": { "type": "string", "minLength": 2 }, "description": { "type": "string", "minLength": 10 }, "status": { "type": "string", "enum": ["published", "closed"] } }, "additionalProperties": false },
+      "JobUpdate": { "type": "object", "properties": { "title": { "type": "string", "minLength": 3 }, "employmentType": { "type": "string", "minLength": 2 }, "location": { "type": "string", "minLength": 2 }, "description": { "type": "string", "minLength": 10 }, "status": { "type": "string", "enum": ["published", "closed"] } }, "additionalProperties": false },
+      "JobResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Job" } } },
       "JobListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } } } },
       "ApplicationCreate": { "type": "object", "required": ["message"], "properties": { "message": { "type": "string", "minLength": 10 } }, "additionalProperties": false },
       "ApplicationStatusUpdate": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["submitted", "screening", "closed"] } }, "additionalProperties": false },

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { CategorySlug, JobApplication, JobPosting, ServiceRequest } from "./types.js";
+import { listProviders as listCatalogProviders } from "./catalog.js";
+import type { CategorySlug, JobApplication, JobPosting, ProviderRecord, ServiceRequest } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 
 const defaultJobs: JobPosting[] = [
@@ -25,15 +26,67 @@ const defaultJobs: JobPosting[] = [
   },
 ];
 
+function cloneFields(fields: Record<string, string | string[]>): Record<string, string | string[]> {
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
+}
+
+function cloneProvider(provider: ProviderRecord): ProviderRecord {
+  return {
+    ...provider,
+    themes: [...provider.themes],
+    publicFields: cloneFields(provider.publicFields),
+    ordererFields: cloneFields(provider.ordererFields),
+    providerFields: cloneFields(provider.providerFields),
+    candidateFields: cloneFields(provider.candidateFields),
+  };
+}
+
 export class PortalStore {
+  private readonly providers: ProviderRecord[];
   private readonly requests: ServiceRequest[];
   private readonly jobs: JobPosting[];
   private readonly applications: JobApplication[];
 
   public constructor(private readonly stateStore?: StateStore) {
+    const catalogProviders = listCatalogProviders("legal").concat(
+      listCatalogProviders("beauty"),
+      listCatalogProviders("ai-business"),
+      listCatalogProviders("labor-shortage"),
+      listCatalogProviders("tourism"),
+      listCatalogProviders("mobility-dx"),
+      listCatalogProviders("gx"),
+      listCatalogProviders("regional-revitalization"),
+    );
+    const savedProviders = stateStore?.load<ProviderRecord[]>("portal-providers.json", catalogProviders);
+    this.providers = (savedProviders ?? catalogProviders).map(cloneProvider);
     this.requests = stateStore?.load<ServiceRequest[]>("portal-requests.json", []) ?? [];
-    this.jobs = stateStore ? stateStore.load<JobPosting[]>("portal-jobs.json", defaultJobs) : defaultJobs;
+    const savedJobs = stateStore?.load<JobPosting[]>("portal-jobs.json", defaultJobs) ?? defaultJobs;
+    this.jobs = savedJobs.map((job) => ({ ...job }));
     this.applications = stateStore?.load<JobApplication[]>("portal-applications.json", []) ?? [];
+  }
+
+  public listProviders(category: CategorySlug): ProviderRecord[] {
+    return this.providers.filter((provider) => provider.category === category);
+  }
+
+  public getProvider(providerId: string): ProviderRecord | undefined {
+    return this.providers.find((provider) => provider.id === providerId);
+  }
+
+  public updateProvider(
+    providerId: string,
+    patch: Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "publicFields">>,
+  ): ProviderRecord | undefined {
+    const provider = this.getProvider(providerId);
+    if (!provider) return undefined;
+    if (patch.name !== undefined) provider.name = patch.name;
+    if (patch.themes !== undefined) provider.themes = [...patch.themes];
+    if (patch.location !== undefined) provider.location = patch.location;
+    if (patch.publicFields !== undefined) {
+      provider.publicFields = { ...provider.publicFields, ...cloneFields(patch.publicFields) };
+    }
+    this.stateStore?.save("portal-providers.json", this.providers);
+    return provider;
   }
 
   public createRequest(input: Omit<ServiceRequest, "id" | "createdAt" | "status">): ServiceRequest {
@@ -68,8 +121,30 @@ export class PortalStore {
     return this.jobs.filter((job) => job.category === category && job.status === "published");
   }
 
+  public listJobsForProvider(category: CategorySlug, providerId: string): JobPosting[] {
+    return this.jobs.filter((job) => job.category === category && job.providerId === providerId);
+  }
+
   public getJob(jobId: string): JobPosting | undefined {
     return this.jobs.find((job) => job.id === jobId);
+  }
+
+  public createJob(input: Omit<JobPosting, "id">): JobPosting {
+    const job: JobPosting = { ...input, id: `job-${randomUUID()}` };
+    this.jobs.push(job);
+    this.stateStore?.save("portal-jobs.json", this.jobs);
+    return job;
+  }
+
+  public updateJob(
+    jobId: string,
+    patch: Partial<Pick<JobPosting, "title" | "employmentType" | "location" | "description" | "status">>,
+  ): JobPosting | undefined {
+    const job = this.getJob(jobId);
+    if (!job) return undefined;
+    Object.assign(job, patch);
+    this.stateStore?.save("portal-jobs.json", this.jobs);
+    return job;
   }
 
   public hasApplication(jobId: string, candidateId: string): boolean {

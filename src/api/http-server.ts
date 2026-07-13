@@ -13,7 +13,7 @@ import {
   parseOptionalStringArray,
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
-import { applicationStatuses, categorySlugs, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type PortalRole, type RequestStatus } from "../domain/types.js";
+import { applicationStatuses, categorySlugs, jobStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type JobStatus, type PortalRole, type RequestStatus } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -80,6 +80,10 @@ function isApplicationStatus(value: unknown): value is ApplicationStatus {
   return typeof value === "string" && (applicationStatuses as readonly string[]).includes(value);
 }
 
+function isJobStatus(value: unknown): value is JobStatus {
+  return typeof value === "string" && (jobStatuses as readonly string[]).includes(value);
+}
+
 const categoryEnum = [...categorySlugs];
 
 function isPortalRole(value: unknown): value is PortalRole {
@@ -119,6 +123,26 @@ function parseContentSeoPatch(value: unknown): Partial<ContentSeo> | undefined {
     result.faq = (input.faq as Array<{ question: string; answer: string }>).map((item) => ({ question: item.question, answer: item.answer }));
   }
   if (Object.keys(result).length === 0) throw new Error("seoの更新対象を1つ以上指定してください。");
+  return result;
+}
+
+function parseStringMap(value: unknown, fieldName: string): Record<string, string | string[]> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${fieldName}はオブジェクトで指定してください。`);
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > 50) throw new Error(`${fieldName}は50項目以内で指定してください。`);
+  const result: Record<string, string | string[]> = {};
+  for (const [key, item] of entries) {
+    if (typeof item === "string") {
+      result[key] = item;
+      continue;
+    }
+    if (Array.isArray(item) && item.every((entry) => typeof entry === "string")) {
+      result[key] = item as string[];
+      continue;
+    }
+    throw new Error(`${fieldName}.${key}は文字列または文字列配列で指定してください。`);
+  }
   return result;
 }
 
@@ -205,6 +229,26 @@ async function handleMcp(
                 location: { type: "string" },
               },
               required: ["category"],
+            },
+          },
+          {
+            name: "provider.get",
+            description: "事業者1件の表示情報を取得します。",
+            inputSchema: { type: "object", properties: { providerId: { type: "string" } }, required: ["providerId"] },
+          },
+          {
+            name: "provider.update",
+            description: "事業者本人の公開掲載情報を更新します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                providerId: { type: "string" },
+                name: { type: "string" },
+                themes: { type: "array", items: { type: "string" } },
+                location: { type: "string" },
+                publicFields: { type: "object", additionalProperties: true },
+              },
+              required: ["providerId"],
             },
           },
           {
@@ -306,6 +350,38 @@ async function handleMcp(
             name: "job.search",
             description: "カテゴリ別の公開求人を検索します。",
             inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
+          },
+          {
+            name: "job.create",
+            description: "事業者本人の求人を作成します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                category: { enum: categoryEnum },
+                title: { type: "string" },
+                employmentType: { type: "string" },
+                location: { type: "string" },
+                description: { type: "string" },
+                status: { enum: ["published", "closed"] },
+              },
+              required: ["category", "title", "employmentType", "location", "description"],
+            },
+          },
+          {
+            name: "job.update",
+            description: "事業者本人の求人情報または公開状態を更新します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                jobId: { type: "string" },
+                title: { type: "string" },
+                employmentType: { type: "string" },
+                location: { type: "string" },
+                description: { type: "string" },
+                status: { enum: ["published", "closed"] },
+              },
+              required: ["jobId"],
+            },
           },
           {
             name: "application.create",
@@ -537,6 +613,27 @@ async function handleMcp(
       return;
     }
 
+    if (name === "provider.get") {
+      if (typeof argumentsObject.providerId !== "string") throw new Error("providerIdが必要です。");
+      const result = portal.getProvider(argumentsObject.providerId, principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "provider.update") {
+      if (typeof argumentsObject.providerId !== "string") throw new Error("providerIdが必要です。");
+      const themes = parseOptionalStringArray(argumentsObject.themes, "themes");
+      const publicFields = parseStringMap(argumentsObject.publicFields, "publicFields");
+      const result = portal.updateProvider(principal, argumentsObject.providerId, {
+        ...(typeof argumentsObject.name === "string" ? { name: argumentsObject.name } : {}),
+        ...(themes ? { themes } : {}),
+        ...(typeof argumentsObject.location === "string" ? { location: argumentsObject.location } : {}),
+        ...(publicFields ? { publicFields } : {}),
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "auth.switch_context") {
       const token = getBearerToken(request);
       if (!token || !isCategorySlug(argumentsObject.category) || !isPortalRole(argumentsObject.role)) {
@@ -624,6 +721,41 @@ async function handleMcp(
     if (name === "job.search") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
       const result = portal.listJobs(argumentsObject.category, principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "job.create") {
+      if (!isCategorySlug(argumentsObject.category) || typeof argumentsObject.title !== "string" || typeof argumentsObject.employmentType !== "string" || typeof argumentsObject.location !== "string" || typeof argumentsObject.description !== "string") {
+        throw new Error("category、title、employmentType、location、descriptionが必要です。");
+      }
+      if (argumentsObject.status !== undefined && !isJobStatus(argumentsObject.status)) {
+        throw new Error("statusが不正です。");
+      }
+      const result = portal.createJob(principal, {
+        category: argumentsObject.category,
+        title: argumentsObject.title,
+        employmentType: argumentsObject.employmentType,
+        location: argumentsObject.location,
+        description: argumentsObject.description,
+        ...(isJobStatus(argumentsObject.status) ? { status: argumentsObject.status } : {}),
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "job.update") {
+      if (typeof argumentsObject.jobId !== "string") throw new Error("jobIdが必要です。");
+      if (argumentsObject.status !== undefined && !isJobStatus(argumentsObject.status)) {
+        throw new Error("statusが不正です。");
+      }
+      const result = portal.updateJob(principal, argumentsObject.jobId, {
+        ...(typeof argumentsObject.title === "string" ? { title: argumentsObject.title } : {}),
+        ...(typeof argumentsObject.employmentType === "string" ? { employmentType: argumentsObject.employmentType } : {}),
+        ...(typeof argumentsObject.location === "string" ? { location: argumentsObject.location } : {}),
+        ...(typeof argumentsObject.description === "string" ? { description: argumentsObject.description } : {}),
+        ...(isJobStatus(argumentsObject.status) ? { status: argumentsObject.status } : {}),
+      });
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -967,6 +1099,53 @@ export function createHttpServer(
         return;
       }
 
+      const providerMatch = url.pathname.match(/^\/api\/v1\/providers\/([^/]+)$/);
+      if (providerMatch && request.method === "GET") {
+        const providerId = providerMatch[1];
+        if (!providerId) {
+          writeJson(response, 400, { error: "providerIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: portal.getProvider(providerId, principal) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "事業者情報を取得できません。" });
+        }
+        return;
+      }
+
+      if (providerMatch && request.method === "PATCH") {
+        const providerId = providerMatch[1];
+        if (!providerId) {
+          writeJson(response, 400, { error: "providerIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        const themes = parseOptionalStringArray(body.themes, "themes");
+        const publicFields = parseStringMap(body.publicFields, "publicFields");
+        if (body.name !== undefined && typeof body.name !== "string") {
+          writeJson(response, 400, { error: "nameは文字列で指定してください。" });
+          return;
+        }
+        if (body.location !== undefined && typeof body.location !== "string") {
+          writeJson(response, 400, { error: "locationは文字列で指定してください。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, {
+            item: portal.updateProvider(principal, providerId, {
+              ...(typeof body.name === "string" ? { name: body.name } : {}),
+              ...(themes ? { themes } : {}),
+              ...(typeof body.location === "string" ? { location: body.location } : {}),
+              ...(publicFields ? { publicFields } : {}),
+            }),
+          });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "事業者情報を更新できません。" });
+        }
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/v1/content/proposals") {
         const body = await readJson(request);
         if (!isCategorySlug(body.category) || !isContentType(body.contentType) || !isContentAudience(body.audience) || typeof body.topic !== "string") {
@@ -1272,6 +1451,32 @@ export function createHttpServer(
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/v1/jobs") {
+        const body = await readJson(request);
+        if (!isCategorySlug(body.category) || typeof body.title !== "string" || typeof body.employmentType !== "string" || typeof body.location !== "string" || typeof body.description !== "string") {
+          writeJson(response, 400, { error: "category、title、employmentType、location、descriptionが必要です。" });
+          return;
+        }
+        if (body.status !== undefined && !isJobStatus(body.status)) {
+          writeJson(response, 400, { error: "statusが不正です。" });
+          return;
+        }
+        try {
+          const item = portal.createJob(principal, {
+            category: body.category,
+            title: body.title,
+            employmentType: body.employmentType,
+            location: body.location,
+            description: body.description,
+            ...(isJobStatus(body.status) ? { status: body.status } : {}),
+          });
+          writeJson(response, 201, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "求人を作成できません。" });
+        }
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/v1/jobs") {
         const category = url.searchParams.get("category");
         if (!isCategorySlug(category)) {
@@ -1279,6 +1484,50 @@ export function createHttpServer(
           return;
         }
         writeJson(response, 200, { items: portal.listJobs(category, principal) });
+        return;
+      }
+
+      const jobMatch = url.pathname.match(/^\/api\/v1\/jobs\/([^/]+)$/);
+      if (request.method === "PATCH" && jobMatch) {
+        const jobId = jobMatch[1];
+        if (!jobId) {
+          writeJson(response, 400, { error: "jobIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (body.title !== undefined && typeof body.title !== "string") {
+          writeJson(response, 400, { error: "titleは文字列で指定してください。" });
+          return;
+        }
+        if (body.employmentType !== undefined && typeof body.employmentType !== "string") {
+          writeJson(response, 400, { error: "employmentTypeは文字列で指定してください。" });
+          return;
+        }
+        if (body.location !== undefined && typeof body.location !== "string") {
+          writeJson(response, 400, { error: "locationは文字列で指定してください。" });
+          return;
+        }
+        if (body.description !== undefined && typeof body.description !== "string") {
+          writeJson(response, 400, { error: "descriptionは文字列で指定してください。" });
+          return;
+        }
+        if (body.status !== undefined && !isJobStatus(body.status)) {
+          writeJson(response, 400, { error: "statusが不正です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, {
+            item: portal.updateJob(principal, jobId, {
+              ...(typeof body.title === "string" ? { title: body.title } : {}),
+              ...(typeof body.employmentType === "string" ? { employmentType: body.employmentType } : {}),
+              ...(typeof body.location === "string" ? { location: body.location } : {}),
+              ...(typeof body.description === "string" ? { description: body.description } : {}),
+              ...(isJobStatus(body.status) ? { status: body.status } : {}),
+            }),
+          });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "求人を更新できません。" });
+        }
         return;
       }
 
