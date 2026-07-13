@@ -15,6 +15,13 @@ const state = {
   contents: [],
 };
 
+const listRequestVersions = {
+  providers: 0,
+  requests: 0,
+  applications: 0,
+  jobs: 0,
+};
+
 const labels = {
   user: "ユーザー",
   orderer: "発注者",
@@ -119,6 +126,20 @@ function setContentMessage(message = "") {
   elements.contentMessage.textContent = message;
 }
 
+function beginListRequest(name, target) {
+  listRequestVersions[name] += 1;
+  target?.setAttribute("aria-busy", "true");
+  return listRequestVersions[name];
+}
+
+function isLatestListRequest(name, version) {
+  return listRequestVersions[name] === version;
+}
+
+function finishListRequest(name, version, target) {
+  if (isLatestListRequest(name, version)) target?.setAttribute("aria-busy", "false");
+}
+
 async function api(path, options = {}) {
   const headers = { "content-type": "application/json", ...(options.headers ?? {}) };
   if (state.token) headers.authorization = `Bearer ${state.token}`;
@@ -215,7 +236,9 @@ function renderListPagination(target, page = {}, cursor = "", reloadFunction, la
     button.setAttribute("aria-label", ariaLabel);
     button.addEventListener("click", () => {
       button.disabled = true;
-      void reloadFunction(nextCursor).catch((error) => setMessage(error.message));
+      void reloadFunction(nextCursor)
+        .then(() => target.querySelector("button")?.focus())
+        .catch((error) => setMessage(error.message));
     });
     nav.append(button);
   };
@@ -359,6 +382,7 @@ function buildListQuery(values) {
 }
 
 async function reloadProviders(cursor = "") {
+  const requestVersion = beginListRequest("providers", elements.providers);
   const query = buildListQuery({
     category: state.category,
     search: elements.search.value,
@@ -367,22 +391,32 @@ async function reloadProviders(cursor = "") {
     sort: elements.providerSort.value,
     cursor,
   });
-  const body = await api(`/api/v1/providers?${query}`);
-  renderProviders(body.items, body.page, cursor);
+  try {
+    const body = await api(`/api/v1/providers?${query}`);
+    if (isLatestListRequest("providers", requestVersion)) renderProviders(body.items, body.page, cursor);
+  } finally {
+    finishListRequest("providers", requestVersion, elements.providers);
+  }
 }
 
 async function reloadRequests(cursor = "") {
+  const requestVersion = beginListRequest("requests", elements.requestList);
   const query = buildListQuery({
     search: elements.requestSearch.value,
     status: elements.requestStatus.value,
     sort: elements.requestSort.value,
     cursor,
   });
-  const body = await api(`/api/v1/requests?${query}`);
-  renderRequests(body.items, body.page, cursor);
+  try {
+    const body = await api(`/api/v1/requests?${query}`);
+    if (isLatestListRequest("requests", requestVersion)) renderRequests(body.items, body.page, cursor);
+  } finally {
+    finishListRequest("requests", requestVersion, elements.requestList);
+  }
 }
 
 async function reloadApplications(cursor = "") {
+  const requestVersion = beginListRequest("applications", elements.applicationList);
   const query = buildListQuery({
     search: elements.applicationSearch.value,
     jobId: elements.applicationJob.value,
@@ -390,11 +424,16 @@ async function reloadApplications(cursor = "") {
     sort: elements.applicationSort.value,
     cursor,
   });
-  const body = await api(`/api/v1/applications?${query}`);
-  renderApplications(body.items, body.page, cursor);
+  try {
+    const body = await api(`/api/v1/applications?${query}`);
+    if (isLatestListRequest("applications", requestVersion)) renderApplications(body.items, body.page, cursor);
+  } finally {
+    finishListRequest("applications", requestVersion, elements.applicationList);
+  }
 }
 
 async function reloadJobs(cursor = "") {
+  const requestVersion = beginListRequest("jobs", elements.jobs);
   const query = buildListQuery({
     category: state.category,
     search: elements.jobSearch.value,
@@ -404,8 +443,12 @@ async function reloadJobs(cursor = "") {
     sort: elements.jobSort.value,
     cursor,
   });
-  const body = await api(`/api/v1/jobs?${query}`);
-  renderJobs(body.items, body.page, cursor);
+  try {
+    const body = await api(`/api/v1/jobs?${query}`);
+    if (isLatestListRequest("jobs", requestVersion)) renderJobs(body.items, body.page, cursor);
+  } finally {
+    finishListRequest("jobs", requestVersion, elements.jobs);
+  }
 }
 
 async function reloadRoleData() {
@@ -731,11 +774,15 @@ elements.category.addEventListener("change", async () => {
   try { await reload(); } catch (error) { setMessage(error.message); }
 });
 function bindListFilters(controls, reloadFunction) {
+  let timerId = 0;
   controls.forEach((control) => {
     if (!control) return;
     const eventName = control.tagName === "SELECT" ? "change" : "input";
     control.addEventListener(eventName, () => {
-      void reloadFunction().catch((error) => setMessage(error.message));
+      window.clearTimeout(timerId);
+      timerId = window.setTimeout(() => {
+        void reloadFunction().catch((error) => setMessage(error.message));
+      }, eventName === "input" ? 180 : 0);
     });
   });
 }
