@@ -33,6 +33,8 @@ BuilderOS Adapter ─┘
 | ポータル案内 | カテゴリ別の外部ディレクトリ、予約、事業者向け案内 |
 | 運用 | ジョブ、再試行、Webhook、監査ログ、権限、テナント設定 |
 
+RESTに定義したCMS操作は、対応するMCPツールを必ず持つ。`tests/api-mcp-parity.test.ts`がOpenAPIの`operationId`とMCPツールの対応、`tools/list`の網羅性、各入力スキーマを自動検証する。新しいREST操作を追加する場合は、同じ変更で対応MCPツールと対応表を追加する。
+
 ## API方針
 
 - `/api/v1`のような明示的なバージョンを持つ
