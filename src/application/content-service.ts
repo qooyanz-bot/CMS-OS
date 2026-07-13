@@ -4,11 +4,13 @@ import { ContentStore } from "../domain/content-store.js";
 import {
   categorySlugs,
   contentAudiences,
+  contentLocales,
   contentTypes,
   type AuthenticatedPrincipal,
   type CategorySlug,
   type ContentAudience,
   type ContentJsonLdType,
+  type ContentLocale,
   type ContentProposal,
   type ContentRecord,
   type ContentReviewRecord,
@@ -59,6 +61,16 @@ const jsonLdTypes: Record<ContentType, ContentJsonLdType> = {
   job: "JobPosting",
   pr: "NewsArticle",
   ir: "Article",
+};
+
+const localeLabels: Record<ContentLocale, string> = {
+  ja: "日本語",
+  en: "英語",
+  "zh-CN": "中国語（簡体字）",
+  es: "スペイン語",
+  ko: "韓国語",
+  de: "ドイツ語",
+  fr: "フランス語",
 };
 
 function trimList(values: string[] | undefined): string[] {
@@ -189,6 +201,7 @@ export class ContentService {
       },
       sourceFacts: proposal.sourceFacts,
       proposalId: proposal.id,
+      locale: "ja",
       status: "drafted",
     }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
   }
@@ -204,6 +217,81 @@ export class ContentService {
     this.assertProvider(principal, content.category);
     if (content.providerId !== principal!.providerId) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return content;
+  }
+
+  public translateContent(
+    principal: AuthenticatedPrincipal | null,
+    contentId: string,
+    input: {
+      targetLocale: ContentLocale;
+      title?: string;
+      summary?: string;
+      body?: string;
+      seo?: Partial<ContentSeo>;
+      instructions?: string;
+    },
+  ): ContentRecord {
+    const source = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, source.category, "content.translate");
+    if (source.status === "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツは翻訳できません。先に復元してください。");
+    if (input.targetLocale === source.locale) throw new ContentServiceError(400, "翻訳先言語は原文と異なる言語を指定してください。");
+
+    const existing = this.store.listContent(source.category, source.providerId).find((content) =>
+      content.status !== "archived" &&
+      content.locale === input.targetLocale &&
+      content.translationOf?.contentId === source.id,
+    );
+    if (existing) throw new ContentServiceError(409, `同じ翻訳先の下書きが既に存在します: ${existing.id}`);
+
+    const localeSegment = input.targetLocale.toLocaleLowerCase().replace(/[^a-z0-9-]/g, "-");
+    const targetLabel = localeLabels[input.targetLocale];
+    const translationNote = input.instructions?.trim() ? `\n\n> 翻訳指示: ${this.normalizeEditableText(input.instructions, "instructions", 1000)}` : "";
+    const title = input.title !== undefined
+      ? this.normalizeEditableText(input.title, "title", 160)
+      : `【${targetLabel}翻訳下書き】${source.title}`;
+    const summary = input.summary !== undefined
+      ? this.normalizeEditableText(input.summary, "summary", 320)
+      : `翻訳先: ${targetLabel}。原文「${source.summary}」をもとにした翻訳下書きです。`;
+    const body = input.body !== undefined
+      ? this.normalizeEditableText(input.body, "body", 200_000)
+      : `# ${title}\n\n> 翻訳先: ${targetLabel}\n> 原文コンテンツID: ${source.id}\n> 原文バージョン: ${source.version}\n\n${source.body}${translationNote}`;
+    const seo: ContentSeo = {
+      ...source.seo,
+      ...(input.seo ?? {}),
+      title: input.seo?.title !== undefined ? input.seo.title : `【${targetLabel}】${source.seo.title}`,
+      description: input.seo?.description !== undefined ? input.seo.description : `翻訳版: ${source.seo.description}`,
+      ogTitle: input.seo?.ogTitle !== undefined ? input.seo.ogTitle : `【${targetLabel}】${source.seo.ogTitle}`,
+      ogDescription: input.seo?.ogDescription !== undefined ? input.seo.ogDescription : `翻訳版: ${source.seo.ogDescription}`,
+      keywords: input.seo?.keywords !== undefined ? trimList(input.seo.keywords) : trimList([...source.seo.keywords, input.targetLocale]),
+      canonicalPath: input.seo?.canonicalPath !== undefined ? input.seo.canonicalPath : `/${localeSegment}${source.seo.canonicalPath}`,
+      faq: input.seo?.faq !== undefined ? input.seo.faq.map((item) => ({ ...item })) : source.seo.faq.map((item) => ({ ...item })),
+    };
+    seo.title = limit(seo.title.trim(), 60);
+    seo.description = limit(seo.description.trim(), 160);
+    seo.ogTitle = limit(seo.ogTitle.trim(), 60);
+    seo.ogDescription = limit(seo.ogDescription.trim(), 160);
+    if (!seo.canonicalPath.startsWith("/")) seo.canonicalPath = `/${localeSegment}${source.seo.canonicalPath}`;
+
+    return this.store.createContent({
+      category: source.category,
+      providerId: source.providerId,
+      contentType: source.contentType,
+      audience: source.audience,
+      title,
+      slug: `${source.slug}-${localeSegment}`,
+      summary,
+      body,
+      seo,
+      sourceFacts: [...source.sourceFacts],
+      proposalId: source.proposalId,
+      locale: input.targetLocale,
+      translationOf: {
+        contentId: source.id,
+        sourceVersion: source.version,
+        sourceLocale: source.locale,
+      },
+      status: "drafted",
+    }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
   }
 
   public listVersions(principal: AuthenticatedPrincipal | null, contentId: string): ContentVersionRecord[] {
@@ -345,6 +433,8 @@ export class ContentService {
       seo: { ...content.seo, canonicalPath: `${content.seo.canonicalPath}-copy-${copySuffix}` },
       sourceFacts: [...content.sourceFacts],
       proposalId: content.proposalId,
+      locale: content.locale,
+      ...(content.translationOf ? { translationOf: { ...content.translationOf } } : {}),
       status: "drafted",
     }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
   }
@@ -728,6 +818,10 @@ export function isContentType(value: unknown): value is ContentType {
 
 export function isContentAudience(value: unknown): value is ContentAudience {
   return typeof value === "string" && contentAudiences.includes(value as ContentAudience);
+}
+
+export function isContentLocale(value: unknown): value is ContentLocale {
+  return typeof value === "string" && contentLocales.includes(value as ContentLocale);
 }
 
 export function parseOptionalStringArray(value: unknown, fieldName: string): string[] | undefined {

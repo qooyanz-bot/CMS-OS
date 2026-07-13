@@ -26,6 +26,12 @@ export class ContentStore {
     this.reviews = stateStore?.load<ContentReviewRecord[]>("content-review-records.json", []) ?? [];
     this.siteSeoAudits = stateStore?.load<SeoSiteAuditResult[]>("seo-site-audits.json", []) ?? [];
     for (const content of this.contents) {
+      if (!content.locale) content.locale = "ja";
+    }
+    for (const version of this.versions) {
+      if (!version.locale) version.locale = "ja";
+    }
+    for (const content of this.contents) {
       if (!this.versions.some((version) => version.contentId === content.id)) {
         this.versions.push(this.createVersionSnapshot(content, "migrated"));
       }
@@ -182,6 +188,8 @@ export class ContentStore {
       body: content.body,
       seo: this.cloneSeo(content.seo),
       sourceFacts: [...content.sourceFacts],
+      locale: content.locale,
+      ...(content.translationOf ? { translationOf: { ...content.translationOf } } : {}),
       status: content.status,
       reason,
       ...(actorId ? { actorId } : {}),

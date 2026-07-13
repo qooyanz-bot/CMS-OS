@@ -85,7 +85,8 @@ POST /api/v1/publications/{publicationId}/rollback
 - OGPタイトル・説明・URL
 - `application/ld+json`
 - 公開日・更新日
-- 言語属性`lang="ja"`
+- 言語属性はコンテンツの `locale` に合わせて出力します。翻訳版は `lang`、`og:locale`、JSON-LD の `inLanguage` を個別に持ちます。
+- 同じ原文に紐づく翻訳版が同時に公開対象に含まれる場合、各ページに言語別の `hreflang` と `x-default` を出力します。
 
 本文は現在Markdownの安全なサブセットをHTMLへ変換します。HTMLエスケープを行うため、本文中のスクリプトやタグは実行されません。
 

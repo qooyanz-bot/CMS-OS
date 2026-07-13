@@ -198,6 +198,9 @@ export type ContentType = (typeof contentTypes)[number];
 export const contentAudiences = ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] as const;
 export type ContentAudience = (typeof contentAudiences)[number];
 
+export const contentLocales = ["ja", "en", "zh-CN", "es", "ko", "de", "fr"] as const;
+export type ContentLocale = (typeof contentLocales)[number];
+
 export type ContentWorkflowStatus = "proposed" | "drafted" | "polished" | "seo_reviewed" | "review_requested" | "changes_requested" | "approved" | "published" | "archived";
 export type ContentJsonLdType = "Organization" | "Article" | "BlogPosting" | "JobPosting" | "NewsArticle" | "FAQPage";
 
@@ -228,6 +231,12 @@ export interface ContentSeo {
   faq: Array<{ question: string; answer: string }>;
 }
 
+export interface ContentTranslationOrigin {
+  contentId: string;
+  sourceVersion: number;
+  sourceLocale: ContentLocale;
+}
+
 export interface ContentRecord {
   id: string;
   category: CategorySlug;
@@ -241,6 +250,8 @@ export interface ContentRecord {
   seo: ContentSeo;
   sourceFacts: string[];
   proposalId: string;
+  locale: ContentLocale;
+  translationOf?: ContentTranslationOrigin;
   status: ContentWorkflowStatus;
   lastSeoAudit?: SeoAuditResult;
   lastFactCheck?: FactCheckResult;
@@ -260,6 +271,8 @@ export interface ContentVersionRecord {
   body: string;
   seo: ContentSeo;
   sourceFacts: string[];
+  locale: ContentLocale;
+  translationOf?: ContentTranslationOrigin;
   status: ContentWorkflowStatus;
   reason: ContentVersionReason;
   actorId?: string;

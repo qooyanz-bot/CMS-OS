@@ -33,6 +33,7 @@ npm run dev
 - `content-proposals.json`
 - `content-records.json`
 - `content-versions.json`
+- 翻訳版も `content-records.json` に保存し、`locale` と `translationOf` で原文・基準バージョンを参照します。
 - `content-review-records.json`
 - `seo-site-audits.json`
 - `publication-history.json`

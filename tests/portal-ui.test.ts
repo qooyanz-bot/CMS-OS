@@ -82,6 +82,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/auth\/oidc\/start/);
   assert.match(scriptBody, /api\/v1\/auth\/mfa\/complete/);
   assert.match(scriptBody, /api\/v1\/content\/proposals/);
+  assert.match(scriptBody, /api\/v1\/content\/.*translate/);
   assert.match(scriptBody, /api\/v1\/publications\/build/);
   assert.match(scriptBody, /api\/v1\/publications\/unpublish/);
   assert.match(scriptBody, /api\/v1\/seo\/audit/);

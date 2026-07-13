@@ -51,6 +51,7 @@ DELETE /api/v1/content/{contentId}                 # アーカイブ
 POST /api/v1/content/{contentId}/duplicate
 POST /api/v1/content/{contentId}/restore
 POST /api/v1/content/{contentId}/polish
+POST /api/v1/content/{contentId}/translate
 POST /api/v1/content/{contentId}/seo-audit
 GET /api/v1/seo/audit
 POST /api/v1/content/{contentId}/fact-check
@@ -62,6 +63,16 @@ GET  /api/v1/content/{contentId}/versions
 GET  /api/v1/content/{contentId}/versions/{version}
 POST /api/v1/content/{contentId}/versions/{version}/restore
 POST /api/v1/publications/publish
+
+## 多言語翻訳ワークフロー
+
+`content.translate` は原文を上書きせず、原文の `contentId` と `version` を記録した言語別の翻訳下書きを作成します。対応言語は `ja`、`en`、`zh-CN`、`es`、`ko`、`de`、`fr` です。
+
+- `locale` はコンテンツ単位で保持し、翻訳版は独立したURL・canonical・OG情報・JSON-LD言語属性を持ちます。
+- `translationOf.sourceVersion` に原文の基準版を記録するため、原文更新後も翻訳の根拠を追跡できます。
+- 翻訳下書きは自動公開されません。AIエージェントは `content.translate` の入力に翻訳済みの `title`、`summary`、`body`、`seo` を渡すか、作成後に `content.update` で補完します。
+- 翻訳版も個別に事実確認、SEO監査、レビュー、承認を通過してから `publication.publish` を実行します。
+- 同じ原文・同じ翻訳先の有効な下書きは二重作成できません。既存版を更新して再利用します。
 ```
 
 現在は`provider`ロールが、自分のカテゴリ・自分の事業者IDに紐づくコンテンツだけを操作できます。一般ユーザー、発注者、リクルーターが事業者の編集領域へ入ることはできません。

@@ -834,6 +834,9 @@ function renderProposals(items) {
 }
 
 function contentActionButtons(content) {
+  const translationAction = content.status !== "archived"
+    ? `<button class="button ghost content-action" data-action="translate" data-content-id="${escapeHtml(content.id)}">翻訳下書き</button>`
+    : "";
   const actions = [
     `<button class="button ghost content-action" data-action="preview" data-content-id="${escapeHtml(content.id)}">本文を見る</button>`,
     `<button class="button ghost content-action" data-action="versions" data-content-id="${escapeHtml(content.id)}">版履歴</button>`,
@@ -849,13 +852,14 @@ function contentActionButtons(content) {
   }
   if (content.status === "approved") actions.push(`<button class="button primary content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>`);
   if (content.status === "published") actions.push(`<button class="button ghost content-action" data-action="unpublish" data-content-id="${escapeHtml(content.id)}">公開を取り消す</button>`);
+  if (translationAction) actions.unshift(translationAction);
   return actions.join("");
 }
 
 function renderContents(items) {
   state.contents = items;
   elements.contents.innerHTML = items.length
-    ? items.map((content) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(content.status)}</span><span>v${escapeHtml(content.version)}</span></div><h3>${escapeHtml(content.title)}</h3><p>${escapeHtml(content.summary)}</p><div class="editor-actions">${contentActionButtons(content)}</div></article>`).join("")
+    ? items.map((content) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(content.status)}</span><span>${escapeHtml(content.locale ?? "ja")}</span><span>v${escapeHtml(content.version)}</span></div><h3>${escapeHtml(content.title)}</h3><p>${escapeHtml(content.summary)}</p><div class="editor-actions">${contentActionButtons(content)}</div></article>`).join("")
     : '<p class="empty">下書きがまだありません。</p>';
   document.querySelectorAll(".content-action").forEach((button) => {
     button.addEventListener("click", () => handleContentAction(button.dataset.action, button.dataset.contentId));
@@ -1007,7 +1011,12 @@ async function handleContentAction(action, contentId) {
       elements.contentReviews.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
-    if (action === "polish") {
+    if (action === "translate") {
+      const targetLocale = window.prompt("翻訳先を入力してください（ja / en / zh-CN / es / ko / de / fr）", "en") ?? "";
+      if (!["ja", "en", "zh-CN", "es", "ko", "de", "fr"].includes(targetLocale)) return;
+      const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}/translate`, { method: "POST", body: JSON.stringify({ targetLocale }) });
+      setContentMessage(`翻訳下書きを作成しました（${body.item.locale}）。翻訳文・SEO情報を確認してから事実確認へ進んでください。`);
+    } else if (action === "polish") {
       const instructions = window.prompt("清書方針（任意）") ?? "";
       await api(`/api/v1/content/${encodeURIComponent(contentId)}/polish`, { method: "POST", body: JSON.stringify({ instructions }) });
       setContentMessage("清書しました。SEO監査へ進めます。");

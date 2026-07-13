@@ -182,6 +182,46 @@ function routeFor(content: ContentRecord): string {
   return route || `content/${content.slug}`;
 }
 
+function localeTag(content: ContentRecord): string {
+  return content.locale === "zh-CN" ? "zh-CN" : content.locale || "ja";
+}
+
+function ogLocaleTag(content: ContentRecord): string {
+  const locale = localeTag(content);
+  const localeMap: Record<string, string> = {
+    ja: "ja_JP",
+    en: "en_US",
+    "zh-CN": "zh_CN",
+    es: "es_ES",
+    ko: "ko_KR",
+    de: "de_DE",
+    fr: "fr_FR",
+  };
+  return localeMap[locale] ?? "ja_JP";
+}
+
+function translationAlternates(content: ContentRecord, contents: ContentRecord[]): ContentRecord[] {
+  const familyIds = new Set([content.id]);
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    for (const candidate of contents) {
+      const parentId = candidate.translationOf?.contentId;
+      if (parentId && familyIds.has(parentId) && !familyIds.has(candidate.id)) {
+        familyIds.add(candidate.id);
+        expanded = true;
+      }
+      if (familyIds.has(candidate.id) && parentId && !familyIds.has(parentId)) {
+        familyIds.add(parentId);
+        expanded = true;
+      }
+    }
+  }
+  return contents
+    .filter((candidate) => familyIds.has(candidate.id))
+    .sort((left, right) => (left.locale || "ja").localeCompare(right.locale || "ja"));
+}
+
 function categoryRoute(category: CategorySlug): string {
   return `categories/${category}`;
 }
@@ -219,7 +259,7 @@ function articleJsonLd(content: ContentRecord, categoryLabel: string, canonical:
     mainEntityOfPage: canonical,
     datePublished: content.createdAt,
     dateModified: content.updatedAt,
-    inLanguage: "ja-JP",
+    inLanguage: localeTag(content),
     articleSection: categoryLabel,
     keywords: content.seo.keywords,
     isAccessibleForFree: true,
@@ -246,9 +286,12 @@ function breadcrumbJsonLd(items: Array<{ name: string; url: string }>): Record<s
   };
 }
 
-function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], categoryLabel: string, baseUrl: string): string {
+function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], allContents: ContentRecord[], categoryLabel: string, baseUrl: string): string {
   const canonical = absoluteUrl(baseUrl, `/${routeFor(content)}/`);
   const categoryUrl = absoluteUrl(baseUrl, `/${categoryRoute(content.category)}/`);
+  const alternates = translationAlternates(content, allContents);
+  const defaultAlternate = alternates.find((item) => (item.locale || "ja") === "ja") ?? content;
+  const alternateLinks = alternates.map((item) => `<link rel="alternate" hreflang="${escapeHtml(localeTag(item))}" href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(item)}/`))}">`).join("\n    ");
   const graph: Record<string, unknown>[] = [
     articleJsonLd(content, categoryLabel, canonical),
     breadcrumbJsonLd([
@@ -275,7 +318,7 @@ function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], cate
     : "";
 
   return `<!doctype html>
-<html lang="ja">
+<html lang="${escapeHtml(localeTag(content))}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -284,10 +327,10 @@ function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], cate
     <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
     <meta name="author" content="CMS-OS編集チーム">
     <meta property="og:site_name" content="CMS-OS">
-    <meta property="og:locale" content="ja_JP">
+    <meta property="og:locale" content="${escapeHtml(ogLocaleTag(content))}">
     <link rel="canonical" href="${escapeHtml(canonical)}">
-    <link rel="alternate" hreflang="ja" href="${escapeHtml(canonical)}">
-    <link rel="alternate" hreflang="x-default" href="${escapeHtml(canonical)}">
+    ${alternateLinks}
+    <link rel="alternate" hreflang="x-default" href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(defaultAlternate)}/`))}">
     <link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}">
     <meta property="og:type" content="article">
     <meta property="og:title" content="${escapeHtml(content.seo.ogTitle)}">
@@ -555,7 +598,7 @@ export class PublicationService {
       ...contents.map((content) => ({
         path: `${routeFor(content)}/index.html`,
         contentType: "text/html; charset=utf-8",
-        content: pageHtml(content, relatedContentsFor(content, contents), categoryLabelBySlug.get(content.category) ?? content.category, baseUrl),
+        content: pageHtml(content, relatedContentsFor(content, contents), contents, categoryLabelBySlug.get(content.category) ?? content.category, baseUrl),
       })),
       { path: "sitemap.xml", contentType: "application/xml; charset=utf-8", content: sitemapXml(contents, publishedCategories, providersByCategory, baseUrl) },
       { path: "robots.txt", contentType: "text/plain; charset=utf-8", content: robots },

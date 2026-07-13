@@ -8,11 +8,12 @@ import {
   ContentService,
   ContentServiceError,
   isContentAudience,
+  isContentLocale,
   isContentType,
   parseOptionalStringArray,
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
-import { applicationStatuses, categorySlugs, directoryGuideKinds, inquiryStatuses, jobStatuses, providerListingStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type PortalRole, type ProviderListingStatus, type RequestStatus } from "../domain/types.js";
+import { applicationStatuses, categorySlugs, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, providerListingStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type PortalRole, type ProviderListingStatus, type RequestStatus } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -676,6 +677,23 @@ async function handleMcp(
             },
           },
           {
+            name: "content.translate",
+            description: "原文の指定バージョンから言語別の翻訳下書きを作成します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                contentId: { type: "string" },
+                targetLocale: { enum: [...contentLocales] },
+                title: { type: "string" },
+                summary: { type: "string" },
+                body: { type: "string" },
+                instructions: { type: "string" },
+                seo: { type: "object", additionalProperties: true },
+              },
+              required: ["contentId", "targetLocale"],
+            },
+          },
+          {
             name: "content.duplicate",
             description: "事業者自身のコンテンツを新しい下書きとして複製します。",
             inputSchema: { type: "object", properties: { contentId: { type: "string" } }, required: ["contentId"] },
@@ -1301,6 +1319,23 @@ async function handleMcp(
         ...(typeof argumentsObject.body === "string" ? { body: argumentsObject.body } : {}),
         ...(seo ? { seo } : {}),
         ...(sourceFacts ? { sourceFacts } : {}),
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.translate") {
+      if (typeof argumentsObject.contentId !== "string" || !isContentLocale(argumentsObject.targetLocale)) {
+        throw new Error("contentIdとtargetLocaleを正しく指定してください。");
+      }
+      const seo = parseContentSeoPatch(argumentsObject.seo);
+      const result = content.translateContent(principal, argumentsObject.contentId, {
+        targetLocale: argumentsObject.targetLocale,
+        ...(typeof argumentsObject.title === "string" ? { title: argumentsObject.title } : {}),
+        ...(typeof argumentsObject.summary === "string" ? { summary: argumentsObject.summary } : {}),
+        ...(typeof argumentsObject.body === "string" ? { body: argumentsObject.body } : {}),
+        ...(seo ? { seo } : {}),
+        ...(typeof argumentsObject.instructions === "string" ? { instructions: argumentsObject.instructions } : {}),
       });
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
@@ -1945,7 +1980,7 @@ export function createHttpServer(
         return;
       }
 
-      const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/(polish|seo-audit|fact-check|approve)$/);
+      const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/(translate|polish|seo-audit|fact-check|approve)$/);
       if (request.method === "POST" && contentActionMatch) {
         const contentId = contentActionMatch[1];
         const action = contentActionMatch[2];
@@ -1954,7 +1989,24 @@ export function createHttpServer(
           return;
         }
         try {
-          if (action === "polish") {
+          if (action === "translate") {
+            const body = await readJson(request);
+            if (!isContentLocale(body.targetLocale)) {
+              writeJson(response, 400, { error: `targetLocaleは${contentLocales.join(", ")}のいずれかを指定してください。` });
+              return;
+            }
+            const seo = parseContentSeoPatch(body.seo);
+            writeJson(response, 201, {
+              item: content.translateContent(principal, contentId, {
+                targetLocale: body.targetLocale,
+                ...(typeof body.title === "string" ? { title: body.title } : {}),
+                ...(typeof body.summary === "string" ? { summary: body.summary } : {}),
+                ...(typeof body.body === "string" ? { body: body.body } : {}),
+                ...(seo ? { seo } : {}),
+                ...(typeof body.instructions === "string" ? { instructions: body.instructions } : {}),
+              }),
+            });
+          } else if (action === "polish") {
             const body = await readJson(request);
             if (body.instructions !== undefined && typeof body.instructions !== "string") {
               writeJson(response, 400, { error: "instructionsは文字列で指定してください。" });

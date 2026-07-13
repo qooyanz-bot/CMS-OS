@@ -419,6 +419,17 @@
         "responses": { "200": { "description": "復元された下書き", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
       }
     },
+    "/api/v1/content/{contentId}/translate": {
+      "post": {
+        "tags": ["Content"],
+        "operationId": "translateContent",
+        "summary": "原文から言語別の翻訳下書きを作成",
+        "parameters": [{ "$ref": "#/components/parameters/ContentIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentTranslationRequest" } } } },
+        "responses": { "201": { "description": "翻訳下書き", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
     "/api/v1/content/{contentId}/polish": {
       "post": {
         "tags": ["Content"],
@@ -817,6 +828,7 @@
       "ProposalListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ContentProposal" } } } },
       "DraftRequest": { "type": "object", "required": ["proposalId"], "properties": { "proposalId": { "type": "string", "minLength": 1 } }, "additionalProperties": false },
       "PolishRequest": { "type": "object", "properties": { "instructions": { "type": "string" } }, "additionalProperties": false },
+      "ContentTranslationRequest": { "type": "object", "required": ["targetLocale"], "properties": { "targetLocale": { "type": "string", "enum": ["ja", "en", "zh-CN", "es", "ko", "de", "fr"] }, "title": { "type": "string" }, "summary": { "type": "string" }, "body": { "type": "string" }, "instructions": { "type": "string" }, "seo": { "type": "object", "additionalProperties": true } }, "additionalProperties": false },
       "ContentUpdateRequest": { "type": "object", "properties": { "title": { "type": "string" }, "summary": { "type": "string" }, "body": { "type": "string" }, "sourceFacts": { "type": "array", "items": { "type": "string" } }, "seo": { "type": "object", "additionalProperties": true } }, "additionalProperties": false },
       "ContentSeo": { "type": "object", "required": ["title", "description", "keywords", "canonicalPath", "ogTitle", "ogDescription", "jsonLdType", "faq"], "properties": { "title": { "type": "string" }, "description": { "type": "string" }, "keywords": { "type": "array", "items": { "type": "string" } }, "canonicalPath": { "type": "string" }, "ogTitle": { "type": "string" }, "ogDescription": { "type": "string" }, "jsonLdType": { "type": "string" }, "faq": { "type": "array", "items": { "type": "object", "additionalProperties": true } } } },
       "Content": { "type": "object", "required": ["id", "category", "providerId", "contentType", "audience", "title", "slug", "summary", "body", "seo", "sourceFacts", "proposalId", "status", "version", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "contentType": { "$ref": "#/components/schemas/ContentType" }, "audience": { "$ref": "#/components/schemas/ContentAudience" }, "title": { "type": "string" }, "slug": { "type": "string" }, "summary": { "type": "string" }, "body": { "type": "string" }, "seo": { "$ref": "#/components/schemas/ContentSeo" }, "sourceFacts": { "type": "array", "items": { "type": "string" } }, "proposalId": { "type": "string" }, "status": { "type": "string", "enum": ["proposed", "drafted", "polished", "seo_reviewed", "review_requested", "changes_requested", "approved", "published", "archived"] }, "lastSeoAudit": { "$ref": "#/components/schemas/SeoAudit" }, "lastFactCheck": { "$ref": "#/components/schemas/FactCheck" }, "version": { "type": "integer" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },

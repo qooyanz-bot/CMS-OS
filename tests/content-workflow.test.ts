@@ -73,6 +73,17 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     });
     assert.equal(draft.status, 201);
     assert.equal(draft.body.item.status, "drafted");
+    assert.equal(draft.body.item.locale, "ja");
+    const translation = await request(`/api/v1/content/${draft.body.item.id}/translate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({ targetLocale: "en", instructions: "英語の読者向けに自然な表現へ翻訳する" }),
+    });
+    assert.equal(translation.status, 201);
+    assert.equal(translation.body.item.locale, "en");
+    assert.equal(translation.body.item.translationOf.contentId, draft.body.item.id);
+    assert.equal(translation.body.item.translationOf.sourceVersion, 1);
+    assert.match(translation.body.item.seo.canonicalPath, /^\/en\//);
     assert.equal(draft.body.item.seo.jsonLdType, "BlogPosting");
     assert.ok(draft.body.item.body.includes("仕事内容と成長機会"));
 
@@ -205,6 +216,7 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.ok(names.includes("workflow.request_changes"));
     assert.ok(names.includes("content.draft"));
     assert.ok(names.includes("content.update"));
+    assert.ok(names.includes("content.translate"));
     assert.ok(names.includes("content.duplicate"));
     assert.ok(names.includes("content.archive"));
     assert.ok(names.includes("content.restore"));
@@ -267,6 +279,14 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     });
     assert.equal(fetched.status, 200);
     assert.equal(fetched.body.result.structuredContent.id, draft.body.result.structuredContent.id);
+    const translated = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "content.translate", arguments: { contentId: draft.body.result.structuredContent.id, targetLocale: "fr", title: "Présentation des services" } } }),
+    });
+    assert.equal(translated.status, 200);
+    assert.equal(translated.body.result.structuredContent.locale, "fr");
+    assert.equal(translated.body.result.structuredContent.translationOf.contentId, draft.body.result.structuredContent.id);
     const updated = await request("/mcp", {
       method: "POST",
       headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
