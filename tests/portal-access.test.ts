@@ -126,6 +126,13 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(mcpRequest.status, 200);
     assert.equal(mcpRequest.body.result.structuredContent.providerId, "provider-beauty-demo");
+
+    const applicationTools = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${ordererLogin.body.accessToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/list", params: {} }),
+    });
+    assert.ok(applicationTools.body.result.tools.some((tool: { name: string }) => tool.name === "application.list"));
   });
 
   it("発注者は依頼を作成でき、一般ユーザーは作成できない", async () => {

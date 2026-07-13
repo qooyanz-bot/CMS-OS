@@ -161,6 +161,11 @@ async function handleMcp(
               required: ["jobId", "message"],
             },
           },
+          {
+            name: "application.list",
+            description: "リクルーター本人、または事業者自身の求人への応募一覧を取得します。",
+            inputSchema: { type: "object", properties: {} },
+          },
         ],
       },
     });
@@ -238,6 +243,12 @@ async function handleMcp(
         throw new Error("jobIdとmessageが必要です。");
       }
       const result = portal.createApplication(principal, argumentsObject.jobId, argumentsObject.message);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "application.list") {
+      const result = portal.listApplications(principal);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
