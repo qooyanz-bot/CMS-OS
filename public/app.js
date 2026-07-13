@@ -247,7 +247,11 @@ async function api(path, options = {}) {
   if (state.token) headers.authorization = `Bearer ${state.token}`;
   const response = await fetch(path, { ...options, headers });
   const body = await response.json();
-  if (!response.ok) throw new Error(body.error ?? "操作に失敗しました。");
+  if (!response.ok) {
+    const error = new Error(body.error ?? "操作に失敗しました。");
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 
@@ -280,13 +284,27 @@ function finishLogin(result) {
   state.token = result.accessToken;
   state.principal = result.principal;
   state.mfaChallengeToken = null;
+  state.category = result.principal.category;
   state.role = result.principal.role;
+  elements.category.value = state.category;
+  elements.role.value = state.role;
   elements.mfaPanel.hidden = true;
   elements.loginForm.hidden = true;
   elements.oidc.hidden = true;
   elements.demoPanel.hidden = true;
   elements.logout.hidden = false;
   return true;
+}
+
+function clearSessionState() {
+  state.token = null;
+  state.principal = null;
+  state.mfaChallengeToken = null;
+  state.role = "user";
+  elements.role.value = "user";
+  elements.mfaPanel.hidden = true;
+  updateAuthUi();
+  elements.logout.hidden = true;
 }
 
 function formatValue(value) {
@@ -1102,32 +1120,59 @@ async function completeMfa() {
 
 async function logout() {
   try { await api("/api/v1/auth/logout", { method: "POST" }); } catch {}
-  state.token = null;
-  state.principal = null;
-  state.mfaChallengeToken = null;
-  state.role = "user";
-  updateAuthUi();
-  elements.mfaPanel.hidden = true;
-  elements.loginForm.hidden = !state.authCapabilities.passwordLogin;
-  elements.oidc.hidden = !state.authCapabilities.oidcLogin;
-  elements.logout.hidden = true;
+  clearSessionState();
   setMessage("ログアウトしました。");
   await reload();
 }
 
 elements.category.addEventListener("change", async () => {
+  const previousCategory = state.category;
+  const nextCategory = elements.category.value;
   if (state.token) {
-    try { await api("/api/v1/auth/logout", { method: "POST" }); } catch {}
-    state.token = null;
-    state.principal = null;
-    state.mfaChallengeToken = null;
-    state.role = "user";
-    elements.mfaPanel.hidden = true;
-    updateAuthUi();
-    elements.logout.hidden = true;
+    try {
+      const body = await api("/api/v1/auth/context", {
+        method: "POST",
+        body: JSON.stringify({ category: nextCategory, role: state.role }),
+      });
+      state.category = body.principal.category;
+      state.role = body.principal.role;
+      state.principal = body.principal;
+      elements.role.value = state.role;
+      await reload();
+      setMessage(`${labels[state.role]}のカテゴリを切り替えました。`);
+      return;
+    } catch (error) {
+      if (![403, 404].includes(error.status)) {
+        elements.category.value = previousCategory;
+        setMessage(error.message);
+        return;
+      }
+      try { await api("/api/v1/auth/logout", { method: "POST" }); } catch {}
+      clearSessionState();
+    }
   }
-  state.category = elements.category.value;
+  state.category = nextCategory;
   try { await reload(); } catch (error) { setMessage(error.message); }
+});
+
+elements.role.addEventListener("change", async () => {
+  if (!state.token) return;
+  const previousRole = state.role;
+  const nextRole = elements.role.value;
+  try {
+    const body = await api("/api/v1/auth/context", {
+      method: "POST",
+      body: JSON.stringify({ category: state.category, role: nextRole }),
+    });
+    state.role = body.principal.role;
+    state.principal = body.principal;
+    elements.role.value = state.role;
+    await reload();
+    setMessage(`${labels[state.role]}へ表示を切り替えました。`);
+  } catch (error) {
+    elements.role.value = previousRole;
+    setMessage(error.message);
+  }
 });
 function bindListFilters(controls, reloadFunction) {
   let timerId = 0;

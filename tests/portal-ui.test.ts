@@ -77,6 +77,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /visibleModules\.includes\("jobSearch"\)/);
   assert.match(scriptBody, /clearJobView/);
   assert.match(scriptBody, /api\/v1\/auth\/config/);
+  assert.match(scriptBody, /api\/v1\/auth\/context/);
+  assert.match(scriptBody, /clearSessionState/);
   assert.match(scriptBody, /api\/v1\/auth\/oidc\/start/);
   assert.match(scriptBody, /api\/v1\/auth\/mfa\/complete/);
   assert.match(scriptBody, /api\/v1\/content\/proposals/);

@@ -92,6 +92,29 @@ describe("認証REST APIとMCP", () => {
     }
   });
 
+  it("複数カテゴリ対応アカウントはログイン状態を保ったまま文脈を切り替えられる", async () => {
+    const login = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "orderer@example.com", password: "demo-password", category: "legal", role: "orderer" }),
+    });
+    assert.equal(login.status, 200);
+    const switched = await request("/api/v1/auth/context", {
+      method: "POST",
+      headers: { authorization: `Bearer ${login.body.accessToken}` },
+      body: JSON.stringify({ category: "tourism", role: "orderer" }),
+    });
+    assert.equal(switched.status, 200);
+    assert.equal(switched.body.principal.category, "tourism");
+    assert.equal(switched.body.principal.role, "orderer");
+    const changedRole = await request("/api/v1/auth/context", {
+      method: "POST",
+      headers: { authorization: `Bearer ${login.body.accessToken}` },
+      body: JSON.stringify({ category: "tourism", role: "user" }),
+    });
+    assert.equal(changedRole.status, 200);
+    assert.equal(changedRole.body.principal.role, "user");
+  });
+
   it("REST APIでTOTP MFAの登録・確認・ログインチャレンジを完了できる", async () => {
     const login = await request("/api/v1/auth/login", {
       method: "POST",
