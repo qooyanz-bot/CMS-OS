@@ -27,8 +27,12 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   const body = await html.text();
   assert.equal(html.status, 200);
   assert.match(body, /CMS-OS Portal/);
+  assert.match(body, /content-editor-panel/);
 
   const script = await fetch(`${baseUrl}/app.js`);
   assert.equal(script.status, 200);
-  assert.match(await script.text(), /category-select/);
+  const scriptBody = await script.text();
+  assert.match(scriptBody, /category-select/);
+  assert.match(scriptBody, /api\/v1\/content\/proposals/);
+  assert.match(scriptBody, /api\/v1\/publications\/build/);
 });

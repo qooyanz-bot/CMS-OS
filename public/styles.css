@@ -70,6 +70,18 @@ select:focus, input:focus, textarea:focus { border-color: rgba(184, 243, 106, .6
 .action-card .button { width: 100%; }
 .job-item .button { margin-top: 12px; width: 100%; }
 .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+.content-editor { margin-top: 18px; padding: 24px; }
+.content-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 18px; }
+.content-form .wide { grid-column: 1 / -1; }
+.content-form .button { align-self: end; }
+.editor-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; }
+.editor-list { display: grid; gap: 10px; margin-top: 12px; }
+.editor-item { background: rgba(255,255,255,.035); border: 1px solid var(--border); border-radius: 14px; padding: 15px; }
+.editor-item h3 { margin: 10px 0 7px; font-size: 15px; }
+.editor-item p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.editor-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.editor-actions .button { padding: 8px 10px; font-size: 11px; }
+.content-preview { background: rgba(0,0,0,.3); border: 1px solid var(--border); border-radius: 12px; color: #dbeafe; margin: 18px 0 0; max-height: 360px; overflow: auto; padding: 16px; white-space: pre-wrap; }
 .footer { border-top: 1px solid var(--border); color: #687286; font-size: 12px; margin-top: 34px; padding-top: 18px; }
 
 @media (max-width: 820px) {
@@ -82,4 +94,6 @@ select:focus, input:focus, textarea:focus { border-color: rgba(184, 243, 106, .6
   .control-panel .button { width: 100%; }
   .hero-title-row, .section-heading { align-items: flex-start; flex-direction: column; }
   .search-input { max-width: none; }
+  .content-form, .editor-columns { grid-template-columns: 1fr; }
+  .content-form .wide { grid-column: auto; }
 }

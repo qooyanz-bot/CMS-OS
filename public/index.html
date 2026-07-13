@@ -105,6 +105,37 @@
         </aside>
       </section>
 
+      <section id="content-editor-panel" class="card content-editor" hidden>
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">AI EDITOR</div>
+            <h2>企画から清書・公開まで</h2>
+            <p class="muted">事業者向けの開発プレビューです。操作はAPIを通じて実行されます。</p>
+          </div>
+          <span class="badge">provider only</span>
+        </div>
+        <form id="content-proposal-form" class="content-form">
+          <label>コンテンツ種別<select name="contentType"><option value="blog">Blog記事</option><option value="job">求人情報</option><option value="pr">プレスリリース</option><option value="company">企業情報</option><option value="ir">IR情報</option></select></label>
+          <label>対象ポジション<select name="audience"><option value="customer">顧客・発注者</option><option value="candidate">求職者・リクルーター</option><option value="media">報道・メディア</option><option value="investor">投資家・株主</option><option value="beginner">初心者・導入検討者</option><option value="existingCustomer">既存顧客</option></select></label>
+          <label>テーマ<input name="topic" required minlength="3" placeholder="例：弁護士のキャリア" /></label>
+          <label>主キーワード<input name="primaryKeyword" placeholder="例：弁護士 キャリア" /></label>
+          <label class="wide">確認済み情報（1行1件）<textarea name="sourceFacts" placeholder="例：弁護士とパラリーガルを募集しています。"></textarea></label>
+          <button class="button primary" type="submit">企画案を作成</button>
+        </form>
+        <p id="content-message" class="message" role="status"></p>
+        <div class="editor-columns">
+          <div>
+            <div class="section-kicker">PROPOSALS</div>
+            <div id="proposal-list" class="editor-list"></div>
+          </div>
+          <div>
+            <div class="section-kicker">CONTENT VERSIONS</div>
+            <div id="content-list" class="editor-list"></div>
+          </div>
+        </div>
+        <pre id="content-preview" class="content-preview" hidden></pre>
+      </section>
+
       <footer class="footer">CMS-OS · API/MCP-first · カテゴリ別アクセス制御デモ</footer>
     </main>
     <script type="module" src="/app.js"></script>

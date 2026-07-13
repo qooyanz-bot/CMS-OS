@@ -4,6 +4,8 @@ const state = {
   role: "user",
   experience: null,
   providers: [],
+  proposals: [],
+  contents: [],
 };
 
 const labels = {
@@ -36,6 +38,12 @@ const elements = {
   requestForm: document.querySelector("#request-form"),
   requestProvider: document.querySelector("#request-provider"),
   jobs: document.querySelector("#job-list"),
+  contentPanel: document.querySelector("#content-editor-panel"),
+  contentForm: document.querySelector("#content-proposal-form"),
+  contentMessage: document.querySelector("#content-message"),
+  proposals: document.querySelector("#proposal-list"),
+  contents: document.querySelector("#content-list"),
+  contentPreview: document.querySelector("#content-preview"),
 };
 
 function escapeHtml(value) {
@@ -50,6 +58,10 @@ function escapeHtml(value) {
 
 function setMessage(message = "") {
   elements.message.textContent = message;
+}
+
+function setContentMessage(message = "") {
+  elements.contentMessage.textContent = message;
 }
 
 async function api(path, options = {}) {
@@ -117,6 +129,73 @@ function renderJobs(items) {
   });
 }
 
+function renderProposals(items) {
+  state.proposals = items;
+  elements.proposals.innerHTML = items.length
+    ? items.map((proposal) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(proposal.audience)}</span><span>${escapeHtml(proposal.contentType)}</span></div><h3>${escapeHtml(proposal.topic)}</h3><p>${escapeHtml(proposal.searchIntent)}</p><button class="button ghost draft-button" data-proposal-id="${escapeHtml(proposal.id)}">下書きを生成</button></article>`).join("")
+    : '<p class="empty">企画案がまだありません。</p>';
+  document.querySelectorAll(".draft-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await api("/api/v1/content/drafts", { method: "POST", body: JSON.stringify({ proposalId: button.dataset.proposalId }) });
+        setContentMessage("対象ポジション別の下書きを作成しました。");
+        await reloadContent();
+      } catch (error) {
+        setContentMessage(error.message);
+      }
+    });
+  });
+}
+
+function renderContents(items) {
+  state.contents = items;
+  elements.contents.innerHTML = items.length
+    ? items.map((content) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(content.status)}</span><span>v${escapeHtml(content.version)}</span></div><h3>${escapeHtml(content.title)}</h3><p>${escapeHtml(content.summary)}</p><div class="editor-actions"><button class="button ghost content-action" data-action="preview" data-content-id="${escapeHtml(content.id)}">本文を見る</button>${content.status === "drafted" || content.status === "polished" ? `<button class="button ghost content-action" data-action="polish" data-content-id="${escapeHtml(content.id)}">清書</button>` : ""}${content.status === "polished" || content.status === "seo_reviewed" ? `<button class="button ghost content-action" data-action="audit" data-content-id="${escapeHtml(content.id)}">SEO監査</button>` : ""}${content.status === "seo_reviewed" ? `<button class="button primary content-action" data-action="approve" data-content-id="${escapeHtml(content.id)}">承認</button>` : ""}${content.status === "approved" ? `<button class="button primary content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>` : ""}</div></article>`).join("")
+    : '<p class="empty">下書きがまだありません。</p>';
+  document.querySelectorAll(".content-action").forEach((button) => {
+    button.addEventListener("click", () => handleContentAction(button.dataset.action, button.dataset.contentId));
+  });
+}
+
+async function reloadContent() {
+  const visible = state.token && state.role === "provider" && state.experience?.allowedActions.includes("content.propose");
+  elements.contentPanel.hidden = !visible;
+  if (!visible) return;
+  const proposals = await api("/api/v1/content/proposals");
+  const contents = await api("/api/v1/content");
+  renderProposals(proposals.items);
+  renderContents(contents.items);
+}
+
+async function handleContentAction(action, contentId) {
+  if (!contentId) return;
+  try {
+    if (action === "preview") {
+      const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}`);
+      elements.contentPreview.hidden = false;
+      elements.contentPreview.textContent = body.item.body;
+      return;
+    }
+    if (action === "polish") {
+      const instructions = window.prompt("清書方針（任意）") ?? "";
+      await api(`/api/v1/content/${encodeURIComponent(contentId)}/polish`, { method: "POST", body: JSON.stringify({ instructions }) });
+      setContentMessage("清書しました。SEO監査へ進めます。");
+    } else if (action === "audit") {
+      const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}/seo-audit`, { method: "POST" });
+      setContentMessage(`SEO監査スコア: ${body.item.score} / 100（指摘 ${body.item.issues.length}件）`);
+    } else if (action === "approve") {
+      await api(`/api/v1/content/${encodeURIComponent(contentId)}/approve`, { method: "POST" });
+      setContentMessage("人間の確認済みとして承認しました。");
+    } else if (action === "build") {
+      const body = await api("/api/v1/publications/build", { method: "POST", body: JSON.stringify({ contentIds: [contentId], baseUrl: window.location.origin }) });
+      setContentMessage(`静的ビルド完了: ${body.item.files.length}ファイル。BuilderOS Adapterへ渡せます。`);
+    }
+    await reloadContent();
+  } catch (error) {
+    setContentMessage(error.message);
+  }
+}
+
 async function reload() {
   const experienceBody = await api(`/api/v1/categories/${state.category}/experience`);
   renderExperience(experienceBody.experience);
@@ -126,6 +205,7 @@ async function reload() {
   const jobs = await api(`/api/v1/jobs?category=${encodeURIComponent(state.category)}`);
   renderJobs(jobs.items);
   elements.session.textContent = state.token ? `${labels[state.role]} / ${state.category}` : "未ログイン";
+  await reloadContent();
 }
 
 async function login() {
@@ -191,6 +271,29 @@ elements.requestForm.addEventListener("submit", async (event) => {
     setMessage("依頼を送信しました。");
   } catch (error) {
     setMessage(error.message);
+  }
+});
+
+elements.contentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(elements.contentForm);
+  try {
+    await api("/api/v1/content/proposals", {
+      method: "POST",
+      body: JSON.stringify({
+        category: state.category,
+        contentType: form.get("contentType"),
+        audience: form.get("audience"),
+        topic: form.get("topic"),
+        primaryKeyword: form.get("primaryKeyword"),
+        sourceFacts: String(form.get("sourceFacts") ?? "").split("\n").map((fact) => fact.trim()).filter(Boolean),
+      }),
+    });
+    elements.contentForm.reset();
+    setContentMessage("企画案を作成しました。");
+    await reloadContent();
+  } catch (error) {
+    setContentMessage(error.message);
   }
 });
 
