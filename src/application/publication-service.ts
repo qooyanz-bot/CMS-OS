@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ContentService } from "./content-service.js";
 import type { PortalService } from "./portal-service.js";
-import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, PublicationBuildResult, VisibleProvider } from "../domain/types.js";
+import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, PublicationBuildResult, VisibleProvider } from "../domain/types.js";
 import { BuilderOSAdapter, BuilderOSAdapterError, type CloudflarePagesDeployOptions, type CloudflarePagesDeploymentResult } from "../integrations/builderos-adapter.js";
 
 export class PublicationServiceError extends Error {
@@ -321,11 +321,12 @@ function rootHtml(contents: ContentRecord[], categories: PublishedCategory[], ba
 </html>`;
 }
 
-function categoryHtml(category: PublishedCategory, contents: ContentRecord[], providers: VisibleProvider[], baseUrl: string): string {
+function categoryHtml(category: PublishedCategory, contents: ContentRecord[], providers: VisibleProvider[], guides: DirectoryGuide[], baseUrl: string): string {
   const canonical = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`);
   const providerUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/providers/`);
   const contentLinks = contents.map((content) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(content)}/`))}">${escapeHtml(content.title)}</a><span>${escapeHtml(content.summary)}</span></li>`).join("\n");
   const providerLinks = providers.slice(0, 8).map((provider) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`))}">${escapeHtml(provider.name)}</a><span>${escapeHtml(provider.location)} · ${escapeHtml(provider.themes.join("・"))}</span></li>`).join("\n");
+  const guideLinks = guides.map((guide) => `<li><a href="${escapeHtml(guide.url)}" rel="nofollow noopener noreferrer">${escapeHtml(guide.name)}</a><span>${escapeHtml(guide.description)}</span></li>`).join("\n");
   const itemList = [...contents.map((content) => absoluteUrl(baseUrl, `/${routeFor(content)}/`)), ...providers.map((provider) => absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`))];
   const jsonLd = jsonLdString({
     "@context": "https://schema.org",
@@ -353,6 +354,7 @@ function categoryHtml(category: PublishedCategory, contents: ContentRecord[], pr
     <p><a class="directory-link" href="${escapeHtml(providerUrl)}">事業者一覧を見る（${providers.length}件）</a></p>
     <h2>公開情報</h2><ul class="content-index">${contentLinks || "<li>公開情報は準備中です。</li>"}</ul>
     <h2>注目の事業者</h2><ul class="content-index">${providerLinks || "<li>掲載事業者は準備中です。</li>"}</ul>
+    <h2>外部の事業者案内</h2><ul class="content-index">${guideLinks || "<li>外部案内は準備中です。</li>"}</ul>
   </main></body>
 </html>`;
 }
@@ -462,8 +464,9 @@ export class PublicationService {
 
     const providerDirectoryFiles = publishedCategories.flatMap((category) => {
       const providers = providersByCategory.get(category.slug) ?? [];
+      const guides = this.portal.listDirectoryGuides(category.slug, null);
       return [
-        { path: `${categoryRoute(category.slug)}/index.html`, contentType: "text/html; charset=utf-8", content: categoryHtml(category, contents.filter((content) => content.category === category.slug), providers, baseUrl) },
+        { path: `${categoryRoute(category.slug)}/index.html`, contentType: "text/html; charset=utf-8", content: categoryHtml(category, contents.filter((content) => content.category === category.slug), providers, guides, baseUrl) },
         { path: `${categoryRoute(category.slug)}/providers/index.html`, contentType: "text/html; charset=utf-8", content: providerDirectoryHtml(category, providers, baseUrl) },
         ...providers.map((provider) => ({
           path: `${providerRoute(category.slug, provider.id)}/index.html`,

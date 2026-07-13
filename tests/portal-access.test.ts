@@ -9,6 +9,7 @@ let server: Server;
 let baseUrl: string;
 let legalProviderToken: string;
 let legalOrdererToken: string;
+let beautyProviderToken: string;
 const previousOperatorKey = process.env.CMS_OS_OPERATOR_KEY;
 
 before(async () => {
@@ -16,9 +17,11 @@ before(async () => {
   const auth = new InMemoryAuthService();
   const providerLogin = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
   const ordererLogin = auth.login("orderer@example.com", "demo-password", "legal", "orderer");
-  if (!providerLogin || !ordererLogin || !("accessToken" in providerLogin) || !("accessToken" in ordererLogin)) throw new Error("テスト用の事業者トークンを作成できません。");
+  const beautyProviderLogin = auth.login("beauty@example.com", "demo-password", "beauty", "provider");
+  if (!providerLogin || !ordererLogin || !beautyProviderLogin || !("accessToken" in providerLogin) || !("accessToken" in ordererLogin) || !("accessToken" in beautyProviderLogin)) throw new Error("テスト用の事業者トークンを作成できません。");
   legalProviderToken = providerLogin.accessToken;
   legalOrdererToken = ordererLogin.accessToken;
+  beautyProviderToken = beautyProviderLogin.accessToken;
   const portal = new PortalService(auth);
   server = createHttpServer(auth, portal);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -72,6 +75,35 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(!legal.body.experience.visibleModules.includes("booking"));
     assert.ok(beauty.body.experience.visibleModules.includes("styleGallery"));
     assert.ok(!beauty.body.experience.visibleModules.includes("legalDisclaimer"));
+  });
+
+  it("カテゴリ別外部案内をRESTとMCPでロール別に返す", async () => {
+    const legal = await request("/api/v1/categories/legal/directories");
+    const beauty = await request("/api/v1/categories/beauty/directories");
+    assert.equal(legal.status, 200);
+    assert.equal(beauty.status, 200);
+    assert.equal(legal.body.items[0].name, "弁護士ドットコム");
+    assert.equal(beauty.body.items[0].name, "ホットペッパービューティー");
+    assert.equal(beauty.body.items.some((item: { kind: string }) => item.kind === "provider_resource"), false);
+
+    const providerGuides = await request("/api/v1/categories/beauty/directories", {
+      headers: { authorization: `Bearer ${beautyProviderToken}` },
+    });
+    assert.equal(providerGuides.status, 200);
+    assert.equal(providerGuides.body.items.length, 1);
+    assert.equal(providerGuides.body.items[0].kind, "provider_resource");
+
+    const tools = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 41, method: "tools/list" }),
+    });
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "directory.list"));
+    const mcpGuides = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 42, method: "tools/call", params: { name: "directory.list", arguments: { category: "legal" } } }),
+    });
+    assert.equal(mcpGuides.status, 200);
+    assert.equal(mcpGuides.body.result.structuredContent.items[0].id, "directory-legal-bengo4");
   });
 
   it("発注者は注文者向けの情報を取得でき、一般ユーザーには取得できない", async () => {
@@ -290,12 +322,8 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.ok(ordererNotifications.body.items.some((item: { resourceId: string; type: string }) => item.resourceId === requestId && item.type === "request_status_changed"));
 
-    const beautyProviderLogin = await request("/api/v1/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email: "beauty@example.com", password: "demo-password", category: "beauty", role: "provider" }),
-    });
     const unrelated = await request("/api/v1/requests", {
-      headers: { authorization: `Bearer ${beautyProviderLogin.body.accessToken}` },
+      headers: { authorization: `Bearer ${beautyProviderToken}` },
     });
     assert.equal(unrelated.status, 200);
     assert.ok(unrelated.body.items.every((item: { category: string }) => item.category === "beauty"));

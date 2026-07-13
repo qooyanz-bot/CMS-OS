@@ -4,10 +4,12 @@ import {
   projectProvider,
   resolveExperience,
 } from "../domain/catalog.js";
+import { listDirectoryGuides as listCatalogDirectoryGuides } from "../domain/directory-catalog.js";
 import { PortalStore } from "../domain/portal-store.js";
 import type {
   AuthenticatedPrincipal,
   CategorySlug,
+  DirectoryGuide,
   InquiryStatus,
   JobStatus,
   JobApplication,
@@ -152,6 +154,11 @@ export class PortalService {
       label: policy.label,
       navigation: policy.navigation,
     }));
+  }
+
+  public listDirectoryGuides(category: CategorySlug, principal: AuthenticatedPrincipal | null): DirectoryGuide[] {
+    const role = principal?.category === category ? principal.role : "user";
+    return listCatalogDirectoryGuides(category, role);
   }
 
   public getExperience(

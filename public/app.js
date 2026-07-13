@@ -7,6 +7,7 @@ const state = {
   authCapabilities: { passwordLogin: true, oidcLogin: false, mfaEnrollment: false },
   experience: null,
   providers: [],
+  directoryGuides: [],
   requests: [],
   applications: [],
   inquiries: [],
@@ -20,6 +21,7 @@ const listRequestVersions = {
   requests: 0,
   applications: 0,
   jobs: 0,
+  directories: 0,
 };
 
 const labels = {
@@ -61,6 +63,9 @@ const elements = {
   providers: document.querySelector("#provider-list"),
   providerPagination: document.querySelector("#provider-pagination"),
   providerStatus: document.querySelector("#provider-list-status"),
+  directoryGuidePanel: document.querySelector("#directory-guide-panel"),
+  directoryGuideList: document.querySelector("#directory-guide-list"),
+  directoryGuideStatus: document.querySelector("#directory-guide-status"),
   requestPanel: document.querySelector("#request-panel"),
   requestForm: document.querySelector("#request-form"),
   requestProvider: document.querySelector("#request-provider"),
@@ -308,6 +313,16 @@ function renderProviders(items, page = {}, cursor = "") {
   renderListPagination(elements.providerPagination, page, cursor, reloadProviders, "事業者一覧のページ移動");
 }
 
+const directoryGuideKindLabels = { directory: "検索・相談", booking: "検索・予約", provider_resource: "事業者向け" };
+
+function renderDirectoryGuides(items) {
+  state.directoryGuides = items;
+  elements.directoryGuidePanel.hidden = items.length === 0;
+  elements.directoryGuideList.innerHTML = items.length
+    ? items.map((guide) => `<article class="directory-guide-item"><div class="meta"><span>${escapeHtml(directoryGuideKindLabels[guide.kind] ?? guide.kind)}</span><span>確認日 ${escapeHtml(guide.verifiedAt)}</span></div><h3><a href="${escapeHtml(guide.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(guide.name)}</a></h3><p>${escapeHtml(guide.description)}</p></article>`).join("")
+    : "";
+}
+
 const requestStatusLabels = { submitted: "受付中", accepted: "対応中", closed: "終了" };
 const applicationStatusLabels = { submitted: "受付中", screening: "選考中", closed: "終了" };
 const inquiryStatusLabels = { open: "受付中", responded: "返信済み", closed: "終了" };
@@ -439,6 +454,26 @@ async function reloadProviders(cursor = "") {
     }
   } finally {
     finishListRequest("providers", requestVersion, elements.providers);
+  }
+}
+
+async function reloadDirectoryGuides() {
+  const requestVersion = beginListRequest("directories", elements.directoryGuideList);
+  elements.directoryGuidePanel.hidden = false;
+  setListStatus(elements.directoryGuideStatus, "loading", "カテゴリ別の外部案内を読み込んでいます。");
+  try {
+    const body = await api(`/api/v1/categories/${encodeURIComponent(state.category)}/directories`);
+    if (isLatestListRequest("directories", requestVersion)) {
+      renderDirectoryGuides(body.items);
+      setListStatus(elements.directoryGuideStatus);
+    }
+  } catch (error) {
+    if (isLatestListRequest("directories", requestVersion)) {
+      setListStatus(elements.directoryGuideStatus, "error", "外部案内を読み込めませんでした。再試行してください。", () => reloadDirectoryGuides());
+      throw error;
+    }
+  } finally {
+    finishListRequest("directories", requestVersion, elements.directoryGuideList);
   }
 }
 
@@ -748,6 +783,11 @@ async function reload() {
   await reloadProviderManagement();
   await reloadRoleData();
   await reloadProviders();
+  try {
+    await reloadDirectoryGuides();
+  } catch (error) {
+    setMessage(error.message);
+  }
   await reloadJobs();
   elements.session.textContent = state.token ? `${labels[state.role]} / ${state.category}` : "未ログイン";
   await reloadContent();

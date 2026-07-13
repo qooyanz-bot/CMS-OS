@@ -272,6 +272,11 @@ async function handleMcp(
             inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
           },
           {
+            name: "directory.list",
+            description: "カテゴリとロールに応じた外部ディレクトリ・予約・事業者向け案内を取得します。",
+            inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
+          },
+          {
             name: "provider.search",
             description: "カテゴリ、テーマ、地域に応じて表示可能な事業者を検索します。",
             inputSchema: {
@@ -707,6 +712,13 @@ async function handleMcp(
     if (name === "category.resolve_experience") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
       const result = portal.getExperience(argumentsObject.category, principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "directory.list") {
+      if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
+      const result = { items: portal.listDirectoryGuides(argumentsObject.category, principal) };
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1283,6 +1295,17 @@ export function createHttpServer(
           return;
         }
         writeJson(response, 200, { experience: portal.getExperience(category, principal) });
+        return;
+      }
+
+      const directoryMatch = url.pathname.match(/^\/api\/v1\/categories\/([^/]+)\/directories$/);
+      if (request.method === "GET" && directoryMatch) {
+        const category = directoryMatch[1];
+        if (!isCategorySlug(category)) {
+          writeJson(response, 404, { error: "カテゴリが見つかりません。" });
+          return;
+        }
+        writeJson(response, 200, { items: portal.listDirectoryGuides(category, principal) });
         return;
       }
 

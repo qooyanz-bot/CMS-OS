@@ -125,6 +125,7 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get("robots.txt") ?? "", /Disallow: \/api\//);
     assert.match(fileMap.get("llms.txt") ?? "", /Provider/);
     assert.match(fileMap.get("llms.txt") ?? "", /ai-business/);
+    assert.match(fileMap.get("categories/legal/index.html") ?? "", /弁護士ドットコム/);
     assert.match(fileMap.get("categories\/legal\/providers\/provider-legal-demo\/index.html") ?? "", /Organization/);
 
     const submitted = await request("/api/v1/providers/provider-legal-demo/listing-submission", {

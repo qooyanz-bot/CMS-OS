@@ -43,6 +43,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /job-sort/);
   assert.match(body, /provider-pagination/);
   assert.match(body, /provider-list-status/);
+  assert.match(body, /directory-guide-panel/);
+  assert.match(body, /directory-guide-list/);
   assert.match(body, /request-list-status/);
   assert.match(body, /application-list-status/);
   assert.match(body, /job-list-status/);
@@ -83,6 +85,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /focus\(\)/);
   assert.match(scriptBody, /setListStatus/);
   assert.match(scriptBody, /再試行/);
+  assert.match(scriptBody, /api\/v1\/categories\/\$\{encodeURIComponent\(state\.category\)\}\/directories/);
+  assert.match(scriptBody, /directoryGuideKindLabels/);
   assert.match(scriptBody, /listing-submission/);
   assert.match(scriptBody, /role-status-button/);
 });

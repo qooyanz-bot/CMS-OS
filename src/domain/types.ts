@@ -13,6 +13,20 @@ export const categorySlugs = [
 export type PortalRole = (typeof portalRoles)[number];
 export type CategorySlug = (typeof categorySlugs)[number];
 
+export const directoryGuideKinds = ["directory", "booking", "provider_resource"] as const;
+export type DirectoryGuideKind = (typeof directoryGuideKinds)[number];
+
+export interface DirectoryGuide {
+  id: string;
+  category: CategorySlug;
+  name: string;
+  kind: DirectoryGuideKind;
+  description: string;
+  url: string;
+  targetRoles: PortalRole[];
+  verifiedAt: string;
+}
+
 export interface RoleAssignment {
   role: PortalRole;
   category: CategorySlug | "*";

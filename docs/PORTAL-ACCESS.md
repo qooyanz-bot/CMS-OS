@@ -11,6 +11,7 @@
 - 生成AI・業務改革、人手不足・省人化、地域観光・インバウンド、モビリティDX・SDV、GX・省エネ・資源循環、地方創生・移住・空き家再生のテーマカテゴリ
 - 未ログインユーザーの公開表示
 - 発注者・事業者・リクルーターの表示モジュール切り替え
+- カテゴリ別の外部ディレクトリ・予約・事業者向け案内
 - サーバー側の表示フィールド投影
 - REST API
 - MCPの`tools/list`と`tools/call`
@@ -69,6 +70,7 @@ POST /api/v1/auth/mfa/confirm
 POST /api/v1/auth/mfa/complete
 GET  /api/v1/categories
 GET  /api/v1/categories/{category}/experience
+GET  /api/v1/categories/{category}/directories
 GET  /api/v1/providers?category=beauty&theme=カラー
 GET  /api/v1/providers/{providerId}
 PATCH /api/v1/providers/{providerId}
@@ -104,6 +106,16 @@ POST /mcp
 | 発注者 | 公開項目＋発注者向け項目 | 公開中のみ・providerIdは非公開 |
 | 事業者 | 自社の公開項目＋事業者向け項目 | 自社求人の公開・終了を含む |
 | リクルーター | 公開項目＋候補者向け項目 | 公開中のみ・providerIdは非公開 |
+
+## カテゴリ別外部案内
+
+`GET /api/v1/categories/{category}/directories` またはMCPの`directory.list`で、現在のカテゴリとロールに応じた外部案内を取得できます。案内は事業者掲載情報とは分離し、外部サイトへのリンク、用途、対象ロール、最終確認日を返します。
+
+- 法律カテゴリ：弁護士ドットコムなどの相談・検索案内
+- 美容カテゴリ：ホットペッパービューティーなどの検索・予約案内
+- 美容事業者ロール：掲載案内など事業者向け情報
+
+外部サービスの掲載は推薦・提携・品質保証を意味しません。URL、用途、確認日を管理対象にし、変更や掲載終了を反映できるようにします。
 
 `PATCH /api/v1/providers/{providerId}`、`POST /api/v1/jobs`、`PATCH /api/v1/jobs/{jobId}` は、対象カテゴリに所属する事業者本人だけが実行できます。MCPでも `provider.get`、`provider.update`、`job.create`、`job.update` を同じ権限判定で利用できます。
 
