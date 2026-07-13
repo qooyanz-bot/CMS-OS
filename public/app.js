@@ -111,6 +111,9 @@ const elements = {
   workflowOne: document.querySelector("#workflow-step-one"),
   workflowTwo: document.querySelector("#workflow-step-two"),
   workflowThree: document.querySelector("#workflow-step-three"),
+  providerSectionTitle: document.querySelector("#provider-section-title"),
+  directoryGuideTitle: document.querySelector("#directory-guide-title"),
+  jobPanelTitle: document.querySelector("#job-panel-title"),
   search: document.querySelector("#provider-search"),
   providerTheme: document.querySelector("#provider-theme-filter"),
   providerLocation: document.querySelector("#provider-location-filter"),
@@ -297,21 +300,31 @@ function renderExperience(experience, navigation = []) {
   elements.badge.textContent = labels[experience.role];
   elements.notice.textContent = experience.notices.join(" ");
   const navigationLabels = Object.fromEntries(navigation.map((item) => [item.id, item.label]));
+  const primaryLabel = navigationLabels.themes ?? navigationLabels.menus ?? "テーマ";
+  const providerLabel = navigationLabels.providers ?? "事業者を探す";
+  const guideLabel = navigationLabels.guides ?? navigationLabels.styles ?? "外部案内";
+  const jobLabel = navigationLabels.jobs ?? "求人";
   elements.modules.innerHTML = experience.visibleModules
     .map((module) => `<span>${escapeHtml(moduleLabels[module] ?? navigationLabels[module] ?? module)}</span>`)
     .join("");
 
-  const isBeauty = experience.category === "beauty";
-  const isLegal = experience.category === "legal";
-  elements.workflowTitle.textContent = isBeauty ? "メニューから予約する" : isLegal ? "相談テーマから探す" : "テーマから事業者を探す";
-  elements.workflowCopy.textContent = isBeauty
-    ? "メニュー、地域、スタイル事例を比較して、自分に合う店舗へつなげます。"
-    : isLegal
-      ? "相談テーマ、専門領域、対応地域を整理して、適切な事業者へつなげます。"
-      : "テーマ、対応領域、地域を整理して、目的に合う事業者へつなげます。";
-  elements.workflowOne.textContent = isBeauty ? "メニューを選ぶ" : "テーマを選ぶ";
-  elements.workflowTwo.textContent = isBeauty ? "店舗を比較する" : "事業者を比較する";
-  elements.workflowThree.textContent = isBeauty ? "予約する" : isLegal ? "相談する" : "問い合わせる";
+  const actionLabel = experience.visibleModules.includes("booking")
+    ? "予約する"
+    : experience.allowedActions.includes("request.create")
+      ? "依頼する"
+      : experience.allowedActions.includes("inquiry.create")
+        ? "問い合わせる"
+        : "探す";
+  elements.workflowTitle.textContent = `${primaryLabel}から${actionLabel}`;
+  elements.workflowCopy.textContent = `${primaryLabel}、${providerLabel}、地域を確認し、目的に合う${providerLabel}へつなげます。`;
+  elements.workflowOne.textContent = `${primaryLabel}を選ぶ`;
+  elements.workflowTwo.textContent = `${providerLabel}を比較する`;
+  elements.workflowThree.textContent = actionLabel;
+  elements.providerSectionTitle.textContent = providerLabel;
+  elements.directoryGuideTitle.textContent = `${guideLabel}の外部案内`;
+  elements.jobPanelTitle.textContent = `カテゴリの${jobLabel}`;
+  elements.search.placeholder = `${providerLabel}名・${primaryLabel}・地域`;
+  elements.providerTheme.placeholder = `${primaryLabel}を指定`;
   elements.requestPanel.hidden = !experience.allowedActions.includes("request.create");
   elements.inquiryPanel.hidden = !experience.allowedActions.includes("inquiry.create");
   const canSeeJobs = experience.visibleModules.includes("jobSearch") || experience.visibleModules.includes("jobManagement");

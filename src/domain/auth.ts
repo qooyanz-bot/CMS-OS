@@ -207,6 +207,24 @@ export class InMemoryAuthService implements AuthService {
         providerId: "provider-beauty-demo",
         assignments: [allUserCategories, { role: "provider", category: "beauty" }],
       });
+      const genericProviderDemos = [
+        ["ai-business", "ai-business@example.com", "生成AI事業者（サンプル）", "provider-ai-business-demo"],
+        ["labor-shortage", "labor-shortage@example.com", "人手不足対策事業者（サンプル）", "provider-labor-shortage-demo"],
+        ["tourism", "tourism@example.com", "観光事業者（サンプル）", "provider-tourism-demo"],
+        ["mobility-dx", "mobility-dx@example.com", "モビリティDX事業者（サンプル）", "provider-mobility-dx-demo"],
+        ["gx", "gx@example.com", "GX事業者（サンプル）", "provider-gx-demo"],
+        ["regional-revitalization", "regional@example.com", "地方創生事業者（サンプル）", "provider-regional-revitalization-demo"],
+      ] as const;
+      genericProviderDemos.forEach(([category, email, displayName, providerId]) => {
+        this.addAccount({
+          id: `account-${category}-provider-demo`,
+          email,
+          passwordHash,
+          displayName,
+          providerId,
+          assignments: [allUserCategories, { role: "provider", category }],
+        });
+      });
       this.addAccount({
         id: "account-candidate-demo",
         email: "candidate@example.com",

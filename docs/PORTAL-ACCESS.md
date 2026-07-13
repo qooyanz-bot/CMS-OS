@@ -34,6 +34,12 @@
 | `orderer@example.com` | 発注者 |
 | `lawyer@example.com` | 士業カテゴリの事業者 |
 | `beauty@example.com` | 美容カテゴリの事業者 |
+| `ai-business@example.com` | 生成AI・業務改革カテゴリの事業者 |
+| `labor-shortage@example.com` | 人手不足・省人化カテゴリの事業者 |
+| `tourism@example.com` | 地域観光・インバウンドカテゴリの事業者 |
+| `mobility-dx@example.com` | モビリティDX・SDVカテゴリの事業者 |
+| `gx@example.com` | GX・省エネ・資源循環カテゴリの事業者 |
+| `regional@example.com` | 地方創生・移住・空き家再生カテゴリの事業者 |
 | `candidate@example.com` | リクルーター |
 
 ## 本番認証設定

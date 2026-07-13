@@ -55,6 +55,12 @@
             <option value="orderer@example.com">発注者</option>
             <option value="lawyer@example.com">士業事業者</option>
             <option value="beauty@example.com">美容事業者</option>
+            <option value="ai-business@example.com">生成AI事業者</option>
+            <option value="labor-shortage@example.com">人手不足対策事業者</option>
+            <option value="tourism@example.com">観光事業者</option>
+            <option value="mobility-dx@example.com">モビリティDX事業者</option>
+            <option value="gx@example.com">GX事業者</option>
+            <option value="regional@example.com">地方創生事業者</option>
             <option value="candidate@example.com">リクルーター</option>
           </select>
           <p class="field-note">開発環境のみ。パスワードは入力欄へ指定してください。</p>
@@ -100,7 +106,7 @@
           <div class="section-heading">
             <div>
               <div class="section-kicker">DISCOVERY</div>
-              <h2>事業者を探す</h2>
+              <h2 id="provider-section-title">事業者を探す</h2>
             </div>
           </div>
           <div class="list-filters provider-filters">
@@ -114,7 +120,7 @@
           <div id="provider-pagination" class="list-pagination" aria-live="polite"></div>
           <section id="directory-guide-panel" class="directory-guide-panel" hidden>
             <div class="section-kicker">EXTERNAL GUIDES</div>
-            <h2>外部の事業者案内</h2>
+            <h2 id="directory-guide-title">外部の事業者案内</h2>
             <p class="muted">カテゴリとロールに応じた検索・予約・事業者向けの外部情報です。</p>
             <div id="directory-guide-list" class="directory-guide-list" aria-live="polite" aria-busy="false"></div>
             <div id="directory-guide-status" class="list-state" role="status" aria-live="polite" hidden></div>
@@ -185,7 +191,7 @@
 
           <div id="job-panel" class="card action-card">
             <div class="section-kicker">RECRUITMENT</div>
-            <h2>カテゴリの求人</h2>
+            <h2 id="job-panel-title">カテゴリの求人</h2>
             <div class="list-filters">
               <label>キーワード<input id="job-search-filter" placeholder="求人を検索" /></label>
               <label>雇用形態<input id="job-employment-filter" placeholder="雇用形態を指定" /></label>

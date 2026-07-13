@@ -72,6 +72,26 @@ describe("認証REST APIとMCP", () => {
     assert.deepEqual(response.body.item, { passwordLogin: true, oidcLogin: false, mfaEnrollment: true });
   });
 
+  it("全テーマカテゴリの事業者デモアカウントでカテゴリ別ログインできる", async () => {
+    const providerAccounts = [
+      ["ai-business", "ai-business@example.com"],
+      ["labor-shortage", "labor-shortage@example.com"],
+      ["tourism", "tourism@example.com"],
+      ["mobility-dx", "mobility-dx@example.com"],
+      ["gx", "gx@example.com"],
+      ["regional-revitalization", "regional@example.com"],
+    ];
+    for (const [category, email] of providerAccounts) {
+      const response = await request("/api/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password: "demo-password", category, role: "provider" }),
+      });
+      assert.equal(response.status, 200, `${category}の事業者ログインに失敗しました。`);
+      assert.equal(response.body.principal.category, category);
+      assert.equal(response.body.principal.role, "provider");
+    }
+  });
+
   it("REST APIでTOTP MFAの登録・確認・ログインチャレンジを完了できる", async () => {
     const login = await request("/api/v1/auth/login", {
       method: "POST",

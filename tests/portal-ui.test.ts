@@ -50,6 +50,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /provider-list-status/);
   assert.match(body, /directory-guide-panel/);
   assert.match(body, /directory-guide-list/);
+  assert.match(body, /provider-section-title/);
+  assert.match(body, /directory-guide-title/);
+  assert.match(body, /job-panel-title/);
   assert.match(body, /request-list-status/);
   assert.match(body, /application-list-status/);
   assert.match(body, /job-list-status/);
@@ -68,6 +71,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /category-select/);
   assert.match(scriptBody, /api\/v1\/categories\/\$\{encodeURIComponent\(state\.category\)\}/);
   assert.match(scriptBody, /moduleLabels/);
+  assert.match(scriptBody, /navigationLabels\.themes/);
+  assert.match(scriptBody, /providerSectionTitle/);
+  assert.match(scriptBody, /workflowTitle\.textContent = `\$\{primaryLabel\}/);
   assert.match(scriptBody, /visibleModules\.includes\("jobSearch"\)/);
   assert.match(scriptBody, /clearJobView/);
   assert.match(scriptBody, /api\/v1\/auth\/config/);

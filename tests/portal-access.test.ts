@@ -4,12 +4,14 @@ import type { Server } from "node:http";
 import { InMemoryAuthService } from "../src/domain/auth.js";
 import { PortalService } from "../src/application/portal-service.js";
 import { createHttpServer } from "../src/api/http-server.js";
+import type { CategorySlug } from "../src/domain/types.js";
 
 let server: Server;
 let baseUrl: string;
 let legalProviderToken: string;
 let legalOrdererToken: string;
 let beautyProviderToken: string;
+let genericProviderTokens: Array<[string, string]>;
 const previousOperatorKey = process.env.CMS_OS_OPERATOR_KEY;
 
 before(async () => {
@@ -22,6 +24,20 @@ before(async () => {
   legalProviderToken = providerLogin.accessToken;
   legalOrdererToken = ordererLogin.accessToken;
   beautyProviderToken = beautyProviderLogin.accessToken;
+  genericProviderTokens = [];
+  const genericProviderDemos: Array<[CategorySlug, string]> = [
+    ["ai-business", "ai-business@example.com"],
+    ["labor-shortage", "labor-shortage@example.com"],
+    ["tourism", "tourism@example.com"],
+    ["mobility-dx", "mobility-dx@example.com"],
+    ["gx", "gx@example.com"],
+    ["regional-revitalization", "regional@example.com"],
+  ];
+  for (const [category, email] of genericProviderDemos) {
+    const genericProviderLogin = auth.login(email, "demo-password", category, "provider");
+    if (!genericProviderLogin || !("accessToken" in genericProviderLogin)) throw new Error(`${category}のテスト用事業者トークンを作成できません。`);
+    genericProviderTokens.push([category, genericProviderLogin.accessToken]);
+  }
   const portal = new PortalService(auth);
   server = createHttpServer(auth, portal);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -72,6 +88,23 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(providers.status, 200);
     assert.equal(providers.body.items[0].id, "provider-ai-business-demo");
     assert.equal(providers.body.items[0].contactOptions, undefined);
+  });
+
+  it("カテゴリ別事業者ログイン後に専用表示モジュールを返す", async () => {
+    const expectedModules: Record<string, string> = {
+      "ai-business": "aiSolutionManagement",
+      "labor-shortage": "recruitmentManagement",
+      tourism: "tourismExperienceManagement",
+      "mobility-dx": "fleetManagement",
+      gx: "gxManagement",
+      "regional-revitalization": "regionalProjectManagement",
+    };
+    for (const [category, token] of genericProviderTokens) {
+      const context = await request(`/api/v1/categories/${category}`, { headers: { authorization: `Bearer ${token}` } });
+      assert.equal(context.status, 200);
+      assert.equal(context.body.item.experience.role, "provider");
+      assert.ok(context.body.item.experience.visibleModules.includes(expectedModules[category]), `${category}の専用モジュールがありません。`);
+    }
   });
 
   it("未ログインのユーザーにカテゴリごとの表示モジュールを返す", async () => {
