@@ -69,6 +69,7 @@ POST /api/v1/auth/mfa/enroll
 POST /api/v1/auth/mfa/confirm
 POST /api/v1/auth/mfa/complete
 GET  /api/v1/categories
+GET  /api/v1/categories/{category}
 GET  /api/v1/categories/{category}/experience
 GET  /api/v1/categories/{category}/directories
 POST /api/v1/directories                  # 運営キーで外部案内を追加

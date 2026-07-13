@@ -30,10 +30,12 @@ CMS-OSのポータルカテゴリは、REST API、MCP、認証コンテキスト
 
 ```text
 GET  /api/v1/categories
+GET  /api/v1/categories/{category}
 GET  /api/v1/categories/{category}/experience
 GET  /api/v1/providers?category={category}
 GET  /api/v1/jobs?category={category}
 POST /mcp  category.resolve_experience
+POST /mcp  category.get
 POST /mcp  provider.search
 ```
 

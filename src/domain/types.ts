@@ -72,6 +72,14 @@ export interface CategoryExperience {
   notices: string[];
 }
 
+export interface PortalCategoryContext {
+  slug: CategorySlug;
+  label: string;
+  navigation: CategoryModule[];
+  experience: CategoryExperience;
+  directoryGuides: DirectoryGuide[];
+}
+
 export interface ProviderRecord {
   id: string;
   category: CategorySlug;

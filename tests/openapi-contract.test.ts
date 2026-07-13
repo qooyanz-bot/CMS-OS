@@ -26,6 +26,7 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/auth/me",
       "/api/v1/auth/context",
       "/api/v1/categories",
+      "/api/v1/categories/{category}",
       "/api/v1/categories/{category}/experience",
       "/api/v1/categories/{category}/directories",
       "/api/v1/providers",
@@ -88,7 +89,7 @@ describe("CMS-OS OpenAPI契約", () => {
       const names = new Set((operation.parameters ?? []).map((parameter) => parameter.name).filter((name): name is string => Boolean(name)));
       for (const parameter of expectedParameters) assert.ok(names.has(parameter), `${path}に${parameter}クエリがありません`);
     }
-    for (const path of ["/api/v1/categories/{category}/experience", "/api/v1/providers", "/api/v1/jobs", "/mcp"]) {
+    for (const path of ["/api/v1/categories/{category}", "/api/v1/categories/{category}/experience", "/api/v1/providers", "/api/v1/jobs", "/mcp"]) {
       const pathItem = specification.paths[path] ?? {};
       const operation = (pathItem.get ?? Object.values(pathItem)[0]) as { security?: unknown };
       assert.deepEqual(operation.security, [{}, { BearerAuth: [] }], `${path}は任意認証である必要があります。`);

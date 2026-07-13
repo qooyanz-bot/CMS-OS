@@ -112,6 +112,34 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(mcpGuides.body.result.structuredContent.items[0].id, "directory-legal-bengo4");
   });
 
+  it("カテゴリ文脈をRESTとMCPからロール別に取得できる", async () => {
+    const legal = await request("/api/v1/categories/legal");
+    const beauty = await request("/api/v1/categories/beauty");
+    const invalid = await request("/api/v1/categories/not-real");
+
+    assert.equal(legal.status, 200);
+    assert.equal(beauty.status, 200);
+    assert.equal(invalid.status, 404);
+    assert.equal(legal.body.item.slug, "legal");
+    assert.ok(legal.body.item.experience.visibleModules.includes("legalDisclaimer"));
+    assert.ok(beauty.body.item.experience.visibleModules.includes("styleGallery"));
+    assert.ok(legal.body.item.directoryGuides.length > 0);
+
+    const orderer = await request("/api/v1/categories/legal", { headers: { authorization: `Bearer ${legalOrdererToken}` } });
+    assert.equal(orderer.body.item.experience.role, "orderer");
+    assert.ok(orderer.body.item.experience.allowedActions.includes("request.create"));
+
+    const tools = await request("/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 46, method: "tools/list" }) });
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "category.get"));
+    const mcpCategory = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 47, method: "tools/call", params: { name: "category.get", arguments: { category: "legal" } } }),
+    });
+    assert.equal(mcpCategory.status, 200);
+    assert.equal(mcpCategory.body.result.structuredContent.item.experience.role, "orderer");
+  });
+
   it("運営キーで外部案内をRESTとMCPから管理できる", async () => {
     const denied = await request("/api/v1/directories", {
       method: "POST",

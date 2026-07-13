@@ -1,5 +1,6 @@
 import type { AuthService } from "../domain/auth.js";
 import {
+  getCategoryPolicy,
   listCategoryPolicies,
   projectProvider,
   resolveExperience,
@@ -15,6 +16,7 @@ import type {
   JobPosting,
   PortalRole,
   PortalNotification,
+  PortalCategoryContext,
   ProviderListingReviewItem,
   ProviderInquiry,
   ProviderListingStatus,
@@ -194,6 +196,17 @@ export class PortalService {
       label: policy.label,
       navigation: policy.navigation,
     }));
+  }
+
+  public getCategoryContext(category: CategorySlug, principal: AuthenticatedPrincipal | null): PortalCategoryContext {
+    const policy = getCategoryPolicy(category);
+    return {
+      slug: policy.slug,
+      label: policy.label,
+      navigation: policy.navigation.map((module) => ({ ...module })),
+      experience: this.getExperience(category, principal),
+      directoryGuides: this.listDirectoryGuides(category, principal),
+    };
   }
 
   public listDirectoryGuides(category: CategorySlug, principal: AuthenticatedPrincipal | null): DirectoryGuide[] {

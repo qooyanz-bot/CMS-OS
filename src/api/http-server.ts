@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { URL } from "node:url";
 import { AuthServiceError, type AuthService } from "../domain/auth.js";
-import { getCategoryPolicy } from "../domain/catalog.js";
 import { applicationSortValues, jobSortValues, PortalService, PortalServiceError, providerSortValues, requestSortValues } from "../application/portal-service.js";
 import {
   ContentService,
@@ -325,6 +324,11 @@ async function handleMcp(
           {
             name: "category.resolve_experience",
             description: "カテゴリと認証コンテキストに応じた表示モジュールと操作権限を取得します。",
+            inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
+          },
+          {
+            name: "category.get",
+            description: "カテゴリ、現在のロールに対応する表示体験、外部案内をまとめて取得します。",
             inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
           },
           {
@@ -795,6 +799,13 @@ async function handleMcp(
     if (name === "category.resolve_experience") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
       const result = portal.getExperience(argumentsObject.category, principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "category.get") {
+      if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
+      const result = { item: portal.getCategoryContext(argumentsObject.category, principal) };
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1387,6 +1398,17 @@ export function createHttpServer(
 
       if (request.method === "GET" && url.pathname === "/api/v1/categories") {
         writeJson(response, 200, { items: portal.listCategories() });
+        return;
+      }
+
+      const categoryDetailMatch = url.pathname.match(/^\/api\/v1\/categories\/([^/]+)$/);
+      if (request.method === "GET" && categoryDetailMatch) {
+        const category = categoryDetailMatch[1];
+        if (!isCategorySlug(category)) {
+          writeJson(response, 404, { error: "カテゴリが見つかりません。" });
+          return;
+        }
+        writeJson(response, 200, { item: portal.getCategoryContext(category, principal) });
         return;
       }
 
