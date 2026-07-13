@@ -198,7 +198,7 @@ export type ContentType = (typeof contentTypes)[number];
 export const contentAudiences = ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] as const;
 export type ContentAudience = (typeof contentAudiences)[number];
 
-export type ContentWorkflowStatus = "proposed" | "drafted" | "polished" | "seo_reviewed" | "approved" | "published" | "archived";
+export type ContentWorkflowStatus = "proposed" | "drafted" | "polished" | "seo_reviewed" | "review_requested" | "changes_requested" | "approved" | "published" | "archived";
 export type ContentJsonLdType = "Organization" | "Article" | "BlogPosting" | "JobPosting" | "NewsArticle" | "FAQPage";
 
 export interface ContentProposal {
@@ -264,6 +264,26 @@ export interface ContentVersionRecord {
   reason: ContentVersionReason;
   actorId?: string;
   createdAt: string;
+}
+
+export const contentReviewStatuses = ["requested", "changes_requested", "approved"] as const;
+export type ContentReviewStatus = (typeof contentReviewStatuses)[number];
+
+export interface ContentReviewRecord {
+  id: string;
+  contentId: string;
+  category: CategorySlug;
+  providerId: string;
+  contentVersion: number;
+  status: ContentReviewStatus;
+  requestedByAccountId: string;
+  reviewerAccountId?: string;
+  requestNote?: string;
+  responseNote?: string;
+  requestedAt: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type SeoIssueSeverity = "error" | "warning" | "info";

@@ -199,6 +199,9 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.ok(names.includes("content.versions"));
     assert.ok(names.includes("content.version_get"));
     assert.ok(names.includes("content.version_restore"));
+    assert.ok(names.includes("workflow.reviews"));
+    assert.ok(names.includes("workflow.request_review"));
+    assert.ok(names.includes("workflow.request_changes"));
     assert.ok(names.includes("content.draft"));
     assert.ok(names.includes("content.update"));
     assert.ok(names.includes("content.duplicate"));
@@ -252,5 +255,116 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     });
     assert.equal(versions.status, 200);
     assert.ok(Array.isArray(versions.body.result.structuredContent.items));
+  });
+
+  it("レビュー依頼、差し戻し、再監査、再承認を履歴付きで実行できる", async () => {
+    const providerLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "lawyer@example.com", password: "demo-password", category: "legal", role: "provider" }),
+    });
+    const providerToken = providerLogin.body.accessToken;
+    const headers = { authorization: `Bearer ${providerToken}` };
+    const proposal = await request("/api/v1/content/proposals", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ category: "legal", contentType: "blog", audience: "customer", topic: "レビュー運用の検証", sourceFacts: ["確認済みのレビュー運用"] }),
+    });
+    const draft = await request("/api/v1/content/drafts", { method: "POST", headers, body: JSON.stringify({ proposalId: proposal.body.item.id }) });
+    const contentId = draft.body.item.id;
+
+    await request(`/api/v1/content/${contentId}/polish`, { method: "POST", headers, body: JSON.stringify({}) });
+    await request(`/api/v1/content/${contentId}/seo-audit`, { method: "POST", headers });
+    await request(`/api/v1/content/${contentId}/fact-check`, { method: "POST", headers });
+    const reviewRequest = await request(`/api/v1/content/${contentId}/review-request`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ note: "公開前レビューをお願いします" }),
+    });
+    assert.equal(reviewRequest.status, 201);
+    assert.equal(reviewRequest.body.item.content.status, "review_requested");
+    assert.equal(reviewRequest.body.item.review.status, "requested");
+    assert.equal(reviewRequest.body.item.review.contentVersion, reviewRequest.body.item.content.version);
+
+    const blockedEdit = await request(`/api/v1/content/${contentId}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ summary: "レビュー中の編集は拒否されます。" }),
+    });
+    assert.equal(blockedEdit.status, 409);
+
+    const changes = await request(`/api/v1/content/${contentId}/request-changes`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ note: "一次情報の説明を補足してください" }),
+    });
+    assert.equal(changes.status, 200);
+    assert.equal(changes.body.item.content.status, "changes_requested");
+    assert.equal(changes.body.item.review.status, "changes_requested");
+
+    const edited = await request(`/api/v1/content/${contentId}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ summary: "差し戻し後に補足した紹介文です。" }),
+    });
+    assert.equal(edited.status, 200);
+    assert.equal(edited.body.item.status, "drafted");
+    await request(`/api/v1/content/${contentId}/polish`, { method: "POST", headers, body: JSON.stringify({}) });
+    await request(`/api/v1/content/${contentId}/seo-audit`, { method: "POST", headers });
+    await request(`/api/v1/content/${contentId}/fact-check`, { method: "POST", headers });
+
+    const secondReview = await request(`/api/v1/content/${contentId}/review-request`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({}),
+    });
+    assert.equal(secondReview.status, 201);
+    assert.equal(secondReview.body.item.content.status, "review_requested");
+
+    const approved = await request(`/api/v1/content/${contentId}/approve`, { method: "POST", headers });
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.item.status, "approved");
+    const reviews = await request(`/api/v1/content/${contentId}/reviews`, { headers });
+    assert.equal(reviews.status, 200);
+    assert.equal(reviews.body.items.length, 2);
+    assert.equal(reviews.body.items[0].status, "approved");
+    assert.equal(reviews.body.items[1].status, "changes_requested");
+  });
+
+  it("レビュー依頼と差し戻しをMCPから実行できる", async () => {
+    const providerLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "beauty@example.com", password: "demo-password", category: "beauty", role: "provider" }),
+    });
+    const providerToken = providerLogin.body.accessToken;
+    const headers = { authorization: `Bearer ${providerToken}` };
+    const proposal = await request("/api/v1/content/proposals", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ category: "beauty", contentType: "blog", audience: "customer", topic: "MCPレビュー運用", sourceFacts: ["MCPで確認済み"] }),
+    });
+    const draft = await request("/api/v1/content/drafts", { method: "POST", headers, body: JSON.stringify({ proposalId: proposal.body.item.id }) });
+    await request(`/api/v1/content/${draft.body.item.id}/polish`, { method: "POST", headers, body: JSON.stringify({}) });
+    await request(`/api/v1/content/${draft.body.item.id}/seo-audit`, { method: "POST", headers });
+    await request(`/api/v1/content/${draft.body.item.id}/fact-check`, { method: "POST", headers });
+
+    const reviewRequest = await request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "workflow.request_review", arguments: { contentId: draft.body.item.id, note: "MCPレビューをお願いします" } } }),
+    });
+    assert.equal(reviewRequest.body.result.structuredContent.content.status, "review_requested");
+    const reviews = await request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "workflow.reviews", arguments: { contentId: draft.body.item.id } } }),
+    });
+    assert.equal(reviews.body.result.structuredContent.items[0].status, "requested");
+    const changes = await request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "workflow.request_changes", arguments: { contentId: draft.body.item.id, note: "MCPから補足を依頼します" } } }),
+    });
+    assert.equal(changes.body.result.structuredContent.content.status, "changes_requested");
+    assert.equal(changes.body.result.structuredContent.review.status, "changes_requested");
   });
 });

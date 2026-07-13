@@ -10,6 +10,7 @@ import {
   type ContentJsonLdType,
   type ContentProposal,
   type ContentRecord,
+  type ContentReviewRecord,
   type ContentSeo,
   type ContentType,
   type ContentVersionRecord,
@@ -212,9 +213,66 @@ export class ContentService {
     this.assertVersionNumber(versionNumber);
     if (content.status === "published") throw new ContentServiceError(409, "公開済みコンテンツは直接復元できません。複製してから編集してください。");
     if (content.status === "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツは先に復元してください。");
+    if (content.status === "review_requested") throw new ContentServiceError(409, "レビュー中のコンテンツは復元できません。レビューを完了してから実行してください。");
     const restored = this.store.restoreVersion(content.id, versionNumber, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!restored) throw new ContentServiceError(404, "指定されたコンテンツ版が見つかりません。");
     return restored;
+  }
+
+  public listReviews(principal: AuthenticatedPrincipal | null, contentId: string): ContentReviewRecord[] {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "workflow.reviews");
+    return this.store.listReviews(content.id);
+  }
+
+  public requestReview(
+    principal: AuthenticatedPrincipal | null,
+    contentId: string,
+    note?: string,
+  ): { content: ContentRecord; review: ContentReviewRecord } {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "workflow.request_review");
+    if (content.status === "review_requested") throw new ContentServiceError(409, "このコンテンツはすでにレビュー中です。");
+    if (content.status !== "seo_reviewed") throw new ContentServiceError(409, "SEO監査済みのコンテンツだけレビューを依頼できます。");
+    this.assertApprovalReady(content);
+
+    const updated = this.store.updateContent(content.id, { status: "review_requested" }, { incrementVersion: false });
+    if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    const normalizedNote = this.normalizeReviewNote(note, false);
+    const review = this.store.createReview({
+      contentId: content.id,
+      category: content.category,
+      providerId: content.providerId,
+      contentVersion: content.version,
+      status: "requested",
+      requestedByAccountId: principal!.accountId,
+      ...(normalizedNote ? { requestNote: normalizedNote } : {}),
+      requestedAt: new Date().toISOString(),
+    });
+    return { content: updated, review };
+  }
+
+  public requestChanges(
+    principal: AuthenticatedPrincipal | null,
+    contentId: string,
+    note?: string,
+  ): { content: ContentRecord; review: ContentReviewRecord } {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "workflow.request_changes");
+    if (content.status !== "review_requested") throw new ContentServiceError(409, "レビュー中のコンテンツだけ差し戻せます。");
+    const review = this.store.listReviews(content.id)[0];
+    if (!review || review.status !== "requested") throw new ContentServiceError(409, "有効なレビュー依頼が見つかりません。");
+    const responseNote = this.normalizeReviewNote(note, true);
+    const updated = this.store.updateContent(content.id, { status: "changes_requested" }, { incrementVersion: false });
+    if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    const reviewed = this.store.updateReview(review.id, {
+      status: "changes_requested",
+      reviewerAccountId: principal!.accountId,
+      ...(responseNote ? { responseNote } : {}),
+      reviewedAt: new Date().toISOString(),
+    });
+    if (!reviewed) throw new ContentServiceError(404, "レビュー記録が見つかりません。");
+    return { content: updated, review: reviewed };
   }
 
   public updateContent(
@@ -232,6 +290,7 @@ export class ContentService {
     this.portal.assertAction(principal, content.category, "content.update");
     if (content.status === "published") throw new ContentServiceError(409, "公開済みコンテンツは編集できません。複製して編集してください。");
     if (content.status === "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツは復元してから編集してください。");
+    if (content.status === "review_requested") throw new ContentServiceError(409, "レビュー中のコンテンツは編集できません。差し戻しを待ってください。");
 
     const patch: Partial<ContentRecord> = {};
     if (input.title !== undefined) patch.title = this.normalizeEditableText(input.title, "title", 160);
@@ -247,7 +306,7 @@ export class ContentService {
       patch.seo = seo;
     }
     if (Object.keys(patch).length === 0) throw new ContentServiceError(400, "更新対象のフィールドを1つ以上指定してください。");
-    if (content.status === "seo_reviewed" || content.status === "approved") patch.status = "drafted";
+    if (content.status === "seo_reviewed" || content.status === "changes_requested" || content.status === "approved") patch.status = "drafted";
 
     const updated = this.store.updateContent(content.id, patch, { reason: "updated", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
@@ -308,6 +367,7 @@ export class ContentService {
   public polishContent(principal: AuthenticatedPrincipal | null, contentId: string, instructions?: string): ContentRecord {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "content.polish");
+    if (content.status === "review_requested") throw new ContentServiceError(409, "レビュー中のコンテンツは清書できません。差し戻しを待ってください。");
     const normalizedBody = content.body
       .replace(/\r\n/g, "\n")
       .replace(/[ \t]+\n/g, "\n")
@@ -326,23 +386,23 @@ export class ContentService {
   public approveContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "workflow.approve");
-    if (content.status !== "seo_reviewed") {
+    if (content.status !== "seo_reviewed" && content.status !== "review_requested") {
       throw new ContentServiceError(409, "SEO監査済みのコンテンツだけを公開承認できます。");
     }
-    if (!content.lastFactCheck || content.lastFactCheck.contentVersion !== content.version) {
-      throw new ContentServiceError(409, "最新バージョンのファクトチェックを完了してから承認してください。");
+    const review = content.status === "review_requested" ? this.store.listReviews(content.id)[0] : undefined;
+    if (content.status === "review_requested" && (!review || review.status !== "requested")) {
+      throw new ContentServiceError(409, "有効なレビュー依頼が見つかりません。");
     }
-    if (!content.lastFactCheck.passed) {
-      throw new ContentServiceError(409, "ファクトチェックに未解決の問題があるため承認できません。");
-    }
-    if (!content.lastSeoAudit || content.lastSeoAudit.contentVersion !== content.version) {
-      throw new ContentServiceError(409, "最新バージョンのSEO監査を完了してから承認してください。");
-    }
-    if (content.lastSeoAudit.issues.some((issue) => issue.severity === "error")) {
-      throw new ContentServiceError(409, "SEO監査に重大な問題があるため承認できません。");
-    }
-    const updated = this.store.updateContent(content.id, { status: "approved" }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
+    this.assertApprovalReady(content);
+    const updated = this.store.updateContent(content.id, { status: "approved" }, { incrementVersion: false });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    if (review) {
+      this.store.updateReview(review.id, {
+        status: "approved",
+        reviewerAccountId: principal!.accountId,
+        reviewedAt: new Date().toISOString(),
+      });
+    }
     return updated;
   }
 
@@ -426,6 +486,28 @@ export class ContentService {
 
   private assertVersionNumber(versionNumber: number): void {
     if (!Number.isInteger(versionNumber) || versionNumber < 1) throw new ContentServiceError(400, "versionは1以上の整数で指定してください。");
+  }
+
+  private assertApprovalReady(content: ContentRecord): void {
+    if (!content.lastFactCheck || content.lastFactCheck.contentVersion !== content.version) {
+      throw new ContentServiceError(409, "最新バージョンのファクトチェックを完了してから承認してください。");
+    }
+    if (!content.lastFactCheck.passed) {
+      throw new ContentServiceError(409, "ファクトチェックに未解決の問題があるため承認できません。");
+    }
+    if (!content.lastSeoAudit || content.lastSeoAudit.contentVersion !== content.version) {
+      throw new ContentServiceError(409, "最新バージョンのSEO監査を完了してから承認してください。");
+    }
+    if (content.lastSeoAudit.issues.some((issue) => issue.severity === "error")) {
+      throw new ContentServiceError(409, "SEO監査に重大な問題があるため承認できません。");
+    }
+  }
+
+  private normalizeReviewNote(note: string | undefined, required: boolean): string | undefined {
+    const normalized = note?.trim() ?? "";
+    if (required && normalized.length < 3) throw new ContentServiceError(400, "差し戻し理由を3文字以上で指定してください。");
+    if (!normalized) return undefined;
+    return limit(normalized, 1000);
   }
 
   private assertProvider(principal: AuthenticatedPrincipal | null, category: CategorySlug | undefined): void {

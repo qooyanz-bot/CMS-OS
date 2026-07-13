@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ContentProposal, ContentRecord, ContentVersionReason, ContentVersionRecord } from "./types.js";
+import type { ContentProposal, ContentRecord, ContentReviewRecord, ContentVersionReason, ContentVersionRecord } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 
 interface ContentMutationOptions {
@@ -16,11 +16,13 @@ export class ContentStore {
   private readonly proposals: ContentProposal[];
   private readonly contents: ContentRecord[];
   private readonly versions: ContentVersionRecord[];
+  private readonly reviews: ContentReviewRecord[];
 
   public constructor(private readonly stateStore?: StateStore) {
     this.proposals = stateStore?.load<ContentProposal[]>("content-proposals.json", []) ?? [];
     this.contents = stateStore?.load<ContentRecord[]>("content-records.json", []) ?? [];
     this.versions = stateStore?.load<ContentVersionRecord[]>("content-versions.json", []) ?? [];
+    this.reviews = stateStore?.load<ContentReviewRecord[]>("content-review-records.json", []) ?? [];
     for (const content of this.contents) {
       if (!this.versions.some((version) => version.contentId === content.id)) {
         this.versions.push(this.createVersionSnapshot(content, "migrated"));
@@ -83,6 +85,37 @@ export class ContentStore {
 
   public getVersion(contentId: string, versionNumber: number): ContentVersionRecord | undefined {
     return this.versions.find((version) => version.contentId === contentId && version.version === versionNumber);
+  }
+
+  public createReview(input: Omit<ContentReviewRecord, "id" | "createdAt" | "updatedAt">): ContentReviewRecord {
+    const now = new Date().toISOString();
+    const review: ContentReviewRecord = {
+      ...input,
+      id: `content-review-${randomUUID()}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.reviews.push(review);
+    this.stateStore?.save("content-review-records.json", this.reviews);
+    return review;
+  }
+
+  public listReviews(contentId: string): ContentReviewRecord[] {
+    return this.reviews
+      .filter((review) => review.contentId === contentId)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  public getReview(reviewId: string): ContentReviewRecord | undefined {
+    return this.reviews.find((review) => review.id === reviewId);
+  }
+
+  public updateReview(reviewId: string, patch: Partial<ContentReviewRecord>): ContentReviewRecord | undefined {
+    const review = this.getReview(reviewId);
+    if (!review) return undefined;
+    Object.assign(review, patch, { updatedAt: new Date().toISOString() });
+    this.stateStore?.save("content-review-records.json", this.reviews);
+    return review;
   }
 
   public updateContent(

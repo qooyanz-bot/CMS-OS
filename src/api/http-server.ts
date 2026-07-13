@@ -717,6 +717,33 @@ async function handleMcp(
             },
           },
           {
+            name: "workflow.reviews",
+            description: "コンテンツのレビュー履歴を取得します。",
+            inputSchema: {
+              type: "object",
+              properties: { contentId: { type: "string" } },
+              required: ["contentId"],
+            },
+          },
+          {
+            name: "workflow.request_review",
+            description: "事実確認とSEO監査を通過したコンテンツのレビューを依頼します。",
+            inputSchema: {
+              type: "object",
+              properties: { contentId: { type: "string" }, note: { type: "string", maxLength: 1000 } },
+              required: ["contentId"],
+            },
+          },
+          {
+            name: "workflow.request_changes",
+            description: "レビュー中のコンテンツを理由付きで差し戻します。",
+            inputSchema: {
+              type: "object",
+              properties: { contentId: { type: "string" }, note: { type: "string", minLength: 3, maxLength: 1000 } },
+              required: ["contentId", "note"],
+            },
+          },
+          {
             name: "publication.build",
             description: "承認済みコンテンツからCloudflare Pages向け静的ファイルを生成します。",
             inputSchema: {
@@ -1253,6 +1280,28 @@ async function handleMcp(
       return;
     }
 
+    if (name === "workflow.reviews") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = { items: content.listReviews(principal, argumentsObject.contentId) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "workflow.request_review") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      if (argumentsObject.note !== undefined && typeof argumentsObject.note !== "string") throw new Error("noteは文字列で指定してください。");
+      const result = content.requestReview(principal, argumentsObject.contentId, typeof argumentsObject.note === "string" ? argumentsObject.note : undefined);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "workflow.request_changes") {
+      if (typeof argumentsObject.contentId !== "string" || typeof argumentsObject.note !== "string") throw new Error("contentIdとnoteが必要です。");
+      const result = content.requestChanges(principal, argumentsObject.contentId, argumentsObject.note);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "workflow.approve") {
       if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
       const result = content.approveContent(principal, argumentsObject.contentId);
@@ -1722,6 +1771,49 @@ export function createHttpServer(
           writeJson(response, 200, { items: content.listContent(principal) });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを取得できません。" });
+        }
+        return;
+      }
+
+      const contentReviewsMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/reviews$/);
+      if (request.method === "GET" && contentReviewsMatch) {
+        const contentId = contentReviewsMatch[1];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { items: content.listReviews(principal, contentId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "レビュー履歴を取得できません。" });
+        }
+        return;
+      }
+
+      const contentReviewActionMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/(review-request|request-changes)$/);
+      if (request.method === "POST" && contentReviewActionMatch) {
+        const contentId = contentReviewActionMatch[1];
+        const action = contentReviewActionMatch[2];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (body.note !== undefined && typeof body.note !== "string") {
+          writeJson(response, 400, { error: "noteは文字列で指定してください。" });
+          return;
+        }
+        if (action === "request-changes" && typeof body.note !== "string") {
+          writeJson(response, 400, { error: "差し戻し理由を指定してください。" });
+          return;
+        }
+        try {
+          const item = action === "review-request"
+            ? content.requestReview(principal, contentId, typeof body.note === "string" ? body.note : undefined)
+            : content.requestChanges(principal, contentId, body.note as string);
+          writeJson(response, action === "review-request" ? 201 : 200, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "レビュー操作に失敗しました。" });
         }
         return;
       }

@@ -67,6 +67,11 @@ describe("CMS-OSファイル永続化", () => {
     assert.ok(proposal.id);
     const draft = content1.createDraft(providerLogin.principal, proposal.id);
     assert.ok(draft.id);
+    content1.polishContent(providerLogin.principal, draft.id);
+    content1.auditSeo(providerLogin.principal, draft.id);
+    content1.factCheck(providerLogin.principal, draft.id);
+    const review = content1.requestReview(providerLogin.principal, draft.id);
+    assert.equal(review.review.status, "requested");
 
     const state2 = new JsonStateStore(directory);
     const auth2 = new InMemoryAuthService(state2);
@@ -78,8 +83,9 @@ describe("CMS-OSファイル永続化", () => {
     assert.equal(restoredRequests[0]?.id, request.id);
     const restoredProposals = content2.listProposals(auth2.authenticate(providerLogin.accessToken));
     assert.equal(restoredProposals[0]?.id, proposal.id);
-    assert.equal(content2.getContent(auth2.authenticate(providerLogin.accessToken), draft.id)?.version, 1);
-    assert.equal(content2.listVersions(auth2.authenticate(providerLogin.accessToken), draft.id)[0]?.version, 1);
+    assert.equal(content2.getContent(auth2.authenticate(providerLogin.accessToken), draft.id)?.version, 2);
+    assert.deepEqual(content2.listVersions(auth2.authenticate(providerLogin.accessToken), draft.id).map((item) => item.version), [2, 1]);
+    assert.equal(content2.listReviews(auth2.authenticate(providerLogin.accessToken), draft.id)[0]?.id, review.review.id);
     const restoredNotifications = portal2.listNotifications(auth2.authenticate(providerLogin.accessToken));
     assert.ok(restoredNotifications.items.some((item) => item.resourceId === inquiry.id));
     const restoredGuides = portal2.listDirectoryGuides("legal", auth2.authenticate(providerLogin.accessToken));

@@ -138,6 +138,7 @@ const elements = {
   proposals: document.querySelector("#proposal-list"),
   contents: document.querySelector("#content-list"),
   contentVersions: document.querySelector("#content-version-list"),
+  contentReviews: document.querySelector("#content-review-list"),
   publicationHistory: document.querySelector("#publication-history-list"),
   contentPreview: document.querySelector("#content-preview"),
   providerManagementPanel: document.querySelector("#provider-management-panel"),
@@ -775,10 +776,28 @@ function renderProposals(items) {
   });
 }
 
+function contentActionButtons(content) {
+  const actions = [
+    `<button class="button ghost content-action" data-action="preview" data-content-id="${escapeHtml(content.id)}">本文を見る</button>`,
+    `<button class="button ghost content-action" data-action="versions" data-content-id="${escapeHtml(content.id)}">版履歴</button>`,
+    `<button class="button ghost content-action" data-action="reviews" data-content-id="${escapeHtml(content.id)}">レビュー履歴</button>`,
+  ];
+  if (content.status !== "approved" && content.status !== "published" && content.status !== "review_requested") actions.push(`<button class="button ghost content-action" data-action="fact" data-content-id="${escapeHtml(content.id)}">事実確認</button>`);
+  if (content.status === "drafted" || content.status === "polished" || content.status === "changes_requested") actions.push(`<button class="button ghost content-action" data-action="polish" data-content-id="${escapeHtml(content.id)}">清書</button>`);
+  if (content.status === "polished" || content.status === "seo_reviewed") actions.push(`<button class="button ghost content-action" data-action="audit" data-content-id="${escapeHtml(content.id)}">SEO監査</button>`);
+  if (content.status === "seo_reviewed") actions.push(`<button class="button primary content-action" data-action="request-review" data-content-id="${escapeHtml(content.id)}">レビュー依頼</button>`);
+  if (content.status === "review_requested") {
+    actions.push(`<button class="button primary content-action" data-action="approve" data-content-id="${escapeHtml(content.id)}">承認</button>`);
+    actions.push(`<button class="button ghost content-action" data-action="request-changes" data-content-id="${escapeHtml(content.id)}">差し戻し</button>`);
+  }
+  if (content.status === "approved") actions.push(`<button class="button primary content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>`);
+  return actions.join("");
+}
+
 function renderContents(items) {
   state.contents = items;
   elements.contents.innerHTML = items.length
-    ? items.map((content) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(content.status)}</span><span>v${escapeHtml(content.version)}</span></div><h3>${escapeHtml(content.title)}</h3><p>${escapeHtml(content.summary)}</p><div class="editor-actions"><button class="button ghost content-action" data-action="preview" data-content-id="${escapeHtml(content.id)}">本文を見る</button><button class="button ghost content-action" data-action="versions" data-content-id="${escapeHtml(content.id)}">版履歴</button>${content.status !== "approved" && content.status !== "published" ? `<button class="button ghost content-action" data-action="fact" data-content-id="${escapeHtml(content.id)}">事実確認</button>` : ""}${content.status === "drafted" || content.status === "polished" ? `<button class="button ghost content-action" data-action="polish" data-content-id="${escapeHtml(content.id)}">清書</button>` : ""}${content.status === "polished" || content.status === "seo_reviewed" ? `<button class="button ghost content-action" data-action="audit" data-content-id="${escapeHtml(content.id)}">SEO監査</button>` : ""}${content.status === "seo_reviewed" ? `<button class="button primary content-action" data-action="approve" data-content-id="${escapeHtml(content.id)}">承認</button>` : ""}${content.status === "approved" ? `<button class="button primary content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>` : ""}</div></article>`).join("")
+    ? items.map((content) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(content.status)}</span><span>v${escapeHtml(content.version)}</span></div><h3>${escapeHtml(content.title)}</h3><p>${escapeHtml(content.summary)}</p><div class="editor-actions">${contentActionButtons(content)}</div></article>`).join("")
     : '<p class="empty">下書きがまだありません。</p>';
   document.querySelectorAll(".content-action").forEach((button) => {
     button.addEventListener("click", () => handleContentAction(button.dataset.action, button.dataset.contentId));
@@ -796,6 +815,14 @@ function renderContentVersions(items) {
   });
 }
 
+const contentReviewStatusLabels = { requested: "レビュー中", changes_requested: "差し戻し", approved: "承認済み" };
+
+function renderContentReviews(items) {
+  elements.contentReviews.innerHTML = items.length
+    ? items.map((review) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(contentReviewStatusLabels[review.status] ?? review.status)}</span><span>v${escapeHtml(review.contentVersion)}</span><span>${escapeHtml(review.updatedAt.slice(0, 10))}</span></div><p>${escapeHtml(review.requestNote ?? "レビュー依頼")}</p>${review.responseNote ? `<p class="muted">差し戻し理由: ${escapeHtml(review.responseNote)}</p>` : ""}</article>`).join("")
+    : '<p class="empty">レビュー履歴がまだありません。</p>';
+}
+
 async function reloadContentVersions(contentId) {
   if (!contentId) {
     elements.contentVersions.innerHTML = "";
@@ -806,6 +833,19 @@ async function reloadContentVersions(contentId) {
     renderContentVersions(body.items);
   } catch (error) {
     elements.contentVersions.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function reloadContentReviews(contentId) {
+  if (!contentId) {
+    elements.contentReviews.innerHTML = "";
+    return;
+  }
+  try {
+    const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}/reviews`);
+    renderContentReviews(body.items);
+  } catch (error) {
+    elements.contentReviews.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
   }
 }
 
@@ -865,6 +905,7 @@ async function reloadContent() {
   elements.contentPanel.hidden = !visible;
   if (!visible) {
     elements.contentVersions.innerHTML = "";
+    elements.contentReviews.innerHTML = "";
     return;
   }
   const proposals = await api("/api/v1/content/proposals");
@@ -888,6 +929,11 @@ async function handleContentAction(action, contentId) {
       elements.contentVersions.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
+    if (action === "reviews") {
+      await reloadContentReviews(contentId);
+      elements.contentReviews.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     if (action === "polish") {
       const instructions = window.prompt("清書方針（任意）") ?? "";
       await api(`/api/v1/content/${encodeURIComponent(contentId)}/polish`, { method: "POST", body: JSON.stringify({ instructions }) });
@@ -898,6 +944,14 @@ async function handleContentAction(action, contentId) {
     } else if (action === "audit") {
       const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}/seo-audit`, { method: "POST" });
       setContentMessage(`SEO監査スコア: ${body.item.score} / 100（指摘 ${body.item.issues.length}件）`);
+    } else if (action === "request-review") {
+      const note = window.prompt("レビュー依頼メモ（任意）") ?? "";
+      await api(`/api/v1/content/${encodeURIComponent(contentId)}/review-request`, { method: "POST", body: JSON.stringify({ note }) });
+      setContentMessage("レビューを依頼しました。");
+    } else if (action === "request-changes") {
+      const note = window.prompt("差し戻し理由（3文字以上）") ?? "";
+      await api(`/api/v1/content/${encodeURIComponent(contentId)}/request-changes`, { method: "POST", body: JSON.stringify({ note }) });
+      setContentMessage("差し戻し理由を記録しました。再編集と再監査を行ってください。");
     } else if (action === "approve") {
       await api(`/api/v1/content/${encodeURIComponent(contentId)}/approve`, { method: "POST" });
       setContentMessage("人間の確認済みとして承認しました。");
