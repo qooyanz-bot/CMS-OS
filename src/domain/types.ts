@@ -173,6 +173,23 @@ export interface SeoAuditResult {
   auditedAt: string;
 }
 
+export type FactCheckItemStatus = "source_registered" | "source_missing";
+
+export interface FactCheckItem {
+  claim: string;
+  status: FactCheckItemStatus;
+  note: string;
+}
+
+export interface FactCheckResult {
+  contentId: string;
+  passed: boolean;
+  scope: "source_presence_only";
+  items: FactCheckItem[];
+  issues: string[];
+  checkedAt: string;
+}
+
 export interface PublicationFile {
   path: string;
   contentType: string;

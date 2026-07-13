@@ -24,6 +24,8 @@ CMS-OSのAI編集機能は、単に本文を生成するのではなく、対象
   ↓ audience・検索意図・主キーワード・確認済み情報
 対象ポジション別の下書き
   ↓ 見出し・本文・FAQ・JSON-LD・メタ情報
+事実確認
+  ↓ 登録済み一次情報と出典の確認
 清書
   ↓ 表記、空白、読みやすさ、編集方針
 SEO監査
@@ -43,6 +45,7 @@ GET  /api/v1/content
 GET  /api/v1/content/{contentId}
 POST /api/v1/content/{contentId}/polish
 POST /api/v1/content/{contentId}/seo-audit
+POST /api/v1/content/{contentId}/fact-check
 ```
 
 現在は`provider`ロールが、自分のカテゴリ・自分の事業者IDに紐づくコンテンツだけを操作できます。一般ユーザー、発注者、リクルーターが事業者の編集領域へ入ることはできません。
@@ -53,6 +56,7 @@ POST /api/v1/content/{contentId}/seo-audit
 - `content.list`
 - `content.draft`
 - `content.polish`
+- `content.fact_check`
 - `seo.audit`
 
 MCPはREST APIと同じ`ContentService`を呼び出します。MCP専用の本文生成ロジックや、APIを迂回する権限判定は持たせません。

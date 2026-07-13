@@ -246,6 +246,24 @@ export class ContentService {
     return { contentId, score, issues, auditedAt: new Date().toISOString() };
   }
 
+  public factCheck(principal: AuthenticatedPrincipal | null, contentId: string): import("../domain/types.js").FactCheckResult {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.fact_check");
+    const sourceFacts = content.sourceFacts.filter(Boolean);
+    const items = sourceFacts.length > 0
+      ? sourceFacts.map((claim) => ({ claim, status: "source_registered" as const, note: "事業者が一次情報として登録しています。外部検証は本番アダプターで実行します。" }))
+      : [{ claim: "本文に含まれる企業固有情報", status: "source_missing" as const, note: "出典または確認済み情報が登録されていません。" }];
+    const issues = sourceFacts.length > 0 ? [] : ["確認済みの一次情報がありません。公開前に出典を登録してください。"];
+    return {
+      contentId,
+      passed: issues.length === 0,
+      scope: "source_presence_only",
+      items,
+      issues,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
   private getOwnedProposal(principal: AuthenticatedPrincipal | null, proposalId: string): ContentProposal {
     const proposal = this.store.getProposal(proposalId);
     if (!proposal) throw new ContentServiceError(404, "企画案が見つかりません。");

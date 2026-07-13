@@ -230,6 +230,15 @@ async function handleMcp(
             },
           },
           {
+            name: "content.fact_check",
+            description: "本文に紐づく一次情報の登録状況を確認します。本番では外部検証アダプターへ差し替えます。",
+            inputSchema: {
+              type: "object",
+              properties: { contentId: { type: "string" } },
+              required: ["contentId"],
+            },
+          },
+          {
             name: "workflow.approve",
             description: "清書済みコンテンツを人間の確認済み状態へ進めます。",
             inputSchema: {
@@ -377,6 +386,13 @@ async function handleMcp(
     if (name === "seo.audit") {
       if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
       const result = content.auditSeo(principal, argumentsObject.contentId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.fact_check") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = content.factCheck(principal, argumentsObject.contentId);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -567,7 +583,7 @@ export function createHttpServer(
         return;
       }
 
-      const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/(polish|seo-audit|approve)$/);
+      const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/(polish|seo-audit|fact-check|approve)$/);
       if (request.method === "POST" && contentActionMatch) {
         const contentId = contentActionMatch[1];
         const action = contentActionMatch[2];
@@ -585,6 +601,8 @@ export function createHttpServer(
             writeJson(response, 200, { item: content.polishContent(principal, contentId, typeof body.instructions === "string" ? body.instructions : undefined) });
           } else if (action === "seo-audit") {
             writeJson(response, 200, { item: content.auditSeo(principal, contentId) });
+          } else if (action === "fact-check") {
+            writeJson(response, 200, { item: content.factCheck(principal, contentId) });
           } else {
             writeJson(response, 200, { item: content.approveContent(principal, contentId) });
           }

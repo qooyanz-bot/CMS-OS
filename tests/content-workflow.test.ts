@@ -76,6 +76,14 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(draft.body.item.seo.jsonLdType, "BlogPosting");
     assert.ok(draft.body.item.body.includes("仕事内容と成長機会"));
 
+    const factCheck = await request(`/api/v1/content/${draft.body.item.id}/fact-check`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+    });
+    assert.equal(factCheck.status, 200);
+    assert.equal(factCheck.body.item.passed, true);
+    assert.equal(factCheck.body.item.scope, "source_presence_only");
+
     const polished = await request(`/api/v1/content/${draft.body.item.id}/polish`, {
       method: "POST",
       headers: { authorization: `Bearer ${providerToken}` },
@@ -105,6 +113,7 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.ok(names.includes("content.list"));
     assert.ok(names.includes("content.draft"));
     assert.ok(names.includes("content.polish"));
+    assert.ok(names.includes("content.fact_check"));
     assert.ok(names.includes("seo.audit"));
 
     const providerLogin = await request("/api/v1/auth/login", {

@@ -150,7 +150,7 @@ function renderProposals(items) {
 function renderContents(items) {
   state.contents = items;
   elements.contents.innerHTML = items.length
-    ? items.map((content) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(content.status)}</span><span>v${escapeHtml(content.version)}</span></div><h3>${escapeHtml(content.title)}</h3><p>${escapeHtml(content.summary)}</p><div class="editor-actions"><button class="button ghost content-action" data-action="preview" data-content-id="${escapeHtml(content.id)}">本文を見る</button>${content.status === "drafted" || content.status === "polished" ? `<button class="button ghost content-action" data-action="polish" data-content-id="${escapeHtml(content.id)}">清書</button>` : ""}${content.status === "polished" || content.status === "seo_reviewed" ? `<button class="button ghost content-action" data-action="audit" data-content-id="${escapeHtml(content.id)}">SEO監査</button>` : ""}${content.status === "seo_reviewed" ? `<button class="button primary content-action" data-action="approve" data-content-id="${escapeHtml(content.id)}">承認</button>` : ""}${content.status === "approved" ? `<button class="button primary content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>` : ""}</div></article>`).join("")
+    ? items.map((content) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(content.status)}</span><span>v${escapeHtml(content.version)}</span></div><h3>${escapeHtml(content.title)}</h3><p>${escapeHtml(content.summary)}</p><div class="editor-actions"><button class="button ghost content-action" data-action="preview" data-content-id="${escapeHtml(content.id)}">本文を見る</button>${content.status !== "approved" && content.status !== "published" ? `<button class="button ghost content-action" data-action="fact" data-content-id="${escapeHtml(content.id)}">事実確認</button>` : ""}${content.status === "drafted" || content.status === "polished" ? `<button class="button ghost content-action" data-action="polish" data-content-id="${escapeHtml(content.id)}">清書</button>` : ""}${content.status === "polished" || content.status === "seo_reviewed" ? `<button class="button ghost content-action" data-action="audit" data-content-id="${escapeHtml(content.id)}">SEO監査</button>` : ""}${content.status === "seo_reviewed" ? `<button class="button primary content-action" data-action="approve" data-content-id="${escapeHtml(content.id)}">承認</button>` : ""}${content.status === "approved" ? `<button class="button primary content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>` : ""}</div></article>`).join("")
     : '<p class="empty">下書きがまだありません。</p>';
   document.querySelectorAll(".content-action").forEach((button) => {
     button.addEventListener("click", () => handleContentAction(button.dataset.action, button.dataset.contentId));
@@ -180,6 +180,9 @@ async function handleContentAction(action, contentId) {
       const instructions = window.prompt("清書方針（任意）") ?? "";
       await api(`/api/v1/content/${encodeURIComponent(contentId)}/polish`, { method: "POST", body: JSON.stringify({ instructions }) });
       setContentMessage("清書しました。SEO監査へ進めます。");
+    } else if (action === "fact") {
+      const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}/fact-check`, { method: "POST" });
+      setContentMessage(body.item.passed ? "一次情報の登録を確認しました。" : `事実確認の指摘: ${body.item.issues.join(" ")}`);
     } else if (action === "audit") {
       const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}/seo-audit`, { method: "POST" });
       setContentMessage(`SEO監査スコア: ${body.item.score} / 100（指摘 ${body.item.issues.length}件）`);
