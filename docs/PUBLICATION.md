@@ -78,6 +78,7 @@ POST /api/v1/publications/{publicationId}/rollback
 各ページには次のSEO要素を埋め込みます。
 
 - `title`
+- Markdownのリンク記法は、安全なサイト内パス・HTTPS URL・ページ内アンカーだけを実リンクへ変換し、その他のURLは文字列としてエスケープします。
 - `meta description`
 - `canonical`
 - `robots`
