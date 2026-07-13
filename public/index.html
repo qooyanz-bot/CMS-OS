@@ -119,10 +119,49 @@
             </form>
           </div>
 
+          <div id="request-inbox-panel" class="card action-card" hidden>
+            <div class="section-kicker">REQUEST STATUS</div>
+            <h2>依頼の進行状況</h2>
+            <div id="request-list" class="role-list"></div>
+          </div>
+
+          <div id="application-panel" class="card action-card" hidden>
+            <div class="section-kicker">APPLICATION STATUS</div>
+            <h2>応募の状態</h2>
+            <div id="application-list" class="role-list"></div>
+          </div>
+
           <div id="job-panel" class="card action-card">
             <div class="section-kicker">RECRUITMENT</div>
             <h2>カテゴリの求人</h2>
             <div id="job-list" class="job-list"></div>
+          </div>
+          <div id="provider-management-panel" class="card action-card" hidden>
+            <div class="section-kicker">PROVIDER PROFILE</div>
+            <h2>掲載情報を更新</h2>
+            <p class="muted">事業者本人の公開情報を更新します。確認状態やロール別管理項目は変更できません。</p>
+            <form id="provider-management-form">
+              <label>事業者名<input name="name" required minlength="2" maxlength="200" /></label>
+              <label>テーマ（カンマ区切り）<input name="themes" required placeholder="企業法務, 相続" /></label>
+              <label>所在地<input name="location" required minlength="2" maxlength="200" /></label>
+              <label>公開項目（JSON）<textarea name="publicFields" placeholder='{"serviceArea":"全国"}'></textarea></label>
+              <button class="button primary" type="submit">掲載情報を保存</button>
+            </form>
+            <p id="provider-management-message" class="message" role="status"></p>
+          </div>
+
+          <div id="job-management-panel" class="card action-card" hidden>
+            <div class="section-kicker">JOB MANAGEMENT</div>
+            <h2>求人を追加</h2>
+            <form id="job-management-form">
+              <label>求人タイトル<input name="title" required minlength="3" maxlength="200" /></label>
+              <label>雇用形態<input name="employmentType" required minlength="2" placeholder="正社員・業務委託" /></label>
+              <label>勤務地<input name="location" required minlength="2" /></label>
+              <label>仕事内容<textarea name="description" required minlength="10"></textarea></label>
+              <label>初期状態<select name="status"><option value="published">公開する</option><option value="closed">非公開で保存</option></select></label>
+              <button class="button primary" type="submit">求人を作成</button>
+            </form>
+            <p id="job-management-message" class="message" role="status"></p>
           </div>
         </aside>
       </section>

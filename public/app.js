@@ -1,11 +1,14 @@
 const state = {
   token: null,
   mfaChallengeToken: null,
+  principal: null,
   category: "legal",
   role: "user",
   authCapabilities: { passwordLogin: true, oidcLogin: false, mfaEnrollment: false },
   experience: null,
   providers: [],
+  requests: [],
+  applications: [],
   proposals: [],
   contents: [],
 };
@@ -47,6 +50,10 @@ const elements = {
   requestPanel: document.querySelector("#request-panel"),
   requestForm: document.querySelector("#request-form"),
   requestProvider: document.querySelector("#request-provider"),
+  requestInboxPanel: document.querySelector("#request-inbox-panel"),
+  requestList: document.querySelector("#request-list"),
+  applicationPanel: document.querySelector("#application-panel"),
+  applicationList: document.querySelector("#application-list"),
   jobs: document.querySelector("#job-list"),
   contentPanel: document.querySelector("#content-editor-panel"),
   contentForm: document.querySelector("#content-proposal-form"),
@@ -54,6 +61,12 @@ const elements = {
   proposals: document.querySelector("#proposal-list"),
   contents: document.querySelector("#content-list"),
   contentPreview: document.querySelector("#content-preview"),
+  providerManagementPanel: document.querySelector("#provider-management-panel"),
+  providerManagementForm: document.querySelector("#provider-management-form"),
+  providerManagementMessage: document.querySelector("#provider-management-message"),
+  jobManagementPanel: document.querySelector("#job-management-panel"),
+  jobManagementForm: document.querySelector("#job-management-form"),
+  jobManagementMessage: document.querySelector("#job-management-message"),
 };
 
 function escapeHtml(value) {
@@ -110,6 +123,7 @@ function finishLogin(result) {
     return false;
   }
   state.token = result.accessToken;
+  state.principal = result.principal;
   state.mfaChallengeToken = null;
   state.role = result.principal.role;
   elements.mfaPanel.hidden = true;
@@ -161,10 +175,160 @@ function renderProviders(items) {
   elements.requestProvider.innerHTML = items.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
 }
 
+const requestStatusLabels = { submitted: "受付中", accepted: "対応中", closed: "終了" };
+const applicationStatusLabels = { submitted: "受付中", screening: "選考中", closed: "終了" };
+
+function roleStatusButtons(actions) {
+  return actions.map(([status, label]) => `<button class="button ghost role-status-button" data-status="${escapeHtml(status)}">${escapeHtml(label)}</button>`).join("");
+}
+
+function renderRequests(items) {
+  state.requests = items;
+  elements.requestList.innerHTML = items.length
+    ? items.map((request) => {
+        const actions = state.experience?.allowedActions.includes("request.status.update")
+          ? state.role === "provider"
+            ? request.status === "submitted" ? [["accepted", "対応を開始"], ["closed", "終了"]] : request.status === "accepted" ? [["closed", "終了"]] : []
+            : request.status === "closed" ? [] : [["closed", "依頼を終了"]]
+          : [];
+        return `<article class="role-item" data-request-id="${escapeHtml(request.id)}"><div class="meta"><span>${escapeHtml(requestStatusLabels[request.status] ?? request.status)}</span></div><h3>${escapeHtml(request.title)}</h3><p>${escapeHtml(request.description)}</p><div class="role-actions">${roleStatusButtons(actions)}</div></article>`;
+      }).join("")
+    : '<p class="empty">表示できる依頼はありません。</p>';
+  document.querySelectorAll(".role-status-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const requestItem = button.closest("[data-request-id]");
+      if (requestItem?.dataset.requestId) void updateRoleStatus("requests", requestItem.dataset.requestId, button.dataset.status ?? "");
+    });
+  });
+}
+
+function renderApplications(items) {
+  state.applications = items;
+  elements.applicationList.innerHTML = items.length
+    ? items.map((application) => {
+        const actions = state.role === "provider" && state.experience?.allowedActions.includes("application.status.update")
+          ? application.status === "submitted" ? [["screening", "選考を開始"], ["closed", "終了"]] : application.status === "screening" ? [["closed", "終了"]] : []
+          : [];
+        return `<article class="role-item" data-application-id="${escapeHtml(application.id)}"><div class="meta"><span>${escapeHtml(applicationStatusLabels[application.status] ?? application.status)}</span></div><h3>${escapeHtml(application.message.slice(0, 80))}</h3><p>求人ID: ${escapeHtml(application.jobId)}</p><div class="role-actions">${roleStatusButtons(actions)}</div></article>`;
+      }).join("")
+    : '<p class="empty">表示できる応募はありません。</p>';
+  document.querySelectorAll("[data-application-id] .role-status-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const applicationItem = button.closest("[data-application-id]");
+      if (applicationItem?.dataset.applicationId) void updateRoleStatus("applications", applicationItem.dataset.applicationId, button.dataset.status ?? "");
+    });
+  });
+}
+
+async function updateRoleStatus(resource, resourceId, status) {
+  if (!resourceId || !status) return;
+  try {
+    await api(`/api/v1/${resource}/${encodeURIComponent(resourceId)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    setMessage("状態を更新しました。");
+    await reload();
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+async function reloadRoleData() {
+  const canSeeRequests = Boolean(state.token && (state.role === "orderer" || state.role === "provider"));
+  const canSeeApplications = Boolean(state.token && (state.role === "candidate" || state.role === "provider"));
+  elements.requestInboxPanel.hidden = !canSeeRequests;
+  elements.applicationPanel.hidden = !canSeeApplications;
+  if (!canSeeRequests) elements.requestList.innerHTML = "";
+  if (!canSeeApplications) elements.applicationList.innerHTML = "";
+
+  if (canSeeRequests) {
+    try {
+      const body = await api("/api/v1/requests");
+      renderRequests(body.items);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+  if (canSeeApplications) {
+    try {
+      const body = await api("/api/v1/applications");
+      renderApplications(body.items);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+}
+
+function setProviderManagementMessage(message = "") {
+  elements.providerManagementMessage.textContent = message;
+}
+
+function setJobManagementMessage(message = "") {
+  elements.jobManagementMessage.textContent = message;
+}
+
+async function reloadProviderManagement() {
+  const canManage = Boolean(
+    state.token
+      && state.role === "provider"
+      && state.principal?.providerId
+      && state.experience?.allowedActions.includes("listing.update"),
+  );
+  elements.providerManagementPanel.hidden = !canManage;
+  elements.jobManagementPanel.hidden = !Boolean(state.token && state.role === "provider" && state.experience?.allowedActions.includes("job.manage"));
+  if (!canManage) return;
+  try {
+    const body = await api(`/api/v1/providers/${encodeURIComponent(state.principal.providerId)}`);
+    const nameField = elements.providerManagementForm.querySelector('[name="name"]');
+    const themesField = elements.providerManagementForm.querySelector('[name="themes"]');
+    const locationField = elements.providerManagementForm.querySelector('[name="location"]');
+    const publicFieldsField = elements.providerManagementForm.querySelector('[name="publicFields"]');
+    if (nameField) nameField.value = body.item.name;
+    if (themesField) themesField.value = body.item.themes.join(", ");
+    if (locationField) locationField.value = body.item.location;
+    if (publicFieldsField) publicFieldsField.value = "";
+    setProviderManagementMessage("");
+  } catch (error) {
+    setProviderManagementMessage(error.message);
+  }
+}
+
 function renderJobs(items) {
+  const canManageJobs = state.role === "provider" && state.experience?.allowedActions.includes("job.manage");
   elements.jobs.innerHTML = items.length
     ? items.map((job) => `<article class="job-item"><h3>${escapeHtml(job.title)}</h3><div class="meta"><span>${escapeHtml(job.employmentType)}</span><span>${escapeHtml(job.location)}</span></div>${state.experience?.allowedActions.includes("application.create") ? `<button class="button ghost apply-button" data-job-id="${escapeHtml(job.id)}">この求人に応募</button>` : ""}</article>`).join("")
     : '<p class="empty">公開求人がありません。</p>';
+  document.querySelectorAll(".job-item").forEach((item, index) => {
+    const job = items[index];
+    if (!job) return;
+    const meta = item.querySelector(".meta");
+    if (meta) {
+      const status = document.createElement("span");
+      status.className = "status-tag";
+      status.textContent = job.status === "published" ? "公開中" : "終了";
+      meta.append(status);
+    }
+    if (canManageJobs) {
+      const button = document.createElement("button");
+      button.className = "button ghost job-status-button";
+      button.dataset.jobId = job.id;
+      button.dataset.nextStatus = job.status === "published" ? "closed" : "published";
+      button.textContent = job.status === "published" ? "求人を終了" : "再公開";
+      item.append(button);
+    }
+  });
+  document.querySelectorAll(".job-status-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await api(`/api/v1/jobs/${encodeURIComponent(button.dataset.jobId ?? "")}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: button.dataset.nextStatus }),
+        });
+        setMessage("求人の状態を更新しました。");
+        await reload();
+      } catch (error) {
+        setMessage(error.message);
+      }
+    });
+  });
   document.querySelectorAll(".apply-button").forEach((button) => {
     button.addEventListener("click", async () => {
       const message = window.prompt("応募メッセージを入力してください（10文字以上）");
@@ -252,6 +416,8 @@ async function handleContentAction(action, contentId) {
 async function reload() {
   const experienceBody = await api(`/api/v1/categories/${state.category}/experience`);
   renderExperience(experienceBody.experience);
+  await reloadProviderManagement();
+  await reloadRoleData();
   const search = elements.search.value.trim();
   const providers = await api(`/api/v1/providers?category=${encodeURIComponent(state.category)}${search ? `&search=${encodeURIComponent(search)}` : ""}`);
   renderProviders(providers.items);
@@ -327,6 +493,7 @@ async function completeMfa() {
 async function logout() {
   try { await api("/api/v1/auth/logout", { method: "POST" }); } catch {}
   state.token = null;
+  state.principal = null;
   state.mfaChallengeToken = null;
   state.role = "user";
   updateAuthUi();
@@ -342,6 +509,7 @@ elements.category.addEventListener("change", async () => {
   if (state.token) {
     try { await api("/api/v1/auth/logout", { method: "POST" }); } catch {}
     state.token = null;
+    state.principal = null;
     state.mfaChallengeToken = null;
     state.role = "user";
     elements.mfaPanel.hidden = true;
@@ -387,6 +555,55 @@ elements.requestForm.addEventListener("submit", async (event) => {
     setMessage("依頼を送信しました。");
   } catch (error) {
     setMessage(error.message);
+  }
+});
+
+elements.providerManagementForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.principal?.providerId) return;
+  const form = new FormData(elements.providerManagementForm);
+  const rawPublicFields = String(form.get("publicFields") ?? "").trim();
+  try {
+    const publicFields = rawPublicFields ? JSON.parse(rawPublicFields) : undefined;
+    if (publicFields !== undefined && (!publicFields || typeof publicFields !== "object" || Array.isArray(publicFields))) {
+      throw new Error("公開項目はJSONオブジェクトで指定してください。");
+    }
+    await api(`/api/v1/providers/${encodeURIComponent(state.principal.providerId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: form.get("name"),
+        themes: String(form.get("themes") ?? "").split(",").map((theme) => theme.trim()).filter(Boolean),
+        location: form.get("location"),
+        ...(publicFields !== undefined ? { publicFields } : {}),
+      }),
+    });
+    setProviderManagementMessage("掲載情報を保存しました。");
+    await reload();
+  } catch (error) {
+    setProviderManagementMessage(error.message);
+  }
+});
+
+elements.jobManagementForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(elements.jobManagementForm);
+  try {
+    await api("/api/v1/jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        category: state.category,
+        title: form.get("title"),
+        employmentType: form.get("employmentType"),
+        location: form.get("location"),
+        description: form.get("description"),
+        status: form.get("status"),
+      }),
+    });
+    elements.jobManagementForm.reset();
+    setJobManagementMessage("求人を作成しました。");
+    await reload();
+  } catch (error) {
+    setJobManagementMessage(error.message);
   }
 });
 
