@@ -44,6 +44,7 @@ POST /api/v1/publications/build
 | `sitemap.xml` | 公開ページの検索エンジン向け一覧 |
 | `robots.txt` | クローラーの公開方針とsitemap URL |
 | `llms.txt` | AI検索・エージェント向けの機械可読インデックス |
+| `_headers` | Cloudflare Pagesの静的セキュリティヘッダー |
 
 各ページには次のSEO要素を埋め込みます。
 
@@ -61,6 +62,15 @@ POST /api/v1/publications/build
 ## Cloudflare Pagesとの接続
 
 BuilderOS Adapterは、ビルド結果の`files`をCloudflare Pagesのデプロイ入力へ変換します。CMS-OS本体は公開ファイルの生成と検証を担当し、Cloudflare固有の認証情報やデプロイ処理はAdapter側に分離します。
+
+ローカルの出力先へ変換する場合は、次のように実行します。
+
+```ts
+const adapter = new BuilderOSAdapter();
+const manifest = await adapter.exportToDirectory(buildResult, "./cloudflare-pages-dist");
+```
+
+Adapterは絶対パス、`..`、重複パスを拒否し、出力先をCloudflare Pagesの静的アセットディレクトリとして扱います。
 
 開発版はファイル配列をAPI/MCPの結果として返します。本番では次の処理をAdapterで追加します。
 
