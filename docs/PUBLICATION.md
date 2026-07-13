@@ -18,7 +18,11 @@ Cloudflare Pagesへ配置可能な静的ファイル
 
 ```text
 POST /api/v1/content/{contentId}/approve
+GET  /api/v1/publications
 POST /api/v1/publications/build
+POST /api/v1/publications/deploy
+POST /api/v1/publications/publish
+POST /api/v1/publications/{publicationId}/rollback
 ```
 
 `publication.build`の入力例です。
@@ -31,6 +35,12 @@ POST /api/v1/publications/build
 ```
 
 `contentIds`を省略すると、ログイン中の事業者が管理する承認済みコンテンツをまとめてビルドします。`baseUrl`はcanonical、sitemap、robots.txt、llms.txtの絶対URLに使用します。
+
+## 公開履歴とロールバック
+
+ビルド、デプロイ、公開のたびに、生成時点の静的ファイルをスナップショットとして公開履歴へ保存します。`GET /api/v1/publications`またはMCPの`publication.history`では、事業者自身の履歴だけを取得できます。履歴一覧にはファイル本体を含めず、ファイル数、対象コンテンツ、状態、デプロイ情報を返します。
+
+`POST /api/v1/publications/{publicationId}/rollback`またはMCPの`publication.rollback`は、`deployed`または`published`状態の履歴をBuilderOS Adapter経由で再デプロイします。これは現在のコンテンツを編集する操作ではなく、過去の静的スナップショットを再公開する操作です。ドライランでは外部公開せず、履歴状態も`built`のまま保持します。
 
 ## 出力ファイル
 
@@ -95,10 +105,9 @@ const result = await adapter.deployToCloudflarePages(buildResult, {
 
 Adapterは絶対パス、`..`、重複パスを拒否し、出力先をCloudflare Pagesの静的アセットディレクトリとして扱います。
 
-開発版はファイル配列をAPI/MCPの結果として返します。本番では次の処理をAdapterで追加します。
+BuilderOS Adapterは次の処理を担当します。公開履歴とロールバック対象のスナップショットはCMS-OS本体で管理します。
 
 1. ファイルパスの安全性を検証する
 2. 差分と公開対象を記録する
 3. Cloudflare Pagesへデプロイする
 4. デプロイID、公開URL、失敗理由をCMS-OSへ返す
-5. ロールバック可能な公開履歴を保存する

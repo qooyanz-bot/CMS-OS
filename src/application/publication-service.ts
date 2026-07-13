@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { ContentService } from "./content-service.js";
 import type { PortalService } from "./portal-service.js";
-import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, PublicationBuildResult, VisibleProvider } from "../domain/types.js";
+import { PublicationStore } from "../domain/publication-store.js";
+import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, PublicationBuildResult, PublicationDeploymentRecord, PublicationHistorySummary, VisibleProvider } from "../domain/types.js";
 import { BuilderOSAdapter, BuilderOSAdapterError, type CloudflarePagesDeployOptions, type CloudflarePagesDeploymentResult } from "../integrations/builderos-adapter.js";
 
 export class PublicationServiceError extends Error {
@@ -115,6 +116,20 @@ function normalizeBaseUrl(value: string | undefined): string {
     throw new PublicationServiceError(400, "baseUrlはhttpまたはhttpsで指定してください。");
   }
   return parsed.toString().replace(/\/+$/, "");
+}
+
+function deploymentRecord(deployment: CloudflarePagesDeploymentResult): PublicationDeploymentRecord {
+  return {
+    status: deployment.status,
+    provider: deployment.provider,
+    projectName: deployment.projectName,
+    requestId: deployment.requestId,
+    fileCount: deployment.fileCount,
+    uploadedFileCount: deployment.uploadedFileCount,
+    ...(deployment.deploymentId ? { deploymentId: deployment.deploymentId } : {}),
+    ...(deployment.deploymentUrl ? { deploymentUrl: deployment.deploymentUrl } : {}),
+    ...(deployment.environment ? { environment: deployment.environment } : {}),
+  };
 }
 
 function absoluteUrl(baseUrl: string, path: string): string {
@@ -435,6 +450,7 @@ export class PublicationService {
       ...(process.env.CLOUDFLARE_PAGES_BRANCH ? { branch: process.env.CLOUDFLARE_PAGES_BRANCH } : {}),
       ...(process.env.CMS_OS_CLOUDFLARE_DRY_RUN === "true" ? { dryRun: true } : {}),
     }),
+    private readonly publicationStore = new PublicationStore(),
   ) {}
 
   public build(
@@ -498,13 +514,24 @@ export class PublicationService {
       { path: "llms.txt", contentType: "text/plain; charset=utf-8", content: llmsText(contents, publishedCategories, providersByCategory, baseUrl) },
     ];
 
-    return {
+    const publication: PublicationBuildResult = {
       publicationId: `publication-${randomUUID()}`,
       baseUrl,
       contentIds: contents.map((content) => content.id),
       generatedAt: new Date().toISOString(),
       files,
     };
+    this.publicationStore.create({
+      id: publication.publicationId,
+      category: contents[0]!.category,
+      providerId: contents[0]!.providerId,
+      baseUrl: publication.baseUrl,
+      contentIds: [...publication.contentIds],
+      generatedAt: publication.generatedAt,
+      status: "built",
+      files: publication.files,
+    });
+    return publication;
   }
 
   public async deploy(
@@ -515,6 +542,10 @@ export class PublicationService {
     const publication = this.build(principal, contentIds, requestedBaseUrl);
     try {
       const deployment = await this.builderosAdapter.deployToCloudflarePages(publication, this.cloudflareOptionsProvider());
+      this.publicationStore.update(publication.publicationId, {
+        status: deployment.status === "submitted" ? "deployed" : "built",
+        deployment: deploymentRecord(deployment),
+      });
       return { publication, deployment };
     } catch (error) {
       if (error instanceof BuilderOSAdapterError) {
@@ -535,7 +566,72 @@ export class PublicationService {
       const publishedContentIds = deployment.status === "submitted"
         ? publication.contentIds.map((contentId) => this.content.markPublished(principal, contentId).id)
         : [];
+      this.publicationStore.update(publication.publicationId, {
+        status: deployment.status === "submitted" ? "published" : "built",
+        deployment: deploymentRecord(deployment),
+      });
       return { publication, deployment, publishedContentIds };
+    } catch (error) {
+      if (error instanceof BuilderOSAdapterError) {
+        throw new PublicationServiceError(502, error.message);
+      }
+      throw error;
+    }
+  }
+
+  public listHistory(principal: AuthenticatedPrincipal | null): PublicationHistorySummary[] {
+    if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
+    this.portal.assertAction(principal, principal.category, "publication.history");
+    if (principal.role !== "provider" || !principal.providerId) {
+      throw new PublicationServiceError(403, "公開履歴は事業者だけが取得できます。");
+    }
+    return this.publicationStore.list(principal.category, principal.providerId).map(({ files, ...record }) => ({
+      ...record,
+      fileCount: files.length,
+    }));
+  }
+
+  public async rollback(
+    principal: AuthenticatedPrincipal | null,
+    publicationId: string,
+    requestedBaseUrl?: string,
+  ): Promise<{ publication: PublicationBuildResult; deployment: CloudflarePagesDeploymentResult; rolledBackPublicationId: string }> {
+    if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
+    const target = this.publicationStore.get(publicationId);
+    if (!target || target.category !== principal.category || target.providerId !== principal.providerId) {
+      throw new PublicationServiceError(404, "公開履歴が見つかりません。");
+    }
+    this.portal.assertAction(principal, target.category, "publication.rollback");
+    if (target.status === "built") {
+      throw new PublicationServiceError(409, "ビルドだけで未公開の履歴はロールバックできません。");
+    }
+
+    const publication: PublicationBuildResult = {
+      publicationId: `publication-${randomUUID()}`,
+      baseUrl: normalizeBaseUrl(requestedBaseUrl ?? target.baseUrl),
+      contentIds: [...target.contentIds],
+      generatedAt: new Date().toISOString(),
+      files: target.files.map((file) => ({ ...file })),
+    };
+    this.publicationStore.create({
+      id: publication.publicationId,
+      category: target.category,
+      providerId: target.providerId,
+      baseUrl: publication.baseUrl,
+      contentIds: [...publication.contentIds],
+      generatedAt: publication.generatedAt,
+      status: "built",
+      files: publication.files,
+      rollbackOf: target.id,
+    });
+
+    try {
+      const deployment = await this.builderosAdapter.deployToCloudflarePages(publication, this.cloudflareOptionsProvider());
+      this.publicationStore.update(publication.publicationId, {
+        status: deployment.status === "submitted" ? "rolled_back" : "built",
+        deployment: deploymentRecord(deployment),
+      });
+      return { publication, deployment, rolledBackPublicationId: target.id };
     } catch (error) {
       if (error instanceof BuilderOSAdapterError) {
         throw new PublicationServiceError(502, error.message);

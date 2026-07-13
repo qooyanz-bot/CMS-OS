@@ -737,6 +737,23 @@ async function handleMcp(
               required: [],
             },
           },
+          {
+            name: "publication.history",
+            description: "事業者自身の静的公開履歴を取得します。公開ファイル本体は含めず、ロールバック可能な履歴情報を返します。",
+            inputSchema: { type: "object", properties: {}, required: [] },
+          },
+          {
+            name: "publication.rollback",
+            description: "過去にデプロイまたは公開した静的ファイルスナップショットをBuilderOS Adapter経由で再公開します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                publicationId: { type: "string" },
+                baseUrl: { type: "string" },
+              },
+              required: ["publicationId"],
+            },
+          },
         ],
       },
     });
@@ -1237,6 +1254,23 @@ async function handleMcp(
       return;
     }
 
+    if (name === "publication.history") {
+      const result = { items: publication.listHistory(principal) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "publication.rollback") {
+      if (typeof argumentsObject.publicationId !== "string") throw new Error("publicationIdが必要です。");
+      const result = await publication.rollback(
+        principal,
+        argumentsObject.publicationId,
+        typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
+      );
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     writeJson(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: "未対応のMCPツールです。" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "MCP操作に失敗しました。";
@@ -1704,6 +1738,36 @@ export function createHttpServer(
           writeJson(response, 201, { item: result });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "静的公開ファイルを生成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/publications") {
+        try {
+          writeJson(response, 200, { items: publication.listHistory(principal) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "公開履歴を取得できません。" });
+        }
+        return;
+      }
+
+      const rollbackPublicationMatch = url.pathname.match(/^\/api\/v1\/publications\/([^/]+)\/rollback$/);
+      if (request.method === "POST" && rollbackPublicationMatch) {
+        const publicationId = rollbackPublicationMatch[1];
+        if (!publicationId) {
+          writeJson(response, 400, { error: "publicationIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (body.baseUrl !== undefined && typeof body.baseUrl !== "string") {
+          writeJson(response, 400, { error: "baseUrlは文字列で指定してください。" });
+          return;
+        }
+        try {
+          const result = await publication.rollback(principal, publicationId, typeof body.baseUrl === "string" ? body.baseUrl : undefined);
+          writeJson(response, 202, { item: result });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "公開履歴をロールバックできません。" });
         }
         return;
       }

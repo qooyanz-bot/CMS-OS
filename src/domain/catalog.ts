@@ -68,6 +68,8 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
     "workflow.approve",
     "publication.build",
     "publication.publish",
+    "publication.history",
+    "publication.rollback",
   ];
 
   return {
@@ -197,6 +199,8 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "workflow.approve",
           "publication.build",
           "publication.publish",
+          "publication.history",
+          "publication.rollback",
         ],
         notices: ["資格・登録情報と公開事実を分けて管理します。"],
       },
@@ -274,6 +278,8 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "workflow.approve",
           "publication.build",
           "publication.publish",
+          "publication.history",
+          "publication.rollback",
         ],
         notices: ["店舗情報、料金、営業時間は最終確認日とともに公開します。"],
       },

@@ -173,6 +173,25 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.equal(published.status, 202);
     assert.equal(published.body.item.deployment.status, "dry_run");
     assert.deepEqual(published.body.item.publishedContentIds, []);
+
+    const history = await request("/api/v1/publications", { headers: authHeaders });
+    assert.equal(history.status, 200);
+    assert.ok(history.body.items.length >= 1);
+    assert.ok(history.body.items.every((item: { fileCount: number; files?: unknown }) => item.fileCount > 0 && item.files === undefined));
+
+    const historyMcp = await request("/mcp", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "publication.history", arguments: {} } }),
+    });
+    assert.ok(historyMcp.body.result.structuredContent.items.length >= 1);
+
+    const dryRunRollback = await request(`/api/v1/publications/${published.body.item.publication.publicationId}/rollback`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({}),
+    });
+    assert.equal(dryRunRollback.status, 409);
   });
 
   it("静的公開の主要操作をMCPから利用できる", async () => {
@@ -185,6 +204,8 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(names.includes("publication.build"));
     assert.ok(names.includes("publication.deploy"));
     assert.ok(names.includes("publication.publish"));
+    assert.ok(names.includes("publication.history"));
+    assert.ok(names.includes("publication.rollback"));
   });
 
   it("Cloudflare公開受付が成功したときだけコンテンツを公開状態へ進める", async () => {
@@ -226,5 +247,17 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.equal(result.deployment.status, "submitted");
     assert.deepEqual(result.publishedContentIds, [draft.id]);
     assert.equal(content.getContent(login.principal, draft.id).status, "published");
+
+    const history = publication.listHistory(login.principal);
+    const publishedHistory = history.find((item) => item.id === result.publication.publicationId);
+    assert.equal(publishedHistory?.status, "published");
+    assert.ok((publishedHistory?.fileCount ?? 0) > 0);
+
+    const rollback = await publication.rollback(login.principal, result.publication.publicationId, "https://www.example.com");
+    assert.equal(rollback.deployment.status, "submitted");
+    assert.equal(rollback.rolledBackPublicationId, result.publication.publicationId);
+    const rollbackHistory = publication.listHistory(login.principal).find((item) => item.id === rollback.publication.publicationId);
+    assert.equal(rollbackHistory?.status, "rolled_back");
+    assert.equal(rollbackHistory?.rollbackOf, result.publication.publicationId);
   });
 });

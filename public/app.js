@@ -137,6 +137,7 @@ const elements = {
   contentMessage: document.querySelector("#content-message"),
   proposals: document.querySelector("#proposal-list"),
   contents: document.querySelector("#content-list"),
+  publicationHistory: document.querySelector("#publication-history-list"),
   contentPreview: document.querySelector("#content-preview"),
   providerManagementPanel: document.querySelector("#provider-management-panel"),
   providerManagementForm: document.querySelector("#provider-management-form"),
@@ -783,6 +784,45 @@ function renderContents(items) {
   });
 }
 
+const publicationStatusLabels = { built: "ビルド済み", deployed: "デプロイ済み", published: "公開済み", rolled_back: "ロールバック済み" };
+
+function renderPublicationHistory(items) {
+  elements.publicationHistory.innerHTML = items.length
+    ? items.map((item) => {
+        const canRollback = item.status === "deployed" || item.status === "published";
+        return `<article class="editor-item"><div class="meta"><span>${escapeHtml(publicationStatusLabels[item.status] ?? item.status)}</span><span>${escapeHtml(item.updatedAt.slice(0, 10))}</span><span>${escapeHtml(String(item.fileCount))}ファイル</span></div><h4>${escapeHtml(item.id)}</h4><p>${escapeHtml(item.baseUrl)} · コンテンツ ${escapeHtml(String(item.contentIds.length))}件</p>${canRollback ? `<button class="button ghost publication-rollback-button" data-publication-id="${escapeHtml(item.id)}">この履歴へロールバック</button>` : ""}</article>`;
+      }).join("")
+    : '<p class="empty">公開履歴がまだありません。</p>';
+  document.querySelectorAll(".publication-rollback-button").forEach((button) => {
+    button.addEventListener("click", () => handlePublicationRollback(button.dataset.publicationId));
+  });
+}
+
+async function reloadPublicationHistory() {
+  const visible = state.token && state.role === "provider" && state.experience?.allowedActions.includes("publication.history");
+  if (!visible) {
+    elements.publicationHistory.innerHTML = "";
+    return;
+  }
+  try {
+    const body = await api("/api/v1/publications");
+    renderPublicationHistory(body.items);
+  } catch (error) {
+    elements.publicationHistory.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function handlePublicationRollback(publicationId) {
+  if (!publicationId) return;
+  try {
+    await api(`/api/v1/publications/${encodeURIComponent(publicationId)}/rollback`, { method: "POST", body: JSON.stringify({}) });
+    setContentMessage("公開履歴をロールバックしました。");
+    await reloadPublicationHistory();
+  } catch (error) {
+    setContentMessage(error.message);
+  }
+}
+
 async function reloadContent() {
   const visible = state.token && state.role === "provider" && state.experience?.allowedActions.includes("content.propose");
   elements.contentPanel.hidden = !visible;
@@ -791,6 +831,7 @@ async function reloadContent() {
   const contents = await api("/api/v1/content");
   renderProposals(proposals.items);
   renderContents(contents.items);
+  await reloadPublicationHistory();
 }
 
 async function handleContentAction(action, contentId) {

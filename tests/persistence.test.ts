@@ -7,6 +7,7 @@ import { ContentService } from "../src/application/content-service.js";
 import { InMemoryAuthService } from "../src/domain/auth.js";
 import { ContentStore } from "../src/domain/content-store.js";
 import { PortalStore } from "../src/domain/portal-store.js";
+import { PublicationStore } from "../src/domain/publication-store.js";
 import { PortalService } from "../src/application/portal-service.js";
 import { JsonStateStore } from "../src/infrastructure/json-state-store.js";
 
@@ -79,5 +80,26 @@ describe("CMS-OSファイル永続化", () => {
     assert.ok(restoredNotifications.items.some((item) => item.resourceId === inquiry.id));
     const restoredGuides = portal2.listDirectoryGuides("legal", auth2.authenticate(providerLogin.accessToken));
     assert.ok(restoredGuides.some((guide) => guide.id === managedGuide.id));
+  });
+
+  it("公開履歴と静的ファイルスナップショットを再起動後に復元できる", () => {
+    const state1 = new JsonStateStore(directory);
+    const store1 = new PublicationStore(state1);
+    const created = store1.create({
+      id: "publication-persistence-test",
+      category: "legal",
+      providerId: "provider-legal-demo",
+      baseUrl: "https://www.example.com",
+      contentIds: ["content-persistence-test"],
+      generatedAt: "2026-07-14T00:00:00.000Z",
+      status: "published",
+      files: [{ path: "index.html", contentType: "text/html; charset=utf-8", content: "<h1>永続化</h1>" }],
+    });
+
+    const state2 = new JsonStateStore(directory);
+    const store2 = new PublicationStore(state2);
+    const restored = store2.get(created.id);
+    assert.equal(restored?.status, "published");
+    assert.equal(restored?.files[0]?.content, "<h1>永続化</h1>");
   });
 });

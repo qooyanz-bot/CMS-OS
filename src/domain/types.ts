@@ -298,3 +298,35 @@ export interface PublicationBuildResult {
   generatedAt: string;
   files: PublicationFile[];
 }
+
+export const publicationHistoryStatuses = ["built", "deployed", "published", "rolled_back"] as const;
+export type PublicationHistoryStatus = (typeof publicationHistoryStatuses)[number];
+
+export interface PublicationDeploymentRecord {
+  status: "submitted" | "dry_run";
+  provider: "cloudflare-pages";
+  projectName: string;
+  requestId: string;
+  fileCount: number;
+  uploadedFileCount: number;
+  deploymentId?: string;
+  deploymentUrl?: string;
+  environment?: string;
+}
+
+export interface PublicationHistoryRecord {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  baseUrl: string;
+  contentIds: string[];
+  generatedAt: string;
+  status: PublicationHistoryStatus;
+  files: PublicationFile[];
+  deployment?: PublicationDeploymentRecord;
+  rollbackOf?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PublicationHistorySummary = Omit<PublicationHistoryRecord, "files"> & { fileCount: number };

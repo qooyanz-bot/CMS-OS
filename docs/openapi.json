@@ -398,6 +398,15 @@
         "responses": { "200": { "description": "承認済みコンテンツ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" } }
       }
     },
+    "/api/v1/publications": {
+      "get": {
+        "tags": ["Publication"],
+        "operationId": "listPublicationHistory",
+        "summary": "事業者自身の静的公開履歴を取得",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "公開履歴", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationHistoryListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
     "/api/v1/publications/build": {
       "post": {
         "tags": ["Publication"],
@@ -426,6 +435,17 @@
         "security": [{ "BearerAuth": [] }],
         "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationBuildRequest" } } } },
         "responses": { "202": { "description": "Cloudflare Pages公開受付結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationDeployResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" }, "502": { "$ref": "#/components/responses/BadGateway" } }
+      }
+    },
+    "/api/v1/publications/{publicationId}/rollback": {
+      "post": {
+        "tags": ["Publication"],
+        "operationId": "rollbackPublication",
+        "summary": "過去の静的公開スナップショットを再公開",
+        "parameters": [{ "$ref": "#/components/parameters/PublicationIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationRollbackRequest" } } } },
+        "responses": { "202": { "description": "ロールバック受付結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationRollbackResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "502": { "$ref": "#/components/responses/BadGateway" } }
       }
     },
     "/api/v1/requests": {
@@ -612,6 +632,7 @@
       "CategoryPath": { "name": "category", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/CategorySlug" } },
       "CategoryQuery": { "name": "category", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/CategorySlug" } },
       "ContentIdPath": { "name": "contentId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "PublicationIdPath": { "name": "publicationId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "ProviderIdPath": { "name": "providerId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "DirectoryIdPath": { "name": "directoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "JobIdPath": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
@@ -688,7 +709,12 @@
       "FactCheck": { "type": "object", "required": ["contentId", "contentVersion", "passed", "scope", "items", "issues", "checkedAt"], "properties": { "contentId": { "type": "string" }, "contentVersion": { "type": "integer" }, "passed": { "type": "boolean" }, "scope": { "type": "string", "enum": ["source_presence_only"] }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/FactCheckItem" } }, "issues": { "type": "array", "items": { "type": "string" } }, "checkedAt": { "type": "string", "format": "date-time" } } },
       "FactCheckResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/FactCheck" } } },
       "PublicationBuildRequest": { "type": "object", "properties": { "contentIds": { "type": "array", "items": { "type": "string" } }, "baseUrl": { "type": "string", "format": "uri" } }, "additionalProperties": false },
+      "PublicationRollbackRequest": { "type": "object", "properties": { "baseUrl": { "type": "string", "format": "uri" } }, "additionalProperties": false },
       "PublicationResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publicationId", "baseUrl", "contentIds", "generatedAt", "files"], "properties": { "publicationId": { "type": "string" }, "baseUrl": { "type": "string", "format": "uri" }, "contentIds": { "type": "array", "items": { "type": "string" } }, "generatedAt": { "type": "string", "format": "date-time" }, "files": { "type": "array", "items": { "type": "object", "required": ["path", "contentType", "content"], "properties": { "path": { "type": "string" }, "contentType": { "type": "string" }, "content": { "type": "string" } } } } } } } },
+      "PublicationDeployment": { "type": "object", "required": ["status", "provider", "projectName", "requestId", "fileCount", "uploadedFileCount"], "properties": { "status": { "type": "string", "enum": ["submitted", "dry_run"] }, "provider": { "type": "string", "enum": ["cloudflare-pages"] }, "projectName": { "type": "string" }, "requestId": { "type": "string" }, "fileCount": { "type": "integer" }, "uploadedFileCount": { "type": "integer" }, "deploymentId": { "type": "string" }, "deploymentUrl": { "type": "string", "format": "uri" }, "environment": { "type": "string" } } },
+      "PublicationHistory": { "type": "object", "required": ["id", "category", "providerId", "baseUrl", "contentIds", "generatedAt", "status", "fileCount", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "baseUrl": { "type": "string", "format": "uri" }, "contentIds": { "type": "array", "items": { "type": "string" } }, "generatedAt": { "type": "string", "format": "date-time" }, "status": { "type": "string", "enum": ["built", "deployed", "published", "rolled_back"] }, "fileCount": { "type": "integer" }, "deployment": { "$ref": "#/components/schemas/PublicationDeployment" }, "rollbackOf": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "PublicationHistoryListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/PublicationHistory" } } } },
+      "PublicationRollbackResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment", "rolledBackPublicationId"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "$ref": "#/components/schemas/PublicationDeployment" }, "rolledBackPublicationId": { "type": "string" } } } } },
       "PublicationDeployResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "type": "object", "additionalProperties": true } } } } },
       "PublicationPublishResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment", "publishedContentIds"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "type": "object", "additionalProperties": true }, "publishedContentIds": { "type": "array", "items": { "type": "string" } } } } } },
       "RequestCreate": { "type": "object", "required": ["category", "providerId", "title", "description"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "title": { "type": "string", "minLength": 3 }, "description": { "type": "string", "minLength": 10 } }, "additionalProperties": false },

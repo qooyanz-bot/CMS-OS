@@ -28,6 +28,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.equal(html.status, 200);
   assert.match(body, /CMS-OS Portal/);
   assert.match(body, /content-editor-panel/);
+  assert.match(body, /publication-history-list/);
   assert.match(body, /provider-management-panel/);
   assert.match(body, /job-management-panel/);
   assert.match(body, /request-inbox-panel/);
@@ -70,6 +71,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/auth\/mfa\/complete/);
   assert.match(scriptBody, /api\/v1\/content\/proposals/);
   assert.match(scriptBody, /api\/v1\/publications\/build/);
+  assert.match(scriptBody, /api\/v1\/publications/);
+  assert.match(scriptBody, /publication-history/);
+  assert.match(scriptBody, /handlePublicationRollback/);
   assert.match(scriptBody, /api\/v1\/providers\//);
   assert.match(scriptBody, /api\/v1\/jobs/);
   assert.match(scriptBody, /job-status-button/);

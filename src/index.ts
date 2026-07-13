@@ -5,6 +5,7 @@ import { PublicationService } from "./application/publication-service.js";
 import { createHttpServer } from "./api/http-server.js";
 import { PortalStore } from "./domain/portal-store.js";
 import { ContentStore } from "./domain/content-store.js";
+import { PublicationStore } from "./domain/publication-store.js";
 import { JsonStateStore, type StateStore } from "./infrastructure/json-state-store.js";
 import { PostgresStateStore } from "./infrastructure/postgres-state-store.js";
 
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
   const auth = new InMemoryAuthService(stateStore, authOptionsFromEnvironment());
   const portal = new PortalService(auth, new PortalStore(stateStore));
   const content = new ContentService(portal, new ContentStore(stateStore));
-  const publication = new PublicationService(portal, content);
+  const publication = new PublicationService(portal, content, undefined, undefined, new PublicationStore(stateStore));
   const server = createHttpServer(auth, portal, content, publication);
 
   const shutdown = async (): Promise<void> => {
