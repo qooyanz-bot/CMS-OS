@@ -1,0 +1,21 @@
+{
+  "name": "cms-os",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AIエージェントネイティブな企業コンテンツ・業界ポータル基盤",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "test": "npm run build && node --test dist/tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}
