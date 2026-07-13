@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
-import { AuthServiceError, InMemoryAuthService } from "../src/domain/auth.js";
+import { authOptionsFromEnvironment, AuthServiceError, InMemoryAuthService } from "../src/domain/auth.js";
+import type { StateStore } from "../src/infrastructure/json-state-store.js";
 
 function decodeBase32(value: string): Buffer {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -99,5 +100,41 @@ describe("CMS-OS認証セキュリティ", () => {
   it("本番想定の設定ではデモパスワードを受け付けない", () => {
     const auth = new InMemoryAuthService(undefined, { allowDemoAccounts: false, allowPasswordLogin: false });
     assert.equal(auth.login("user@example.com", "demo-password", "legal", "user"), null);
+  });
+
+  it("本番環境の既定値はOIDCで、設定不足を起動前に検出する", () => {
+    assert.throws(() => authOptionsFromEnvironment({ NODE_ENV: "production" }), /OIDC/);
+    const options = authOptionsFromEnvironment({
+      NODE_ENV: "production",
+      CMS_OS_OIDC_ISSUER: "https://id.example.com",
+      CMS_OS_OIDC_CLIENT_ID: "cms-os-client",
+      CMS_OS_OIDC_REDIRECT_URI: "https://cms.example.com/api/v1/auth/oidc/callback",
+    });
+    assert.equal(options.allowPasswordLogin, false);
+    assert.equal(options.allowDemoAccounts, false);
+    assert.equal(options.oidc?.issuer, "https://id.example.com");
+  });
+
+  it("認証監査ログに成否だけを永続化し、秘密情報を含めない", () => {
+    const values = new Map<string, unknown>();
+    const stateStore: StateStore = {
+      load<T>(name: string, fallback: T): T {
+        return (values.get(name) as T | undefined) ?? fallback;
+      },
+      save<T>(name: string, value: T): void {
+        values.set(name, value);
+      },
+    };
+    const auth = new InMemoryAuthService(stateStore);
+    auth.login("unknown@example.com", "wrong-password", "legal", "user");
+    const successful = auth.login("user@example.com", "demo-password", "legal", "user");
+    if (!successful || !("accessToken" in successful)) throw new Error("監査ログ用のログインに失敗しました。");
+
+    const events = values.get("auth-audit-log.json") as Array<Record<string, unknown>> | undefined;
+    assert.ok(events);
+    assert.equal(events.some((event) => event.type === "auth.login" && event.outcome === "failure"), true);
+    assert.equal(events.some((event) => event.type === "auth.login" && event.outcome === "success"), true);
+    assert.equal(JSON.stringify(events).includes("wrong-password"), false);
+    assert.equal(JSON.stringify(events).includes("demo-password"), false);
   });
 });

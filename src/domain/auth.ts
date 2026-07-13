@@ -3,6 +3,7 @@ import type { Account, AuthenticatedPrincipal, CategorySlug, PortalRole } from "
 import type { StateStore } from "../infrastructure/json-state-store.js";
 import { createTotpUri, generateTotpSecret, verifyTotp } from "../security/totp.js";
 import { openSecret, sealSecret } from "../security/secret-box.js";
+import { StateAuditLogger, type AuditLogger, type AuditOutcome } from "../security/audit-log.js";
 
 interface Session {
   tokenHash: string;
@@ -42,6 +43,13 @@ interface OidcProviderMetadata {
   userinfo_endpoint?: string;
 }
 
+interface AuditDetails {
+  accountId?: string;
+  category?: CategorySlug;
+  role?: PortalRole;
+  reason?: string;
+}
+
 export interface OidcConfig {
   issuer: string;
   clientId: string;
@@ -58,6 +66,13 @@ export interface AuthServiceOptions {
   oidc?: OidcConfig;
   fetchImplementation?: typeof fetch;
   authEncryptionKey?: string;
+  auditLogger?: AuditLogger;
+}
+
+export interface AuthCapabilities {
+  passwordLogin: boolean;
+  oidcLogin: boolean;
+  mfaEnrollment: boolean;
 }
 
 export type LoginResult =
@@ -65,6 +80,7 @@ export type LoginResult =
   | { mfaRequired: true; mfaChallengeToken: string; expiresInSeconds: number };
 
 export interface AuthService {
+  getAuthCapabilities(): AuthCapabilities;
   login(email: string, password: string, category: CategorySlug, role?: PortalRole): LoginResult | null;
   authenticate(accessToken: string | undefined): AuthenticatedPrincipal | null;
   switchContext(accessToken: string, category: CategorySlug, role: PortalRole): AuthenticatedPrincipal | null;
@@ -142,6 +158,7 @@ export class InMemoryAuthService implements AuthService {
   private readonly oidcConfig: OidcConfig | undefined;
   private readonly fetchImplementation: typeof fetch;
   private readonly authEncryptionKey: string | undefined;
+  private readonly auditLogger: AuditLogger | undefined;
   private oidcMetadata?: OidcProviderMetadata;
 
   public constructor(private readonly stateStore?: StateStore, options: AuthServiceOptions = {}) {
@@ -150,6 +167,7 @@ export class InMemoryAuthService implements AuthService {
     this.oidcConfig = options.oidc;
     this.fetchImplementation = options.fetchImplementation ?? fetch;
     this.authEncryptionKey = options.authEncryptionKey;
+    this.auditLogger = options.auditLogger ?? (stateStore ? new StateAuditLogger(stateStore) : undefined);
     const storedAccounts = stateStore?.load<Account[]>("auth-accounts.json", []) ?? [];
     if (storedAccounts.length > 0) {
       storedAccounts.forEach((account) => this.addAccount(account));
@@ -219,15 +237,39 @@ export class InMemoryAuthService implements AuthService {
     this.accounts.set(account.id, account);
   }
 
+  public getAuthCapabilities(): AuthCapabilities {
+    return {
+      passwordLogin: this.allowPasswordLogin,
+      oidcLogin: Boolean(this.oidcConfig),
+      mfaEnrollment: Boolean(this.authEncryptionKey),
+    };
+  }
+
   public login(email: string, password: string, category: CategorySlug, role: PortalRole = "user"): LoginResult | null {
-    if (!this.allowPasswordLogin) return null;
+    if (!this.allowPasswordLogin) {
+      this.recordAudit("auth.login", "failure", { category, role, reason: "password_login_disabled" });
+      return null;
+    }
     const account = [...this.accounts.values()].find((candidate) => candidate.email === email);
     const passwordMatches = verifyPassword(password, account?.passwordHash ?? dummyPasswordHash);
     if (!account || !passwordMatches || !hasAssignment(account, category, role)) {
+      this.recordAudit("auth.login", "failure", {
+        ...(account ? { accountId: account.id } : {}),
+        category,
+        role,
+        reason: "invalid_credentials_or_assignment",
+      });
       return null;
     }
 
-    return this.startAuthenticatedSession(account, category, role);
+    const result = this.startAuthenticatedSession(account, category, role);
+    this.recordAudit("auth.login", "success", {
+      accountId: account.id,
+      category,
+      role,
+      ...(this.isMfaChallenge(result) ? { reason: "mfa_challenge" } : {}),
+    });
+    return result;
   }
 
   private issueSession(account: Account, category: CategorySlug, role: PortalRole): LoginResult {
@@ -261,6 +303,7 @@ export class InMemoryAuthService implements AuthService {
       attempts: 0,
     });
     this.persistMfaChallenges();
+    this.recordAudit("auth.mfa.challenge", "success", { accountId: account.id, category, role });
     return {
       mfaRequired: true,
       mfaChallengeToken: challengeToken,
@@ -282,6 +325,7 @@ export class InMemoryAuthService implements AuthService {
       expiresAt: Date.now() + mfaEnrollmentLifetimeMs,
     });
     this.persistMfaEnrollments();
+    this.recordAudit("auth.mfa.enroll", "success", { accountId: account.id, category: principal.category, role: principal.role });
     return {
       secret,
       otpauthUrl: createTotpUri(secret, "CMS-OS", account.email),
@@ -295,10 +339,14 @@ export class InMemoryAuthService implements AuthService {
     if (!enrollment || enrollment.expiresAt <= Date.now()) {
       this.mfaEnrollments.delete(principal.accountId);
       this.persistMfaEnrollments();
+      this.recordAudit("auth.mfa.enroll_confirm", "failure", { accountId: principal.accountId, reason: "enrollment_expired" });
       throw new AuthServiceError(409, "MFA登録の有効期限が切れています。再登録してください。");
     }
     const secret = this.openMfaSecret(enrollment.secretCiphertext);
-    if (!verifyTotp(secret, code)) throw new AuthServiceError(400, "MFA認証コードが正しくありません。");
+    if (!verifyTotp(secret, code)) {
+      this.recordAudit("auth.mfa.enroll_confirm", "failure", { accountId: principal.accountId, reason: "invalid_code" });
+      throw new AuthServiceError(400, "MFA認証コードが正しくありません。");
+    }
 
     const account = this.accounts.get(principal.accountId);
     if (!account) throw new AuthServiceError(401, "認証対象のアカウントが見つかりません。");
@@ -307,6 +355,7 @@ export class InMemoryAuthService implements AuthService {
     this.mfaEnrollments.delete(principal.accountId);
     this.persistAccounts();
     this.persistMfaEnrollments();
+    this.recordAudit("auth.mfa.enroll_confirm", "success", { accountId: principal.accountId });
     return { enabled: true };
   }
 
@@ -316,12 +365,17 @@ export class InMemoryAuthService implements AuthService {
     if (!challenge || challenge.expiresAt <= Date.now()) {
       if (challenge) this.mfaChallenges.delete(tokenHash);
       this.persistMfaChallenges();
+      this.recordAudit("auth.mfa.complete", "failure", {
+        ...(challenge ? { accountId: challenge.accountId, category: challenge.category, role: challenge.role } : {}),
+        reason: "challenge_expired_or_unknown",
+      });
       throw new AuthServiceError(401, "MFAチャレンジが無効または期限切れです。");
     }
     const account = this.accounts.get(challenge.accountId);
     if (!account || !account.mfaEnabled || !account.mfaSecretCiphertext) {
       this.mfaChallenges.delete(tokenHash);
       this.persistMfaChallenges();
+      this.recordAudit("auth.mfa.complete", "failure", { accountId: challenge.accountId, reason: "mfa_configuration_missing" });
       throw new AuthServiceError(401, "MFA設定が見つかりません。");
     }
     const secret = this.openMfaSecret(account.mfaSecretCiphertext);
@@ -329,12 +383,20 @@ export class InMemoryAuthService implements AuthService {
       challenge.attempts += 1;
       if (challenge.attempts >= maxMfaAttempts) this.mfaChallenges.delete(tokenHash);
       this.persistMfaChallenges();
+      this.recordAudit("auth.mfa.complete", "failure", {
+        accountId: challenge.accountId,
+        category: challenge.category,
+        role: challenge.role,
+        reason: challenge.attempts >= maxMfaAttempts ? "invalid_code_attempt_limit" : "invalid_code",
+      });
       throw new AuthServiceError(401, "MFA認証コードが正しくありません。");
     }
 
     this.mfaChallenges.delete(tokenHash);
     this.persistMfaChallenges();
-    return this.issueSession(account, challenge.category, challenge.role);
+    const result = this.issueSession(account, challenge.category, challenge.role);
+    this.recordAudit("auth.mfa.complete", "success", { accountId: account.id, category: challenge.category, role: challenge.role });
+    return result;
   }
 
   private requirePrincipal(accessToken: string | undefined): AuthenticatedPrincipal {
@@ -366,6 +428,7 @@ export class InMemoryAuthService implements AuthService {
       expiresAt: Date.now() + oidcTransactionLifetimeMs,
     });
     this.persistOidcTransactions();
+    this.recordAudit("auth.oidc.start", "success", { category, role });
 
     const authorizationUrl = new URL(metadata.authorization_endpoint);
     authorizationUrl.search = new URLSearchParams({
@@ -388,6 +451,7 @@ export class InMemoryAuthService implements AuthService {
     if (!transaction || transaction.expiresAt <= Date.now()) {
       if (transaction) this.oidcTransactions.delete(stateHash);
       this.persistOidcTransactions();
+      this.recordAudit("auth.oidc.complete", "failure", { reason: "state_expired_or_unknown" });
       throw new AuthServiceError(400, "OIDC認証stateが無効または期限切れです。");
     }
     this.oidcTransactions.delete(stateHash);
@@ -417,17 +481,27 @@ export class InMemoryAuthService implements AuthService {
     }, 502);
     const subject = stringClaim(claims.sub);
     const email = stringClaim(claims.email)?.toLowerCase();
-    if (!subject || !email) throw new AuthServiceError(403, "OIDCから必要な本人情報を取得できませんでした。");
-    if (claims.email_verified === false) throw new AuthServiceError(403, "OIDCメールアドレスが未検証です。");
+    if (!subject || !email) {
+      this.recordAudit("auth.oidc.complete", "failure", { category: transaction.category, role: transaction.role, reason: "identity_claim_missing" });
+      throw new AuthServiceError(403, "OIDCから必要な本人情報を取得できませんでした。");
+    }
+    if (claims.email_verified === false) {
+      this.recordAudit("auth.oidc.complete", "failure", { category: transaction.category, role: transaction.role, reason: "email_unverified" });
+      throw new AuthServiceError(403, "OIDCメールアドレスが未検証です。");
+    }
     if (config.requireMfa && !this.hasExternalMfa(claims)) {
+      this.recordAudit("auth.oidc.complete", "failure", { category: transaction.category, role: transaction.role, reason: "external_mfa_required" });
       throw new AuthServiceError(403, "MFA済みのOIDC認証が必要です。");
     }
 
     const account = this.findOrProvisionOidcAccount(config, subject, email, claims);
     if (!hasAssignment(account, transaction.category, transaction.role)) {
+      this.recordAudit("auth.oidc.complete", "failure", { accountId: account.id, category: transaction.category, role: transaction.role, reason: "assignment_denied" });
       throw new AuthServiceError(403, "このカテゴリとロールへのアクセス権がありません。");
     }
-    return this.startAuthenticatedSession(account, transaction.category, transaction.role);
+    const result = this.startAuthenticatedSession(account, transaction.category, transaction.role);
+    this.recordAudit("auth.oidc.complete", "success", { accountId: account.id, category: transaction.category, role: transaction.role });
+    return result;
   }
 
   private requireOidcConfig(): OidcConfig {
@@ -541,8 +615,23 @@ export class InMemoryAuthService implements AuthService {
 
   public logout(accessToken: string | undefined): void {
     if (accessToken) {
-      this.sessions.delete(hashToken(accessToken));
+      const tokenHash = hashToken(accessToken);
+      const session = this.sessions.get(tokenHash);
+      this.sessions.delete(tokenHash);
       this.persistSessions();
+      if (session) this.recordAudit("auth.logout", "success", { accountId: session.accountId, category: session.category, role: session.role });
+    }
+  }
+
+  private isMfaChallenge(result: LoginResult): result is { mfaRequired: true; mfaChallengeToken: string; expiresInSeconds: number } {
+    return "mfaRequired" in result;
+  }
+
+  private recordAudit(type: string, outcome: AuditOutcome, details: AuditDetails = {}): void {
+    try {
+      this.auditLogger?.record({ type, outcome, ...details });
+    } catch {
+      // 監査ログの書き込み失敗で認証処理そのものを停止させない。
     }
   }
 

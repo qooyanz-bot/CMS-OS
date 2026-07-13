@@ -26,16 +26,6 @@
             <option value="beauty">美容</option>
           </select>
         </div>
-        <div class="control-group login-group">
-          <label for="account-select">デモアカウント</label>
-          <select id="account-select">
-            <option value="user@example.com">ユーザー</option>
-            <option value="orderer@example.com">発注者</option>
-            <option value="lawyer@example.com">士業事業者</option>
-            <option value="beauty@example.com">美容事業者</option>
-            <option value="candidate@example.com">リクルーター</option>
-          </select>
-        </div>
         <div class="control-group">
           <label for="role-select">ロール</label>
           <select id="role-select">
@@ -45,11 +35,37 @@
             <option value="candidate">リクルーター</option>
           </select>
         </div>
-        <button id="login-button" class="button primary">ログイン</button>
-        <button id="logout-button" class="button ghost" hidden>ログアウト</button>
+        <form id="login-form" class="login-form">
+          <label for="login-email">メールアドレス<input id="login-email" name="email" type="email" autocomplete="username" required placeholder="you@example.com" /></label>
+          <label for="login-password">パスワード<input id="login-password" name="password" type="password" autocomplete="current-password" required /></label>
+          <button id="login-button" class="button primary" type="submit">パスワードでログイン</button>
+        </form>
+        <button id="oidc-button" class="button secondary" type="button" hidden>認証基盤でログイン</button>
+        <button id="logout-button" class="button ghost" type="button" hidden>ログアウト</button>
+        <div id="demo-account-panel" class="demo-account-panel" hidden>
+          <label for="account-select">開発用デモアカウント</label>
+          <select id="account-select">
+            <option value="user@example.com">ユーザー</option>
+            <option value="orderer@example.com">発注者</option>
+            <option value="lawyer@example.com">士業事業者</option>
+            <option value="beauty@example.com">美容事業者</option>
+            <option value="candidate@example.com">リクルーター</option>
+          </select>
+          <p class="field-note">開発環境のみ。パスワードは入力欄へ指定してください。</p>
+        </div>
       </section>
 
       <p id="message" class="message" role="status"></p>
+
+      <section id="mfa-panel" class="card mfa-panel" hidden>
+        <div class="section-kicker">SECURITY CHECK</div>
+        <h2>追加認証</h2>
+        <p class="muted">認証アプリに表示された6桁のコードを入力してください。</p>
+        <form id="mfa-form" class="inline-form">
+          <label for="mfa-code">認証コード<input id="mfa-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required /></label>
+          <button class="button primary" type="submit">認証を完了</button>
+        </form>
+      </section>
 
       <section class="hero-grid">
         <div class="card hero-card">

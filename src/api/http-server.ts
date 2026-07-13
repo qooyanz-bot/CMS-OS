@@ -14,6 +14,7 @@ import {
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
 import type { CategorySlug, PortalRole } from "../domain/types.js";
+import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const staticAssets: Record<string, { file: string; contentType: string }> = {
@@ -83,6 +84,36 @@ function serviceErrorStatus(error: unknown): number {
   return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError ? error.statusCode : 400;
 }
 
+function getClientAddress(request: IncomingMessage): string {
+  if (process.env.CMS_OS_TRUST_PROXY === "true") {
+    const cloudflareAddress = request.headers["cf-connecting-ip"];
+    if (typeof cloudflareAddress === "string" && cloudflareAddress.trim()) return cloudflareAddress.trim();
+    const forwardedAddress = request.headers["x-forwarded-for"];
+    if (typeof forwardedAddress === "string" && forwardedAddress.trim()) return forwardedAddress.split(",")[0]?.trim() || "unknown";
+  }
+  return request.socket.remoteAddress ?? "unknown";
+}
+
+function allowAuthRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  limiter: FixedWindowRateLimiter,
+  operation: string,
+  identity?: string,
+): boolean {
+  const keys = [`ip:${getClientAddress(request)}:${operation}`];
+  if (identity?.trim()) keys.push(`identity:${identity.trim().toLowerCase()}:${operation}`);
+  for (const key of keys) {
+    const result = limiter.consume(key);
+    if (!result.allowed) {
+      response.setHeader("retry-after", String(result.retryAfterSeconds));
+      writeJson(response, 429, { error: "認証操作が多すぎます。しばらく待ってから再試行してください。", retryAfterSeconds: result.retryAfterSeconds });
+      return false;
+    }
+  }
+  return true;
+}
+
 async function handleMcp(
   request: IncomingMessage,
   response: ServerResponse,
@@ -90,6 +121,7 @@ async function handleMcp(
   portal: PortalService,
   content: ContentService,
   publication: PublicationService,
+  authRateLimiter: FixedWindowRateLimiter,
 ): Promise<void> {
   const body = await readJson(request);
   const id = body.id ?? null;
@@ -155,6 +187,11 @@ async function handleMcp(
           {
             name: "auth.logout",
             description: "ログアウトします。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "auth.config",
+            description: "利用可能なログイン方式とMFA登録可否を取得します。",
             inputSchema: { type: "object", properties: {} },
           },
           {
@@ -354,6 +391,7 @@ async function handleMcp(
       ) {
         throw new Error("email、password、category、roleの指定が不正です。");
       }
+      if (!allowAuthRequest(request, response, authRateLimiter, "mcp:auth.login", argumentsObject.email)) return;
       const result = auth.login(
         argumentsObject.email,
         argumentsObject.password,
@@ -373,8 +411,15 @@ async function handleMcp(
     }
 
     if (name === "auth.logout") {
+      if (!allowAuthRequest(request, response, authRateLimiter, "mcp:auth.logout")) return;
       auth.logout(getBearerToken(request));
       const result = { ok: true };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "auth.config") {
+      const result = auth.getAuthCapabilities();
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -411,6 +456,7 @@ async function handleMcp(
       if (!isCategorySlug(argumentsObject.category) || (argumentsObject.role !== undefined && !isPortalRole(argumentsObject.role))) {
         throw new Error("categoryとroleが不正です。");
       }
+      if (!allowAuthRequest(request, response, authRateLimiter, "mcp:auth.oidc_start")) return;
       const result = await auth.startOidc(argumentsObject.category, isPortalRole(argumentsObject.role) ? argumentsObject.role : "user");
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
@@ -420,12 +466,14 @@ async function handleMcp(
       if (typeof argumentsObject.code !== "string" || typeof argumentsObject.state !== "string") {
         throw new Error("codeとstateが必要です。");
       }
+      if (!allowAuthRequest(request, response, authRateLimiter, "mcp:auth.oidc_callback")) return;
       const result = await auth.completeOidc(argumentsObject.state, argumentsObject.code);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
 
     if (name === "auth.mfa_enroll") {
+      if (!allowAuthRequest(request, response, authRateLimiter, "mcp:auth.mfa_enroll")) return;
       const result = auth.enrollMfa(getBearerToken(request));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
@@ -433,6 +481,7 @@ async function handleMcp(
 
     if (name === "auth.mfa_confirm") {
       if (typeof argumentsObject.code !== "string") throw new Error("codeが必要です。");
+      if (!allowAuthRequest(request, response, authRateLimiter, "mcp:auth.mfa_confirm")) return;
       const result = auth.confirmMfaEnrollment(getBearerToken(request), argumentsObject.code);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
@@ -442,6 +491,7 @@ async function handleMcp(
       if (typeof argumentsObject.challengeToken !== "string" || typeof argumentsObject.code !== "string") {
         throw new Error("challengeTokenとcodeが必要です。");
       }
+      if (!allowAuthRequest(request, response, authRateLimiter, "mcp:auth.mfa_complete")) return;
       const result = auth.completeMfa(argumentsObject.challengeToken, argumentsObject.code);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
@@ -580,6 +630,7 @@ export function createHttpServer(
   content = new ContentService(portal),
   publication = new PublicationService(portal, content),
 ): Server {
+  const authRateLimiter = new FixedWindowRateLimiter(10, 10 * 60 * 1000);
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     const token = getBearerToken(request);
@@ -595,6 +646,11 @@ export function createHttpServer(
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/v1/auth/config") {
+        writeJson(response, 200, { item: auth.getAuthCapabilities() });
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/v1/auth/login") {
         const body = await readJson(request);
         const email = body.email;
@@ -605,6 +661,7 @@ export function createHttpServer(
           writeJson(response, 400, { error: "email、password、category、roleが必要です。" });
           return;
         }
+        if (!allowAuthRequest(request, response, authRateLimiter, "rest:auth.login", email)) return;
         const login = auth.login(email, password, category, role);
         if (!login) {
           writeJson(response, 401, { error: "認証情報またはカテゴリ・ロールが正しくありません。" });
@@ -620,6 +677,7 @@ export function createHttpServer(
           writeJson(response, 400, { error: "categoryとroleが必要です。" });
           return;
         }
+        if (!allowAuthRequest(request, response, authRateLimiter, "rest:auth.oidc_start")) return;
         try {
           const result = await auth.startOidc(body.category, body.role as PortalRole);
           writeJson(response, 200, { item: result });
@@ -632,6 +690,7 @@ export function createHttpServer(
       if (request.method === "GET" && url.pathname === "/api/v1/auth/oidc/callback") {
         const state = url.searchParams.get("state");
         const code = url.searchParams.get("code");
+        if (!allowAuthRequest(request, response, authRateLimiter, "rest:auth.oidc_callback")) return;
         try {
           const result = await auth.completeOidc(state ?? "", code ?? "");
           writeJson(response, 200, { item: result });
@@ -642,6 +701,7 @@ export function createHttpServer(
       }
 
       if (request.method === "POST" && url.pathname === "/api/v1/auth/mfa/enroll") {
+        if (!allowAuthRequest(request, response, authRateLimiter, "rest:auth.mfa_enroll")) return;
         try {
           writeJson(response, 200, { item: auth.enrollMfa(token) });
         } catch (error) {
@@ -656,6 +716,7 @@ export function createHttpServer(
           writeJson(response, 400, { error: "codeが必要です。" });
           return;
         }
+        if (!allowAuthRequest(request, response, authRateLimiter, "rest:auth.mfa_confirm")) return;
         try {
           writeJson(response, 200, { item: auth.confirmMfaEnrollment(token, body.code) });
         } catch (error) {
@@ -670,6 +731,7 @@ export function createHttpServer(
           writeJson(response, 400, { error: "challengeTokenとcodeが必要です。" });
           return;
         }
+        if (!allowAuthRequest(request, response, authRateLimiter, "rest:auth.mfa_complete")) return;
         try {
           writeJson(response, 200, auth.completeMfa(body.challengeToken, body.code));
         } catch (error) {
@@ -679,6 +741,7 @@ export function createHttpServer(
       }
 
       if (request.method === "POST" && url.pathname === "/api/v1/auth/logout") {
+        if (!allowAuthRequest(request, response, authRateLimiter, "rest:auth.logout")) return;
         auth.logout(token);
         writeJson(response, 200, { ok: true });
         return;
@@ -972,7 +1035,7 @@ export function createHttpServer(
       }
 
       if (request.method === "POST" && url.pathname === "/mcp") {
-        await handleMcp(request, response, auth, portal, content, publication);
+        await handleMcp(request, response, auth, portal, content, publication, authRateLimiter);
         return;
       }
 

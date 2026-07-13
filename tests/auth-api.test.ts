@@ -66,6 +66,12 @@ function totpCode(secret: string, timestamp = Date.now()): string {
 }
 
 describe("認証REST APIとMCP", () => {
+  it("REST APIで利用可能な認証方式を取得できる", async () => {
+    const response = await request("/api/v1/auth/config");
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.item, { passwordLogin: true, oidcLogin: false, mfaEnrollment: true });
+  });
+
   it("REST APIでTOTP MFAの登録・確認・ログインチャレンジを完了できる", async () => {
     const login = await request("/api/v1/auth/login", {
       method: "POST",
@@ -123,6 +129,7 @@ describe("認証REST APIとMCP", () => {
       "auth.login",
       "auth.me",
       "auth.logout",
+      "auth.config",
       "auth.switch_context",
       "auth.oidc_start",
       "auth.oidc_callback",

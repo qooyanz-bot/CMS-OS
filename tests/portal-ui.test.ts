@@ -28,11 +28,16 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.equal(html.status, 200);
   assert.match(body, /CMS-OS Portal/);
   assert.match(body, /content-editor-panel/);
+  assert.match(body, /login-form/);
+  assert.match(body, /mfa-panel/);
 
   const script = await fetch(`${baseUrl}/app.js`);
   assert.equal(script.status, 200);
   const scriptBody = await script.text();
   assert.match(scriptBody, /category-select/);
+  assert.match(scriptBody, /api\/v1\/auth\/config/);
+  assert.match(scriptBody, /api\/v1\/auth\/oidc\/start/);
+  assert.match(scriptBody, /api\/v1\/auth\/mfa\/complete/);
   assert.match(scriptBody, /api\/v1\/content\/proposals/);
   assert.match(scriptBody, /api\/v1\/publications\/build/);
 });

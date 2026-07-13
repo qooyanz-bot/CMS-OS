@@ -48,10 +48,13 @@ CMS_OS_AUTH_ENCRYPTION_KEY=32文字以上の秘密値
 
 OIDCはAuthorization Code + PKCEを使用し、`state` はハッシュ化して短時間・一回限りで検証します。OIDCプロバイダーからメールアドレスが未検証と通知された場合はログインを許可しません。CMS-OS側のMFAを使う場合は、暗号化キーでTOTP秘密鍵をAES-256-GCMにより暗号化して保存します。
 
+ブラウザUIは`GET /api/v1/auth/config`で利用可能なログイン方式を取得し、パスワード入力、OIDC遷移、MFAチャレンジを切り替えます。アクセストークンはブラウザの永続ストレージへ保存しません。ログイン、OIDC、MFAの公開入口にはIP・識別子単位のレート制限を適用し、認証成否は`auth-audit-log.json`またはPostgreSQL状態ストアへ秘密情報なしで記録します。
+
 ## API例
 
 ```text
 POST /api/v1/auth/login
+GET  /api/v1/auth/config
 GET  /api/v1/auth/me
 POST /api/v1/auth/context
 POST /api/v1/auth/oidc/start

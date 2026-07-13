@@ -1,7 +1,9 @@
 const state = {
   token: null,
+  mfaChallengeToken: null,
   category: "legal",
   role: "user",
+  authCapabilities: { passwordLogin: true, oidcLogin: false, mfaEnrollment: false },
   experience: null,
   providers: [],
   proposals: [],
@@ -19,8 +21,16 @@ const elements = {
   category: document.querySelector("#category-select"),
   account: document.querySelector("#account-select"),
   role: document.querySelector("#role-select"),
+  loginForm: document.querySelector("#login-form"),
+  email: document.querySelector("#login-email"),
+  password: document.querySelector("#login-password"),
   login: document.querySelector("#login-button"),
+  oidc: document.querySelector("#oidc-button"),
   logout: document.querySelector("#logout-button"),
+  demoPanel: document.querySelector("#demo-account-panel"),
+  mfaPanel: document.querySelector("#mfa-panel"),
+  mfaForm: document.querySelector("#mfa-form"),
+  mfaCode: document.querySelector("#mfa-code"),
   session: document.querySelector("#session-label"),
   message: document.querySelector("#message"),
   title: document.querySelector("#category-title"),
@@ -71,6 +81,43 @@ async function api(path, options = {}) {
   const body = await response.json();
   if (!response.ok) throw new Error(body.error ?? "操作に失敗しました。");
   return body;
+}
+
+function updateAuthUi() {
+  elements.loginForm.hidden = !state.authCapabilities.passwordLogin;
+  elements.oidc.hidden = !state.authCapabilities.oidcLogin;
+  elements.demoPanel.hidden = !state.authCapabilities.passwordLogin;
+  elements.password.required = state.authCapabilities.passwordLogin;
+}
+
+async function loadAuthConfig() {
+  const body = await api("/api/v1/auth/config");
+  state.authCapabilities = body.item;
+  updateAuthUi();
+}
+
+function setMfaChallenge(challengeToken) {
+  state.mfaChallengeToken = challengeToken;
+  elements.mfaPanel.hidden = false;
+  elements.mfaCode.value = "";
+  elements.mfaCode.focus();
+  setMessage("認証アプリのコードを入力してください。");
+}
+
+function finishLogin(result) {
+  if (result.mfaRequired) {
+    setMfaChallenge(result.mfaChallengeToken);
+    return false;
+  }
+  state.token = result.accessToken;
+  state.mfaChallengeToken = null;
+  state.role = result.principal.role;
+  elements.mfaPanel.hidden = true;
+  elements.loginForm.hidden = true;
+  elements.oidc.hidden = true;
+  elements.demoPanel.hidden = true;
+  elements.logout.hidden = false;
+  return true;
 }
 
 function formatValue(value) {
@@ -215,14 +262,60 @@ async function login() {
   try {
     const body = await api("/api/v1/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email: elements.account.value, password: "demo-password", category: state.category, role: elements.role.value }),
+      body: JSON.stringify({ email: elements.email.value.trim(), password: elements.password.value, category: state.category, role: elements.role.value }),
     });
-    state.token = body.accessToken;
-    state.role = body.principal.role;
-    elements.login.hidden = true;
-    elements.logout.hidden = false;
-    setMessage(`${labels[state.role]}としてログインしました。`);
-    await reload();
+    if (finishLogin(body)) {
+      setMessage(`${labels[state.role]}としてログインしました。`);
+      await reload();
+    }
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+async function loginWithOidc() {
+  try {
+    const body = await api("/api/v1/auth/oidc/start", {
+      method: "POST",
+      body: JSON.stringify({ category: state.category, role: elements.role.value }),
+    });
+    window.location.assign(body.item.authorizationUrl);
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+async function completeOidcCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const stateParam = params.get("state");
+  const code = params.get("code");
+  if (!stateParam || !code) return false;
+  try {
+    const body = await api(`/api/v1/auth/oidc/callback?state=${encodeURIComponent(stateParam)}&code=${encodeURIComponent(code)}`);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    if (finishLogin(body.item)) {
+      setMessage(`${labels[state.role]}としてログインしました。`);
+      return true;
+    }
+    return true;
+  } catch (error) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setMessage(error.message);
+    return false;
+  }
+}
+
+async function completeMfa() {
+  if (!state.mfaChallengeToken) return;
+  try {
+    const body = await api("/api/v1/auth/mfa/complete", {
+      method: "POST",
+      body: JSON.stringify({ challengeToken: state.mfaChallengeToken, code: elements.mfaCode.value.trim() }),
+    });
+    if (finishLogin(body)) {
+      setMessage(`${labels[state.role]}としてログインしました。`);
+      await reload();
+    }
   } catch (error) {
     setMessage(error.message);
   }
@@ -231,8 +324,12 @@ async function login() {
 async function logout() {
   try { await api("/api/v1/auth/logout", { method: "POST" }); } catch {}
   state.token = null;
+  state.mfaChallengeToken = null;
   state.role = "user";
-  elements.login.hidden = false;
+  updateAuthUi();
+  elements.mfaPanel.hidden = true;
+  elements.loginForm.hidden = !state.authCapabilities.passwordLogin;
+  elements.oidc.hidden = !state.authCapabilities.oidcLogin;
   elements.logout.hidden = true;
   setMessage("ログアウトしました。");
   await reload();
@@ -242,8 +339,10 @@ elements.category.addEventListener("change", async () => {
   if (state.token) {
     try { await api("/api/v1/auth/logout", { method: "POST" }); } catch {}
     state.token = null;
+    state.mfaChallengeToken = null;
     state.role = "user";
-    elements.login.hidden = false;
+    elements.mfaPanel.hidden = true;
+    updateAuthUi();
     elements.logout.hidden = true;
   }
   state.category = elements.category.value;
@@ -255,7 +354,18 @@ elements.search.addEventListener("input", async () => {
     renderProviders(body.items);
   } catch (error) { setMessage(error.message); }
 });
-elements.login.addEventListener("click", login);
+elements.loginForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void login();
+});
+elements.oidc.addEventListener("click", () => void loginWithOidc());
+elements.mfaForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void completeMfa();
+});
+elements.account.addEventListener("change", () => {
+  elements.email.value = elements.account.value;
+});
 elements.logout.addEventListener("click", logout);
 elements.requestForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -300,4 +410,10 @@ elements.contentForm.addEventListener("submit", async (event) => {
   }
 });
 
-reload().catch((error) => setMessage(error.message));
+async function initialize() {
+  await loadAuthConfig();
+  await completeOidcCallback();
+  await reload();
+}
+
+initialize().catch((error) => setMessage(error.message));

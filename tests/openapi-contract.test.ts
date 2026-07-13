@@ -16,6 +16,7 @@ describe("CMS-OS OpenAPI契約", () => {
     const requiredPaths = [
       "/health",
       "/api/v1/auth/login",
+      "/api/v1/auth/config",
       "/api/v1/auth/oidc/start",
       "/api/v1/auth/oidc/callback",
       "/api/v1/auth/mfa/enroll",
@@ -54,5 +55,18 @@ describe("CMS-OS OpenAPI契約", () => {
       assert.deepEqual(operation.security, [{}, { BearerAuth: [] }], `${path}は任意認証である必要があります。`);
     }
     assert.deepEqual(specification.components.securitySchemes.BearerAuth, { type: "http", scheme: "bearer", bearerFormat: "opaque-session-token" });
+    for (const path of [
+      "/api/v1/auth/login",
+      "/api/v1/auth/oidc/start",
+      "/api/v1/auth/oidc/callback",
+      "/api/v1/auth/mfa/enroll",
+      "/api/v1/auth/mfa/confirm",
+      "/api/v1/auth/mfa/complete",
+      "/api/v1/auth/logout",
+      "/mcp",
+    ]) {
+      const operation = Object.values(specification.paths[path] ?? {})[0] as { responses?: Record<string, unknown> };
+      assert.ok(operation.responses?.["429"], `${path}のレート制限レスポンスがありません。`);
+    }
   });
 });

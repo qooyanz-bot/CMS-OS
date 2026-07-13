@@ -36,8 +36,17 @@
         "responses": {
           "200": { "description": "ログイン成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
         }
+      }
+    },
+    "/api/v1/auth/config": {
+      "get": {
+        "tags": ["Auth"],
+        "operationId": "getAuthConfig",
+        "summary": "利用可能なログイン方式を取得",
+        "responses": { "200": { "description": "認証設定", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthConfigResponse" } } } } }
       }
     },
     "/api/v1/auth/oidc/start": {
@@ -46,7 +55,7 @@
         "operationId": "startOidcLogin",
         "summary": "OIDC Authorization Code + PKCEログインを開始",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcStartRequest" } } } },
-        "responses": { "200": { "description": "OIDC認証URL", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcStartResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } }
+        "responses": { "200": { "description": "OIDC認証URL", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcStartResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "429": { "$ref": "#/components/responses/TooManyRequests" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } }
       }
     },
     "/api/v1/auth/oidc/callback": {
@@ -55,7 +64,7 @@
         "operationId": "completeOidcLogin",
         "summary": "OIDC callbackのstateとcodeを検証してログインを完了",
         "parameters": [{ "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }, { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "ログイン結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcCallbackResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "403": { "$ref": "#/components/responses/Forbidden" }, "502": { "$ref": "#/components/responses/BadGateway" } }
+        "responses": { "200": { "description": "ログイン結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcCallbackResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "403": { "$ref": "#/components/responses/Forbidden" }, "429": { "$ref": "#/components/responses/TooManyRequests" }, "502": { "$ref": "#/components/responses/BadGateway" } }
       }
     },
     "/api/v1/auth/mfa/enroll": {
@@ -64,7 +73,7 @@
         "operationId": "enrollMfa",
         "summary": "TOTP MFA登録を開始",
         "security": [{ "BearerAuth": [] }],
-        "responses": { "200": { "description": "MFA登録情報", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaEnrollResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/Conflict" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } }
+        "responses": { "200": { "description": "MFA登録情報", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaEnrollResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/Conflict" }, "429": { "$ref": "#/components/responses/TooManyRequests" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } }
       }
     },
     "/api/v1/auth/mfa/confirm": {
@@ -74,7 +83,7 @@
         "summary": "TOTP MFA登録を確定",
         "security": [{ "BearerAuth": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaCodeRequest" } } } },
-        "responses": { "200": { "description": "MFA登録済み", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaConfirmResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/Conflict" } }
+        "responses": { "200": { "description": "MFA登録済み", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaConfirmResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/Conflict" }, "429": { "$ref": "#/components/responses/TooManyRequests" } }
       }
     },
     "/api/v1/auth/mfa/complete": {
@@ -83,7 +92,7 @@
         "operationId": "completeMfa",
         "summary": "MFAチャレンジを完了してセッションを発行",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaCompleteRequest" } } } },
-        "responses": { "200": { "description": "ログイン結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+        "responses": { "200": { "description": "ログイン結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "429": { "$ref": "#/components/responses/TooManyRequests" } }
       }
     },
     "/api/v1/auth/logout": {
@@ -92,7 +101,7 @@
         "operationId": "logout",
         "summary": "現在のセッションを破棄",
         "security": [{ "BearerAuth": [] }],
-        "responses": { "200": { "description": "ログアウト成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } } } }
+        "responses": { "200": { "description": "ログアウト成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } } }, "429": { "$ref": "#/components/responses/TooManyRequests" } }
       }
     },
     "/api/v1/auth/me": {
@@ -319,7 +328,7 @@
         "summary": "MCP JSON-RPCを実行",
         "security": [{}, { "BearerAuth": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["jsonrpc", "method"], "properties": { "jsonrpc": { "const": "2.0" }, "id": {}, "method": { "type": "string" }, "params": { "type": "object", "additionalProperties": true } }, "additionalProperties": false } } } },
-        "responses": { "200": { "description": "JSON-RPCレスポンス", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+        "responses": { "200": { "description": "JSON-RPCレスポンス", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "429": { "$ref": "#/components/responses/TooManyRequests" } }
       }
     }
   },
@@ -334,6 +343,7 @@
       "JobIdPath": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
     },
     "responses": {
+      "TooManyRequests": { "description": "認証操作が多すぎます", "headers": { "Retry-After": { "schema": { "type": "integer" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "BadRequest": { "description": "入力不正", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "Unauthorized": { "description": "ログインが必要", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "BadGateway": { "description": "外部公開先との連携失敗", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
@@ -351,6 +361,7 @@
       "OkResponse": { "type": "object", "required": ["ok"], "properties": { "ok": { "type": "boolean" } } },
       "ErrorResponse": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } } },
       "LoginRequest": { "type": "object", "required": ["email", "password", "category"], "properties": { "email": { "type": "string", "format": "email" }, "password": { "type": "string", "minLength": 1 }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole", "default": "user" } }, "additionalProperties": false },
+      "AuthConfigResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["passwordLogin", "oidcLogin", "mfaEnrollment"], "properties": { "passwordLogin": { "type": "boolean" }, "oidcLogin": { "type": "boolean" }, "mfaEnrollment": { "type": "boolean" } } } } },
       "OidcStartRequest": { "type": "object", "required": ["category"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole", "default": "user" } }, "additionalProperties": false },
       "OidcStartResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["authorizationUrl", "state", "expiresInSeconds"], "properties": { "authorizationUrl": { "type": "string", "format": "uri" }, "state": { "type": "string" }, "expiresInSeconds": { "type": "integer" } } } } },
       "OidcCallbackResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/LoginResponse" } } },

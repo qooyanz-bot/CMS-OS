@@ -22,13 +22,17 @@ npm run dev
 
 - `auth-accounts.json`
 - `auth-sessions.json`
+- `auth-oidc-transactions.json`
+- `auth-mfa-challenges.json`
+- `auth-mfa-enrollments.json`
+- `auth-audit-log.json`
 - `portal-requests.json`
 - `portal-jobs.json`
 - `portal-applications.json`
 - `content-proposals.json`
 - `content-records.json`
 
-セッションは生トークンではなくSHA-256ハッシュだけを保存します。ファイルモードは単一インスタンスの開発用であり、複数プロセスからの同時書き込み、暗号化バックアップ、OIDC、MFAを提供するものではありません。
+セッション、OIDC state、MFAチャレンジは生値ではなくハッシュ化した値を保存します。MFA秘密鍵は`CMS_OS_AUTH_ENCRYPTION_KEY`で暗号化します。ファイルモードは単一インスタンスの開発・小規模検証用であり、複数プロセスからの同時書き込みや暗号化バックアップは別途運用設計が必要です。本番はPostgreSQLと秘密管理基盤を使用してください。
 
 ## PostgreSQL移行
 
