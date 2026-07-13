@@ -127,6 +127,22 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get("llms.txt") ?? "", /ai-business/);
     assert.match(fileMap.get("categories\/legal\/providers\/provider-legal-demo\/index.html") ?? "", /Organization/);
 
+    const submitted = await request("/api/v1/providers/provider-legal-demo/listing-submission", {
+      method: "POST",
+      headers: authHeaders,
+    });
+    assert.equal(submitted.status, 200);
+    assert.equal(submitted.body.item.listingStatus, "pending_review");
+    const filteredBuild = await request("/api/v1/publications/build", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ contentIds: [draft.body.item.id], baseUrl: "https://www.example.com" }),
+    });
+    assert.equal(filteredBuild.status, 201);
+    const filteredFiles = new Map((filteredBuild.body.item.files as Array<{ path: string; content: string }>).map((file) => [file.path, file.content]));
+    assert.equal(filteredFiles.has("categories/legal/providers/provider-legal-demo/index.html"), false);
+    assert.doesNotMatch(filteredFiles.get("sitemap.xml") ?? "", /categories\/legal\/providers\/provider-legal-demo/);
+
     const deployed = await request("/api/v1/publications/deploy", {
       method: "POST",
       headers: authHeaders,
