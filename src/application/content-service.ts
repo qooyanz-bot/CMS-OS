@@ -345,6 +345,21 @@ export class ContentService {
     return archived;
   }
 
+  public unpublishContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "publication.unpublish");
+    if (content.status !== "published") {
+      throw new ContentServiceError(409, "公開中のコンテンツだけ公開取消できます。");
+    }
+    const unpublished = this.store.updateContent(content.id, { status: "archived" }, {
+      incrementVersion: false,
+      reason: "workflow",
+      ...(principal?.accountId ? { actorId: principal.accountId } : {}),
+    });
+    if (!unpublished) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    return unpublished;
+  }
+
   public restoreContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "content.restore");

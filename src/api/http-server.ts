@@ -780,6 +780,18 @@ async function handleMcp(
             },
           },
           {
+            name: "publication.unpublish",
+            description: "公開中コンテンツを除外した静的スナップショットをデプロイし、成功時に公開取消します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                contentIds: { type: "array", items: { type: "string" }, minItems: 1 },
+                baseUrl: { type: "string" },
+              },
+              required: ["contentIds"],
+            },
+          },
+          {
             name: "publication.schedule",
             description: "承認済みコンテンツを指定日時にBuilderOS Adapterで公開する予約を保存します。",
             inputSchema: {
@@ -1361,6 +1373,18 @@ async function handleMcp(
       const result = await publication.publish(
         principal,
         parseOptionalStringArray(argumentsObject.contentIds, "contentIds"),
+        typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
+      );
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "publication.unpublish") {
+      const contentIds = parseOptionalStringArray(argumentsObject.contentIds, "contentIds");
+      if (!contentIds || contentIds.length === 0) throw new Error("contentIdsを1件以上指定してください。");
+      const result = await publication.unpublish(
+        principal,
+        contentIds,
         typeof argumentsObject.baseUrl === "string" ? argumentsObject.baseUrl : undefined,
       );
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
@@ -2002,6 +2026,29 @@ export function createHttpServer(
           writeJson(response, 202, { item: result });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを公開できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/publications/unpublish") {
+        const body = await readJson(request);
+        if (!Array.isArray(body.contentIds) || body.contentIds.length === 0 || body.contentIds.some((item) => typeof item !== "string")) {
+          writeJson(response, 400, { error: "contentIdsは1件以上の文字列配列で指定してください。" });
+          return;
+        }
+        if (body.baseUrl !== undefined && typeof body.baseUrl !== "string") {
+          writeJson(response, 400, { error: "baseUrlは文字列で指定してください。" });
+          return;
+        }
+        try {
+          const item = await publication.unpublish(
+            principal,
+            body.contentIds as string[],
+            typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+          );
+          writeJson(response, 202, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "公開取消できません。" });
         }
         return;
       }

@@ -22,6 +22,7 @@ GET  /api/v1/publications
 POST /api/v1/publications/build
 POST /api/v1/publications/deploy
 POST /api/v1/publications/publish
+POST /api/v1/publications/unpublish
 GET  /api/v1/publications/schedules
 POST /api/v1/publications/schedules
 POST /api/v1/publications/schedules/execute
@@ -39,6 +40,10 @@ POST /api/v1/publications/{publicationId}/rollback
 ```
 
 `contentIds`を省略すると、ログイン中の事業者が管理する承認済みコンテンツをまとめてビルドします。`baseUrl`はcanonical、sitemap、robots.txt、llms.txtの絶対URLに使用します。
+
+## 公開取消
+
+`POST /api/v1/publications/unpublish`またはMCPの`publication.unpublish`は、指定した公開済みコンテンツを除外した静的スナップショットを作成し、BuilderOS Adapter経由で再デプロイします。実デプロイが成功した場合だけ、対象コンテンツを`archived`へ移行し、対象コンテンツを含む未実行の予約公開を自動的に取消します。dry-runまたはデプロイ失敗時は、CMS上の公開状態を変更しません。
 
 ## 予約公開
 

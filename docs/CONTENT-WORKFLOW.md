@@ -76,6 +76,7 @@ POST /api/v1/publications/publish
 - `content.version_restore`
 - `content.duplicate`
 - `content.archive`
+- `publication.unpublish`
 - `content.restore`
 - `content.polish`
 - `content.fact_check`

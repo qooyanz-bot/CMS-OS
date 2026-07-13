@@ -791,6 +791,7 @@ function contentActionButtons(content) {
     actions.push(`<button class="button ghost content-action" data-action="request-changes" data-content-id="${escapeHtml(content.id)}">差し戻し</button>`);
   }
   if (content.status === "approved") actions.push(`<button class="button primary content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>`);
+  if (content.status === "published") actions.push(`<button class="button ghost content-action" data-action="unpublish" data-content-id="${escapeHtml(content.id)}">公開を取り消す</button>`);
   return actions.join("");
 }
 
@@ -854,7 +855,6 @@ async function handleContentVersionRestore(contentId, version) {
   try {
     await api(`/api/v1/content/${encodeURIComponent(contentId)}/versions/${version}/restore`, { method: "POST", body: JSON.stringify({}) });
     setContentMessage("指定した版を下書きとして復元しました。事実確認とSEO監査を再実行してください。");
-    await reloadContent();
     await reloadContentVersions(contentId);
   } catch (error) {
     setContentMessage(error.message);
@@ -955,6 +955,10 @@ async function handleContentAction(action, contentId) {
     } else if (action === "approve") {
       await api(`/api/v1/content/${encodeURIComponent(contentId)}/approve`, { method: "POST" });
       setContentMessage("人間の確認済みとして承認しました。");
+    } else if (action === "unpublish") {
+      if (!window.confirm("この公開済みコンテンツを静的サイトから除外しますか？")) return;
+      const body = await api("/api/v1/publications/unpublish", { method: "POST", body: JSON.stringify({ contentIds: [contentId], baseUrl: window.location.origin }) });
+      setContentMessage(body.item.deployment.status === "submitted" ? "公開取消と静的サイトの更新が完了しました。" : "dry-runのため、公開状態は変更していません。");
     } else if (action === "build") {
       const body = await api("/api/v1/publications/build", { method: "POST", body: JSON.stringify({ contentIds: [contentId], baseUrl: window.location.origin }) });
       setContentMessage(`静的ビルド完了: ${body.item.files.length}ファイル。BuilderOS Adapterへ渡せます。`);

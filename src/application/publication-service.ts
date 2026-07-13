@@ -468,13 +468,20 @@ export class PublicationService {
     principal: AuthenticatedPrincipal | null,
     contentIds?: string[],
     requestedBaseUrl?: string,
+    excludedContentIds: string[] = [],
+    allowEmpty = false,
   ): PublicationBuildResult {
     if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
+    this.portal.assertAction(principal, principal.category, "publication.build");
+    if (principal.role !== "provider" || !principal.providerId) {
+      throw new PublicationServiceError(403, "静的公開は事業者だけが利用できます。");
+    }
     const baseUrl = normalizeBaseUrl(requestedBaseUrl);
+    const excludedContentIdSet = new Set(excludedContentIds);
     const contents = contentIds && contentIds.length > 0
       ? contentIds.map((contentId) => this.content.getContent(principal, contentId))
-      : this.content.listContent(principal).filter((content) => content.status !== "archived");
-    if (contents.length === 0) throw new PublicationServiceError(400, "公開対象のコンテンツがありません。");
+      : this.content.listContent(principal).filter((content) => content.status !== "archived" && !excludedContentIdSet.has(content.id));
+    if (contents.length === 0 && !allowEmpty) throw new PublicationServiceError(400, "公開対象のコンテンツがありません。");
 
     const publishedCategories: PublishedCategory[] = this.portal.listCategories();
     const categoryLabelBySlug = new Map(publishedCategories.map((category) => [category.slug, category.label]));
@@ -534,8 +541,8 @@ export class PublicationService {
     };
     this.publicationStore.create({
       id: publication.publicationId,
-      category: contents[0]!.category,
-      providerId: contents[0]!.providerId,
+      category: contents[0]?.category ?? principal.category,
+      providerId: contents[0]?.providerId ?? principal.providerId,
       baseUrl: publication.baseUrl,
       contentIds: [...publication.contentIds],
       generatedAt: publication.generatedAt,
@@ -589,6 +596,50 @@ export class PublicationService {
         deployment: deploymentRecord(deployment),
       });
       return { publication, deployment, publishedContentIds };
+    } catch (error) {
+      if (error instanceof BuilderOSAdapterError) {
+        throw new PublicationServiceError(502, error.message);
+      }
+      throw error;
+    }
+  }
+
+  public async unpublish(
+    principal: AuthenticatedPrincipal | null,
+    contentIds: string[],
+    requestedBaseUrl?: string,
+  ): Promise<{ publication: PublicationBuildResult; deployment: CloudflarePagesDeploymentResult; unpublishedContentIds: string[]; cancelledScheduleIds: string[] }> {
+    if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
+    if (principal.role !== "provider" || !principal.providerId) {
+      throw new PublicationServiceError(403, "公開取消は事業者だけが利用できます。");
+    }
+    this.portal.assertAction(principal, principal.category, "publication.unpublish");
+    const targetContentIds = [...new Set(contentIds.filter((contentId) => contentId.trim().length > 0))];
+    if (targetContentIds.length === 0) throw new PublicationServiceError(400, "公開取消するcontentIdsを1件以上指定してください。");
+    const targets = targetContentIds.map((contentId) => this.content.getContent(principal, contentId));
+    for (const target of targets) {
+      if (target.status !== "published") {
+        throw new PublicationServiceError(409, `コンテンツ「${target.title}」は公開中ではありません。`);
+      }
+    }
+
+    const publication = this.build(principal, undefined, requestedBaseUrl, targetContentIds, true);
+    try {
+      const deployment = await this.builderosAdapter.deployToCloudflarePages(publication, this.cloudflareOptionsProvider());
+      this.publicationStore.update(publication.publicationId, {
+        status: deployment.status === "submitted" ? "published" : "built",
+        deployment: deploymentRecord(deployment),
+      });
+      if (deployment.status !== "submitted") {
+        return { publication, deployment, unpublishedContentIds: [], cancelledScheduleIds: [] };
+      }
+      const unpublishedContentIds = targets.map((target) => this.content.unpublishContent(principal, target.id).id);
+      const cancelledScheduleIds = this.publicationStore.cancelSchedulesForContent(
+        principal.category,
+        principal.providerId,
+        unpublishedContentIds,
+      );
+      return { publication, deployment, unpublishedContentIds, cancelledScheduleIds };
     } catch (error) {
       if (error instanceof BuilderOSAdapterError) {
         throw new PublicationServiceError(502, error.message);

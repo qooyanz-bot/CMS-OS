@@ -54,6 +54,7 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/publications/build",
       "/api/v1/publications/publish",
       "/api/v1/publications/deploy",
+      "/api/v1/publications/unpublish",
       "/api/v1/publications/schedules",
       "/api/v1/publications/schedules/execute",
       "/api/v1/publications/schedules/{scheduleId}/cancel",

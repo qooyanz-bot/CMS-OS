@@ -211,6 +211,7 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.ok(names.includes("content.fact_check"));
     assert.ok(names.includes("seo.audit"));
     assert.ok(names.includes("publication.publish"));
+    assert.ok(names.includes("publication.unpublish"));
 
     const providerLogin = await request("/api/v1/auth/login", {
       method: "POST",

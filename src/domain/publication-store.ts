@@ -76,4 +76,32 @@ export class PublicationStore {
     this.stateStore?.save("publication-schedules.json", this.schedules);
     return schedule;
   }
+
+  public cancelSchedulesForContent(
+    category: PublicationScheduleRecord["category"],
+    providerId: string,
+    contentIds: string[],
+    reason = "対象コンテンツの公開取消により予約を取消しました。",
+  ): string[] {
+    const contentIdSet = new Set(contentIds);
+    const cancelledIds: string[] = [];
+    const now = new Date().toISOString();
+    for (const schedule of this.schedules) {
+      if (
+        schedule.category !== category ||
+        schedule.providerId !== providerId ||
+        schedule.status !== "scheduled" ||
+        !schedule.contentIds.some((contentId) => contentIdSet.has(contentId))
+      ) continue;
+      Object.assign(schedule, {
+        status: "cancelled" as const,
+        cancelledAt: now,
+        lastError: reason,
+        updatedAt: now,
+      });
+      cancelledIds.push(schedule.id);
+    }
+    if (cancelledIds.length > 0) this.stateStore?.save("publication-schedules.json", this.schedules);
+    return cancelledIds;
+  }
 }

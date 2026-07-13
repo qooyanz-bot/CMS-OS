@@ -469,6 +469,16 @@
         "responses": { "200": { "description": "公開履歴", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationHistoryListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
+    "/api/v1/publications/unpublish": {
+      "post": {
+        "tags": ["Publication"],
+        "operationId": "unpublishContent",
+        "summary": "公開済みコンテンツを静的サイトから除外",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationUnpublishRequest" } } } },
+        "responses": { "202": { "description": "公開取消結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationUnpublishResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" }, "502": { "$ref": "#/components/responses/BadGateway" } }
+      }
+    },
     "/api/v1/publications/schedules": {
       "get": {
         "tags": ["Publication"],
@@ -817,6 +827,7 @@
       "FactCheck": { "type": "object", "required": ["contentId", "contentVersion", "passed", "scope", "items", "issues", "checkedAt"], "properties": { "contentId": { "type": "string" }, "contentVersion": { "type": "integer" }, "passed": { "type": "boolean" }, "scope": { "type": "string", "enum": ["source_presence_only"] }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/FactCheckItem" } }, "issues": { "type": "array", "items": { "type": "string" } }, "checkedAt": { "type": "string", "format": "date-time" } } },
       "FactCheckResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/FactCheck" } } },
       "PublicationBuildRequest": { "type": "object", "properties": { "contentIds": { "type": "array", "items": { "type": "string" } }, "baseUrl": { "type": "string", "format": "uri" } }, "additionalProperties": false },
+      "PublicationUnpublishRequest": { "type": "object", "required": ["contentIds"], "properties": { "contentIds": { "type": "array", "minItems": 1, "items": { "type": "string" } }, "baseUrl": { "type": "string", "format": "uri" } }, "additionalProperties": false },
       "PublicationScheduleRequest": { "type": "object", "required": ["scheduledFor"], "properties": { "contentIds": { "type": "array", "items": { "type": "string" } }, "baseUrl": { "type": "string", "format": "uri" }, "scheduledFor": { "type": "string", "format": "date-time" } }, "additionalProperties": false },
       "PublicationScheduleExecuteRequest": { "type": "object", "properties": { "before": { "type": "string", "format": "date-time" } }, "additionalProperties": false },
       "PublicationRollbackRequest": { "type": "object", "properties": { "baseUrl": { "type": "string", "format": "uri" } }, "additionalProperties": false },
@@ -827,6 +838,7 @@
       "PublicationRollbackResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment", "rolledBackPublicationId"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "$ref": "#/components/schemas/PublicationDeployment" }, "rolledBackPublicationId": { "type": "string" } } } } },
       "PublicationDeployResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "type": "object", "additionalProperties": true } } } } },
       "PublicationPublishResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment", "publishedContentIds"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "type": "object", "additionalProperties": true }, "publishedContentIds": { "type": "array", "items": { "type": "string" } } } } } },
+      "PublicationUnpublishResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["publication", "deployment", "unpublishedContentIds", "cancelledScheduleIds"], "properties": { "publication": { "type": "object", "additionalProperties": true }, "deployment": { "type": "object", "additionalProperties": true }, "unpublishedContentIds": { "type": "array", "items": { "type": "string" } }, "cancelledScheduleIds": { "type": "array", "items": { "type": "string" } } } } } },
       "PublicationSchedule": { "type": "object", "required": ["id", "publicationId", "category", "providerId", "contentIds", "baseUrl", "scheduledFor", "status", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "publicationId": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "contentIds": { "type": "array", "items": { "type": "string" } }, "baseUrl": { "type": "string", "format": "uri" }, "scheduledFor": { "type": "string", "format": "date-time" }, "status": { "type": "string", "enum": ["scheduled", "cancelled", "executed"] }, "executedAt": { "type": "string", "format": "date-time" }, "cancelledAt": { "type": "string", "format": "date-time" }, "lastError": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
       "PublicationScheduleResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/PublicationSchedule" } } },
       "PublicationScheduleListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/PublicationSchedule" } } } },

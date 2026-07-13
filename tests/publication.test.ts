@@ -252,6 +252,7 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(names.includes("publication.build"));
     assert.ok(names.includes("publication.deploy"));
     assert.ok(names.includes("publication.publish"));
+    assert.ok(names.includes("publication.unpublish"));
     assert.ok(names.includes("publication.schedule"));
     assert.ok(names.includes("publication.schedule_list"));
     assert.ok(names.includes("publication.schedule_cancel"));
@@ -311,6 +312,35 @@ describe("CMS-OS承認済み静的公開", () => {
     const rollbackHistory = publication.listHistory(login.principal).find((item) => item.id === rollback.publication.publicationId);
     assert.equal(rollbackHistory?.status, "rolled_back");
     assert.equal(rollbackHistory?.rollbackOf, result.publication.publicationId);
+
+    const pendingUnpublishSchedule = publication.schedule(
+      login.principal,
+      new Date(Date.now() + 300_000).toISOString(),
+      [draft.id],
+      "https://www.example.com",
+    );
+    const apiServer = createHttpServer(auth, portal, content, publication);
+    await new Promise<void>((resolve) => apiServer.listen(0, "127.0.0.1", resolve));
+    const apiAddress = apiServer.address();
+    if (!apiAddress || typeof apiAddress === "string") throw new Error("公開取消APIテスト用サーバーのポートを取得できません。");
+    let unpublished: any;
+    try {
+      const unpublishResponse = await fetch(`http://127.0.0.1:${apiAddress.port}/api/v1/publications/unpublish`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${login.accessToken}` },
+        body: JSON.stringify({ contentIds: [draft.id], baseUrl: "https://www.example.com" }),
+      });
+      assert.equal(unpublishResponse.status, 202);
+      unpublished = (await unpublishResponse.json()).item;
+    } finally {
+      await new Promise<void>((resolve, reject) => apiServer.close((error) => (error ? reject(error) : resolve())));
+    }
+    assert.equal(unpublished.deployment.status, "submitted");
+    assert.deepEqual(unpublished.unpublishedContentIds, [draft.id]);
+    assert.equal((unpublished.publication.files as Array<{ path: string }>).some((file) => file.path === `content/${draft.slug}/index.html`), false);
+    assert.ok(unpublished.cancelledScheduleIds.includes(pendingUnpublishSchedule.id));
+    assert.equal(content.getContent(login.principal, draft.id).status, "archived");
+    assert.equal(publication.listSchedules(login.principal).find((item) => item.id === pendingUnpublishSchedule.id)?.status, "cancelled");
 
     const scheduledProposal = content.createProposal(login.principal, {
       category: "legal",
