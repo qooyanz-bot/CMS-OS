@@ -85,6 +85,12 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(legal.body.items[0].name, "弁護士ドットコム");
     assert.equal(beauty.body.items[0].name, "ホットペッパービューティー");
     assert.equal(beauty.body.items.some((item: { kind: string }) => item.kind === "provider_resource"), false);
+    const themeCategories = ["ai-business", "labor-shortage", "tourism", "mobility-dx", "gx", "regional-revitalization"];
+    for (const category of themeCategories) {
+      const guides = await request(`/api/v1/categories/${category}/directories`);
+      assert.equal(guides.status, 200);
+      assert.ok(guides.body.items.length > 0, `${category}の外部案内が空です。`);
+    }
 
     const providerGuides = await request("/api/v1/categories/beauty/directories", {
       headers: { authorization: `Bearer ${beautyProviderToken}` },
