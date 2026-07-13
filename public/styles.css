@@ -69,6 +69,9 @@ select:focus, input:focus, textarea:focus { border-color: rgba(184, 243, 106, .6
 .workflow-line span { color: var(--warm); font-size: 12px; font-weight: 900; }
 .workflow-line strong { font-size: 13px; }
 .search-input { max-width: 220px; }
+.list-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 9px; margin-top: 14px; }
+.list-filters label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
+.list-filters input, .list-filters select { padding: 9px 10px; font-size: 12px; }
 .provider-list, .job-list { display: grid; gap: 10px; margin-top: 20px; }
 .provider-item, .job-item { background: rgba(255,255,255,.035); border: 1px solid var(--border); border-radius: 14px; padding: 15px; }
 .provider-item h3, .job-item h3 { margin: 0 0 7px; font-size: 16px; }

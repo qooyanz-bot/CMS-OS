@@ -48,6 +48,9 @@ const elements = {
   workflowTwo: document.querySelector("#workflow-step-two"),
   workflowThree: document.querySelector("#workflow-step-three"),
   search: document.querySelector("#provider-search"),
+  providerTheme: document.querySelector("#provider-theme-filter"),
+  providerLocation: document.querySelector("#provider-location-filter"),
+  providerSort: document.querySelector("#provider-sort"),
   providers: document.querySelector("#provider-list"),
   requestPanel: document.querySelector("#request-panel"),
   requestForm: document.querySelector("#request-form"),
@@ -63,9 +66,21 @@ const elements = {
   notificationList: document.querySelector("#notification-list"),
   requestInboxPanel: document.querySelector("#request-inbox-panel"),
   requestList: document.querySelector("#request-list"),
+  requestSearch: document.querySelector("#request-search-filter"),
+  requestStatus: document.querySelector("#request-status-filter"),
+  requestSort: document.querySelector("#request-sort"),
   applicationPanel: document.querySelector("#application-panel"),
   applicationList: document.querySelector("#application-list"),
+  applicationSearch: document.querySelector("#application-search-filter"),
+  applicationJob: document.querySelector("#application-job-filter"),
+  applicationStatus: document.querySelector("#application-status-filter"),
+  applicationSort: document.querySelector("#application-sort"),
   jobs: document.querySelector("#job-list"),
+  jobSearch: document.querySelector("#job-search-filter"),
+  jobEmployment: document.querySelector("#job-employment-filter"),
+  jobLocation: document.querySelector("#job-location-filter"),
+  jobStatus: document.querySelector("#job-status-filter"),
+  jobSort: document.querySelector("#job-sort"),
   contentPanel: document.querySelector("#content-editor-panel"),
   contentForm: document.querySelector("#content-proposal-form"),
   contentMessage: document.querySelector("#content-message"),
@@ -295,6 +310,61 @@ async function updateRoleStatus(resource, resourceId, status) {
   }
 }
 
+function buildListQuery(values) {
+  const params = new URLSearchParams();
+  Object.entries(values).forEach(([key, value]) => {
+    const normalized = String(value ?? "").trim();
+    if (normalized) params.set(key, normalized);
+  });
+  return params.toString();
+}
+
+async function reloadProviders() {
+  const query = buildListQuery({
+    category: state.category,
+    search: elements.search.value,
+    theme: elements.providerTheme.value,
+    location: elements.providerLocation.value,
+    sort: elements.providerSort.value,
+  });
+  const body = await api(`/api/v1/providers?${query}`);
+  renderProviders(body.items);
+}
+
+async function reloadRequests() {
+  const query = buildListQuery({
+    search: elements.requestSearch.value,
+    status: elements.requestStatus.value,
+    sort: elements.requestSort.value,
+  });
+  const body = await api(`/api/v1/requests?${query}`);
+  renderRequests(body.items);
+}
+
+async function reloadApplications() {
+  const query = buildListQuery({
+    search: elements.applicationSearch.value,
+    jobId: elements.applicationJob.value,
+    status: elements.applicationStatus.value,
+    sort: elements.applicationSort.value,
+  });
+  const body = await api(`/api/v1/applications?${query}`);
+  renderApplications(body.items);
+}
+
+async function reloadJobs() {
+  const query = buildListQuery({
+    category: state.category,
+    search: elements.jobSearch.value,
+    employmentType: elements.jobEmployment.value,
+    location: elements.jobLocation.value,
+    status: elements.jobStatus.value,
+    sort: elements.jobSort.value,
+  });
+  const body = await api(`/api/v1/jobs?${query}`);
+  renderJobs(body.items);
+}
+
 async function reloadRoleData() {
   const canSeeRequests = Boolean(state.token && (state.role === "orderer" || state.role === "provider"));
   const canSeeApplications = Boolean(state.token && (state.role === "candidate" || state.role === "provider"));
@@ -315,16 +385,14 @@ async function reloadRoleData() {
 
   if (canSeeRequests) {
     try {
-      const body = await api("/api/v1/requests");
-      renderRequests(body.items);
+      await reloadRequests();
     } catch (error) {
       setMessage(error.message);
     }
   }
   if (canSeeApplications) {
     try {
-      const body = await api("/api/v1/applications");
-      renderApplications(body.items);
+      await reloadApplications();
     } catch (error) {
       setMessage(error.message);
     }
@@ -514,11 +582,8 @@ async function reload() {
   renderExperience(experienceBody.experience);
   await reloadProviderManagement();
   await reloadRoleData();
-  const search = elements.search.value.trim();
-  const providers = await api(`/api/v1/providers?category=${encodeURIComponent(state.category)}${search ? `&search=${encodeURIComponent(search)}` : ""}`);
-  renderProviders(providers.items);
-  const jobs = await api(`/api/v1/jobs?category=${encodeURIComponent(state.category)}`);
-  renderJobs(jobs.items);
+  await reloadProviders();
+  await reloadJobs();
   elements.session.textContent = state.token ? `${labels[state.role]} / ${state.category}` : "未ログイン";
   await reloadContent();
 }
@@ -615,12 +680,20 @@ elements.category.addEventListener("change", async () => {
   state.category = elements.category.value;
   try { await reload(); } catch (error) { setMessage(error.message); }
 });
-elements.search.addEventListener("input", async () => {
-  try {
-    const body = await api(`/api/v1/providers?category=${encodeURIComponent(state.category)}&search=${encodeURIComponent(elements.search.value.trim())}`);
-    renderProviders(body.items);
-  } catch (error) { setMessage(error.message); }
-});
+function bindListFilters(controls, reloadFunction) {
+  controls.forEach((control) => {
+    if (!control) return;
+    const eventName = control.tagName === "SELECT" ? "change" : "input";
+    control.addEventListener(eventName, () => {
+      void reloadFunction().catch((error) => setMessage(error.message));
+    });
+  });
+}
+
+bindListFilters([elements.search, elements.providerTheme, elements.providerLocation, elements.providerSort], reloadProviders);
+bindListFilters([elements.requestSearch, elements.requestStatus, elements.requestSort], reloadRequests);
+bindListFilters([elements.applicationSearch, elements.applicationJob, elements.applicationStatus, elements.applicationSort], reloadApplications);
+bindListFilters([elements.jobSearch, elements.jobEmployment, elements.jobLocation, elements.jobStatus, elements.jobSort], reloadJobs);
 elements.loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
   void login();
