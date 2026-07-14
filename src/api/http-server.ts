@@ -835,6 +835,21 @@ async function handleMcp(
             },
           },
           {
+            name: "favorite.list",
+            description: "ログイン中の本人がカテゴリ内で保存した公開事業者を取得します。",
+            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
+          },
+          {
+            name: "favorite.add",
+            description: "現在のカテゴリの公開事業者をお気に入りへ保存します。",
+            inputSchema: { type: "object", properties: { providerId: { type: "string" } }, required: ["providerId"] },
+          },
+          {
+            name: "favorite.remove",
+            description: "本人が保存したお気に入りを削除します。",
+            inputSchema: { type: "object", properties: { favoriteId: { type: "string" } }, required: ["favoriteId"] },
+          },
+          {
             name: "provider.get",
             description: "事業者1件の表示情報を取得します。",
             inputSchema: { type: "object", properties: { providerId: { type: "string" } }, required: ["providerId"] },
@@ -1632,6 +1647,26 @@ async function handleMcp(
         location: parseOptionalStringValue(argumentsObject.location, "location"),
         sort: parseOptionalEnumValue(argumentsObject.sort, "sort", providerSortValues),
       }, parsePaginationArguments(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "favorite.list") {
+      const result = portal.listFavorites(principal, parsePaginationArguments(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "favorite.add") {
+      if (typeof argumentsObject.providerId !== "string" || !argumentsObject.providerId.trim()) throw new Error("providerIdが必要です。");
+      const result = portal.createFavorite(principal, argumentsObject.providerId.trim());
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "favorite.remove") {
+      if (typeof argumentsObject.favoriteId !== "string" || !argumentsObject.favoriteId.trim()) throw new Error("favoriteIdが必要です。");
+      const result = portal.deleteFavorite(principal, argumentsObject.favoriteId.trim());
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2680,6 +2715,45 @@ export function createHttpServer(
           });
         } catch (error) {
           writeJson(response, 400, { error: error instanceof Error ? error.message : "事業者を取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/favorites") {
+        try {
+          writeJson(response, 200, portal.listFavorites(principal, parsePaginationQuery(url)));
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "お気に入りを取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/favorites") {
+        const body = await readJson(request);
+        if (typeof body.providerId !== "string" || !body.providerId.trim()) {
+          writeJson(response, 400, { error: "providerIdが必要です。" });
+          return;
+        }
+        try {
+          const result = portal.createFavorite(principal, body.providerId.trim());
+          writeJson(response, result.created ? 201 : 200, result);
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "お気に入りを登録できません。" });
+        }
+        return;
+      }
+
+      const favoriteMatch = url.pathname.match(/^\/api\/v1\/favorites\/([^/]+)$/);
+      if (request.method === "DELETE" && favoriteMatch) {
+        const favoriteId = favoriteMatch[1];
+        if (!favoriteId) {
+          writeJson(response, 400, { error: "favoriteIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, portal.deleteFavorite(principal, favoriteId));
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "お気に入りを削除できません。" });
         }
         return;
       }

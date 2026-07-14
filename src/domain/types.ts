@@ -118,6 +118,23 @@ export interface VisibleProvider extends Record<string, unknown> {
   location: string;
 }
 
+/** アカウントごとに保存する、カテゴリ内の公開事業者へのお気に入り登録。 */
+export interface ProviderFavorite {
+  id: string;
+  accountId: string;
+  category: CategorySlug;
+  providerId: string;
+  createdAt: string;
+}
+
+export interface VisibleProviderFavorite {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  provider: VisibleProvider;
+  createdAt: string;
+}
+
 export const mediaTypes = ["image", "video", "pdf"] as const;
 export type MediaType = (typeof mediaTypes)[number];
 

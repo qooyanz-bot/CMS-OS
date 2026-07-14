@@ -271,6 +271,37 @@
         "responses": { "200": { "description": "事業者一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
+    "/api/v1/favorites": {
+      "get": {
+        "tags": ["Portal"],
+        "operationId": "listFavorites",
+        "summary": "本人が保存したお気に入り事業者を取得",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+          { "name": "cursor", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "お気に入り一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FavoriteListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "post": {
+        "tags": ["Portal"],
+        "operationId": "createFavorite",
+        "summary": "公開事業者をお気に入りへ保存",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FavoriteCreateRequest" } } } },
+        "responses": { "201": { "description": "お気に入り登録", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FavoriteResponse" } } } }, "200": { "description": "登録済みのお気に入り", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FavoriteResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/favorites/{favoriteId}": {
+      "delete": {
+        "tags": ["Portal"],
+        "operationId": "deleteFavorite",
+        "summary": "本人のお気に入りを削除",
+        "parameters": [{ "name": "favoriteId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "削除結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/api/v1/providers/{providerId}": {
       "get": {
         "tags": ["Portal"],
@@ -1134,6 +1165,10 @@
       "ProviderListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Provider" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
       "ProviderUpdateRequest": { "type": "object", "properties": { "name": { "type": "string", "minLength": 2 }, "themes": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string" } }, "location": { "type": "string", "minLength": 2 }, "publicFields": { "type": "object", "additionalProperties": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] } } }, "additionalProperties": false },
       "ProviderResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Provider" } } },
+      "FavoriteCreateRequest": { "type": "object", "required": ["providerId"], "properties": { "providerId": { "type": "string", "minLength": 1 } }, "additionalProperties": false },
+      "Favorite": { "type": "object", "required": ["id", "category", "providerId", "provider", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "provider": { "$ref": "#/components/schemas/Provider" }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "FavoriteResponse": { "type": "object", "required": ["item", "created"], "properties": { "item": { "$ref": "#/components/schemas/Favorite" }, "created": { "type": "boolean" } } },
+      "FavoriteListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Favorite" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
       "ProviderListingStatus": { "type": "string", "enum": ["draft", "pending_review", "published", "suspended"] },
       "ProviderListingReview": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["draft", "published", "suspended"] }, "note": { "type": "string", "maxLength": 2000 } }, "additionalProperties": false },
       "ProviderListingReviewItem": { "type": "object", "required": ["id", "category", "name", "themes", "location", "listingStatus", "publicFields"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string" }, "themes": { "type": "array", "items": { "type": "string" } }, "location": { "type": "string" }, "listingStatus": { "$ref": "#/components/schemas/ProviderListingStatus" }, "listingSubmittedAt": { "type": "string", "format": "date-time" }, "listingReviewedAt": { "type": "string", "format": "date-time" }, "listingReviewNote": { "type": "string" }, "publicFields": { "type": "object", "additionalProperties": true } } },

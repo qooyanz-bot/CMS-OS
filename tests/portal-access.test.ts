@@ -352,6 +352,54 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(response.status, 403);
   });
 
+  it("発注者はカテゴリ別の公開事業者をお気に入りへ保存・解除でき、MCPと同じ所有者境界を使う", async () => {
+    const denied = await request("/api/v1/favorites", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({ providerId: "provider-legal-demo" }),
+    });
+    assert.equal(denied.status, 403);
+
+    const added = await request("/api/v1/favorites", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ providerId: "provider-legal-demo" }),
+    });
+    assert.equal(added.status, 201);
+    assert.equal(added.body.created, true);
+    assert.equal(added.body.item.providerId, "provider-legal-demo");
+    assert.equal(added.body.item.accountId, undefined);
+
+    const duplicate = await request("/api/v1/favorites", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ providerId: "provider-legal-demo" }),
+    });
+    assert.equal(duplicate.status, 200);
+    assert.equal(duplicate.body.created, false);
+    assert.equal(duplicate.body.item.id, added.body.item.id);
+
+    const listed = await request("/api/v1/favorites", { headers: { authorization: `Bearer ${legalOrdererToken}` } });
+    assert.equal(listed.status, 200);
+    assert.ok(listed.body.items.some((item: { providerId: string }) => item.providerId === "provider-legal-demo"));
+
+    const mcp = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 60, method: "tools/call", params: { name: "favorite.list", arguments: {} } }),
+    });
+    assert.equal(mcp.status, 200);
+    assert.ok(mcp.body.result.structuredContent.items.some((item: { id: string }) => item.id === added.body.item.id));
+
+    const removed = await request(`/api/v1/favorites/${added.body.item.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+    });
+    assert.deepEqual(removed.body, { ok: true });
+    const after = await request("/api/v1/favorites", { headers: { authorization: `Bearer ${legalOrdererToken}` } });
+    assert.equal(after.body.items.some((item: { id: string }) => item.id === added.body.item.id), false);
+  });
+
   it("MCPからカテゴリ表示と事業者検索を実行できる", async () => {
     const tools = await request("/mcp", {
       method: "POST",

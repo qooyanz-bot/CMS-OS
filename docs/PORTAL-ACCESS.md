@@ -14,6 +14,7 @@
 - カテゴリ別の外部ディレクトリ・予約・事業者向け案内
 - サーバー側の表示フィールド投影
 - REST API
+- カテゴリ別のお気に入り事業者保存・解除
 - MCPの`tools/list`と`tools/call`
 - 発注者による依頼作成
 - 担当事業者による依頼閲覧
@@ -89,6 +90,9 @@ DELETE /api/v1/directories/{directoryId}  # 運営キーで外部案内を削除
 外部案内は運営キーを持つAPI/MCP連携だけが追加・更新・削除できます。閲覧時はカテゴリと現在のロールに応じて対象案内を投影します。
 GET  /api/v1/providers?category=beauty&theme=カラー
 GET  /api/v1/providers/{providerId}
+GET  /api/v1/favorites?limit=50&cursor=0
+POST /api/v1/favorites
+DELETE /api/v1/favorites/{favoriteId}
 PATCH /api/v1/providers/{providerId}
 POST /api/v1/providers/{providerId}/listing-submission
 PATCH /api/v1/providers/{providerId}/listing-review
@@ -153,11 +157,14 @@ POST /mcp
 
 運営は `GET /api/v1/provider-listing-reviews` またはMCPの `provider.listing_review_queue` で審査待ち掲載情報を取得できます。カテゴリ、掲載状態、limit、cursorで絞り込みます。運営キーはブラウザUIへ渡さず、API/MCP連携側で管理します。
 
+お気に入りは `POST /api/v1/favorites`（`favorite.add`）、`GET /api/v1/favorites`（`favorite.list`）、`DELETE /api/v1/favorites/{favoriteId}`（`favorite.remove`）で操作します。現在のアカウントとカテゴリに限定し、公開中の事業者だけを保存できます。同じ事業者の再登録は冪等に既存項目を返し、事業者ロールにはお気に入り操作を表示・許可しません。
+
 ## 依頼・求人応募の権限
 
 | 操作 | ユーザー | 発注者 | 事業者 | リクルーター |
 |---|---:|---:|---:|---:|
 | 公開事業者検索 | ○ | ○ | ○ | ○ |
+| お気に入り保存・解除 | ○ | ○ | × | ○ |
 | 依頼作成 | × | ○ | × | × |
 | 担当依頼の閲覧 | × | ○ | ○ | × |
 | 公開事業者への問い合わせ | ○ | ○ | × | ○ |
@@ -168,6 +175,8 @@ POST /mcp
 | 担当求人の応募閲覧 | × | × | ○ | × |
 
 ## 開発用ポータルUI
+
+- お気に入り一覧：ユーザー、発注者、リクルーターが現在カテゴリの公開事業者を保存・解除
 
 事業者ロールでログインすると、APIを正本とした次の管理導線が表示されます。
 

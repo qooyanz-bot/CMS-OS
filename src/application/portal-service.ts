@@ -17,6 +17,7 @@ import type {
   PortalRole,
   PortalNotification,
   PortalCategoryContext,
+  VisibleProviderFavorite,
   ProviderListingReviewItem,
   ProviderInquiry,
   ProviderListingStatus,
@@ -316,6 +317,56 @@ export class PortalService {
     pagination: { limit?: number; cursor?: number } = {},
   ): PortalPage<VisibleProvider> {
     return this.paginate(this.searchProviders(category, principal, filters), pagination.limit ?? 50, pagination.cursor ?? 0);
+  }
+
+  public listFavorites(
+    principal: AuthenticatedPrincipal | null,
+    pagination: { limit?: number; cursor?: number } = {},
+  ): PortalPage<VisibleProviderFavorite> {
+    if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
+    this.assertAction(principal, principal.category, "favorite.manage");
+    const favorites = this.store.listFavorites(principal.accountId, principal.category).flatMap((favorite) => {
+      try {
+        return [{
+          id: favorite.id,
+          category: favorite.category,
+          providerId: favorite.providerId,
+          provider: this.getProvider(favorite.providerId, principal),
+          createdAt: favorite.createdAt,
+        }];
+      } catch (error) {
+        if (error instanceof PortalServiceError && error.statusCode === 404) return [];
+        throw error;
+      }
+    });
+    return this.paginate(favorites, pagination.limit ?? 50, pagination.cursor ?? 0);
+  }
+
+  public createFavorite(principal: AuthenticatedPrincipal | null, providerId: string): { item: VisibleProviderFavorite; created: boolean } {
+    if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
+    this.assertAction(principal, principal.category, "favorite.manage");
+    const provider = this.getProvider(providerId, principal);
+    const result = this.store.createFavorite({ accountId: principal.accountId, category: principal.category, providerId: provider.id });
+    return {
+      created: result.created,
+      item: {
+        id: result.favorite.id,
+        category: result.favorite.category,
+        providerId: result.favorite.providerId,
+        provider,
+        createdAt: result.favorite.createdAt,
+      },
+    };
+  }
+
+  public deleteFavorite(principal: AuthenticatedPrincipal | null, favoriteId: string): { ok: true } {
+    if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
+    this.assertAction(principal, principal.category, "favorite.manage");
+    if (!this.store.getFavorite(principal.accountId, principal.category, favoriteId)) {
+      throw new PortalServiceError(404, "お気に入りが見つかりません。");
+    }
+    this.store.deleteFavorite(principal.accountId, principal.category, favoriteId);
+    return { ok: true };
   }
 
   public assertAction(principal: AuthenticatedPrincipal | null, category: CategorySlug, action: string): void {

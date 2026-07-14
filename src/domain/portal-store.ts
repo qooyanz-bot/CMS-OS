@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { listProviders as listCatalogProviders } from "./catalog.js";
 import { listAllDirectoryGuides } from "./directory-catalog.js";
-import type { CategorySlug, DirectoryGuide, InquiryStatus, JobApplication, JobPosting, PortalNotification, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceRequest } from "./types.js";
+import type { CategorySlug, DirectoryGuide, InquiryStatus, JobApplication, JobPosting, PortalNotification, ProviderFavorite, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceRequest } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 
 const defaultJobs: JobPosting[] = [
@@ -47,6 +47,10 @@ function cloneDirectoryGuide(guide: DirectoryGuide): DirectoryGuide {
   return { ...guide, targetRoles: [...guide.targetRoles] };
 }
 
+function cloneFavorite(favorite: ProviderFavorite): ProviderFavorite {
+  return { ...favorite };
+}
+
 export class PortalStore {
   private readonly providers: ProviderRecord[];
   private readonly directoryGuides: DirectoryGuide[];
@@ -55,6 +59,7 @@ export class PortalStore {
   private readonly applications: JobApplication[];
   private readonly inquiries: ProviderInquiry[];
   private readonly notifications: PortalNotification[];
+  private readonly favorites: ProviderFavorite[];
 
   public constructor(private readonly stateStore?: StateStore) {
     const catalogProviders = listCatalogProviders("legal").concat(
@@ -77,6 +82,7 @@ export class PortalStore {
     this.applications = stateStore?.load<JobApplication[]>("portal-applications.json", []) ?? [];
     this.inquiries = stateStore?.load<ProviderInquiry[]>("portal-inquiries.json", []) ?? [];
     this.notifications = stateStore?.load<PortalNotification[]>("portal-notifications.json", []) ?? [];
+    this.favorites = stateStore?.load<ProviderFavorite[]>("portal-favorites.json", []) ?? [];
   }
 
   public listProviders(category: CategorySlug): ProviderRecord[] {
@@ -132,6 +138,50 @@ export class PortalStore {
     }
     this.stateStore?.save("portal-providers.json", this.providers);
     return provider;
+  }
+
+  public listFavorites(accountId: string, category: CategorySlug): ProviderFavorite[] {
+    return this.favorites
+      .filter((favorite) => favorite.accountId === accountId && favorite.category === category)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .map(cloneFavorite);
+  }
+
+  public getFavorite(accountId: string, category: CategorySlug, favoriteId: string): ProviderFavorite | undefined {
+    const favorite = this.favorites.find(
+      (candidate) => candidate.accountId === accountId && candidate.category === category && candidate.id === favoriteId,
+    );
+    return favorite ? cloneFavorite(favorite) : undefined;
+  }
+
+  public getFavoriteByProvider(accountId: string, category: CategorySlug, providerId: string): ProviderFavorite | undefined {
+    const favorite = this.favorites.find(
+      (candidate) => candidate.accountId === accountId && candidate.category === category && candidate.providerId === providerId,
+    );
+    return favorite ? cloneFavorite(favorite) : undefined;
+  }
+
+  public createFavorite(input: Omit<ProviderFavorite, "id" | "createdAt">): { favorite: ProviderFavorite; created: boolean } {
+    const existing = this.getFavoriteByProvider(input.accountId, input.category, input.providerId);
+    if (existing) return { favorite: existing, created: false };
+    const favorite: ProviderFavorite = {
+      ...input,
+      id: `favorite-${randomUUID()}`,
+      createdAt: new Date().toISOString(),
+    };
+    this.favorites.push(favorite);
+    this.stateStore?.save("portal-favorites.json", this.favorites);
+    return { favorite: cloneFavorite(favorite), created: true };
+  }
+
+  public deleteFavorite(accountId: string, category: CategorySlug, favoriteId: string): boolean {
+    const index = this.favorites.findIndex(
+      (favorite) => favorite.accountId === accountId && favorite.category === category && favorite.id === favoriteId,
+    );
+    if (index < 0) return false;
+    this.favorites.splice(index, 1);
+    this.stateStore?.save("portal-favorites.json", this.favorites);
+    return true;
   }
 
   public createRequest(input: Omit<ServiceRequest, "id" | "createdAt" | "status">): ServiceRequest {

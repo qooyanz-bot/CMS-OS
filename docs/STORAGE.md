@@ -28,6 +28,7 @@ npm run dev
 - `auth-audit-log.json`
 - `portal-requests.json`
 - `portal-directory-guides.json`
+- `portal-favorites.json`（アカウント・カテゴリごとの公開事業者お気に入り）
 - `portal-jobs.json`
 - `portal-applications.json`
 - `portal-plans.json`（事業者ごとのテーマ・地域別ポータル計画、検索意図、ページ案、ギャップ）

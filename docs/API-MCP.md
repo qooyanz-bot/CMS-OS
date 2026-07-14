@@ -30,7 +30,7 @@ BuilderOS Adapter ─┘
 | 公開 | ビルド、プレビュー、公開、ロールバック、公開状態取得 |
 | 依頼・送客 | 依頼作成、担当事業者への割当、依頼一覧、問い合わせ、ステータス更新 |
 | 採用 | 求人検索、応募作成、応募状況、事業者側の応募確認 |
-| ポータル案内 | カテゴリ別の外部ディレクトリ、予約、事業者向け案内 |
+| ポータル案内 | カテゴリ別の外部ディレクトリ、予約、事業者向け案内、お気に入り事業者の保存・削除 |
 | ポータル計画 | テーマ・地域・対象ポジションから検索意図、SEOページ案、既存コンテンツの被覆、不足情報、次アクションを生成し、企画案・下書きへ反映 |
 | 運用 | ジョブ、再試行、Webhook、監査ログ、権限、テナント設定 |
 
@@ -103,6 +103,9 @@ POST /api/v1/publications/schedules/{scheduleId}/cancel
 POST /api/v1/publications/{publicationId}/rollback
 GET  /api/v1/providers?category=legal&limit=50&cursor=0
 GET  /api/v1/providers/{providerId}
+GET  /api/v1/favorites?limit=50&cursor=0
+POST /api/v1/favorites
+DELETE /api/v1/favorites/{favoriteId}
 PATCH /api/v1/providers/{providerId}
 POST /api/v1/providers/{providerId}/listing-submission
 PATCH /api/v1/providers/{providerId}/listing-review
@@ -143,6 +146,8 @@ PATCH /api/v1/jobs/{jobId}
 掲載情報の状態は `draft`、`pending_review`、`published`、`suspended` を使います。事業者本人の `listing-submission` は審査待ちへ進め、審査待ちの事業者は公開検索から除外します。運営審査用の `listing-review` は4つのポータルロールとは分離し、`CMS_OS_OPERATOR_KEY` と `x-cms-os-operator-key` ヘッダーで保護します。
 
 問い合わせは `inquiry.create` で公開事業者へ送信し、`inquiry.list` では送信者本人または担当事業者だけが取得できます。状態遷移は `open` → `responded` → `closed` に限定し、RESTとMCPで同じ所有者検証を実行します。
+
+お気に入りは `favorite.add` / `POST /api/v1/favorites`、`favorite.list` / `GET /api/v1/favorites`、`favorite.remove` / `DELETE /api/v1/favorites/{favoriteId}`で操作します。現在のログインアカウントとカテゴリに限定し、公開中の事業者だけを保存できます。同じ事業者の再登録は既存項目を返す冪等操作とし、応答にはアカウント内部IDを含めません。RESTとMCPは同じ `favorite.manage` 権限と所有者検証を共有します。
 
 通知は問い合わせ作成・状態変更・掲載審査送信・審査結果を契機に作成します。`GET /api/v1/notifications` と `notification.list` は `limit`（1〜100）と `cursor` を受け取り、本人または自社事業者の通知だけを返します。通知の既読状態は `PATCH /api/v1/notifications/{notificationId}` または `notification.mark_read` で更新します。
 

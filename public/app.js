@@ -9,6 +9,7 @@ const state = {
   authCapabilities: { passwordLogin: true, oidcLogin: false, mfaEnrollment: false },
   experience: null,
   providers: [],
+  favorites: [],
   directoryGuides: [],
   requests: [],
   applications: [],
@@ -130,9 +131,12 @@ const elements = {
   providerLocation: document.querySelector("#provider-location-filter"),
   providerSort: document.querySelector("#provider-sort"),
   providers: document.querySelector("#provider-list"),
-  providerPagination: document.querySelector("#provider-pagination"),
-  providerStatus: document.querySelector("#provider-list-status"),
-  directoryGuidePanel: document.querySelector("#directory-guide-panel"),
+      providerPagination: document.querySelector("#provider-pagination"),
+      providerStatus: document.querySelector("#provider-list-status"),
+      favoritePanel: document.querySelector("#favorite-panel"),
+      favorites: document.querySelector("#favorite-list"),
+      favoriteStatus: document.querySelector("#favorite-list-status"),
+      directoryGuidePanel: document.querySelector("#directory-guide-panel"),
   directoryGuideList: document.querySelector("#directory-guide-list"),
   directoryGuideStatus: document.querySelector("#directory-guide-status"),
   requestPanel: document.querySelector("#request-panel"),
@@ -376,11 +380,14 @@ function clearSessionState() {
   state.mfaChallengeToken = null;
   state.role = "user";
   state.availableContexts = [];
+  state.favorites = [];
   renderCategoryOptions();
   renderRoleOptions();
   elements.mfaPanel.hidden = true;
   updateAuthUi();
   elements.logout.hidden = true;
+  elements.favoritePanel.hidden = true;
+  elements.favorites.replaceChildren();
 }
 
 function formatValue(value) {
@@ -472,7 +479,12 @@ function renderProviders(items, page = {}, cursor = "") {
         const contactButton = state.token && state.experience?.allowedActions.includes("inquiry.create")
           ? `<button class="button ghost inquiry-provider-button" data-provider-id="${escapeHtml(provider.id)}">この事業者へ問い合わせ</button>`
           : "";
-        return `<article class="provider-item"><h3>${escapeHtml(provider.name)}</h3><div class="meta"><span>${escapeHtml(provider.location)}</span><span>${formatValue(provider.themes)}</span>${publicFields}</div>${contactButton}</article>`;
+        const canFavorite = Boolean(state.token && state.experience?.allowedActions.includes("favorite.manage"));
+        const existingFavorite = state.favorites.find((favorite) => favorite.providerId === provider.id);
+        const favoriteButton = canFavorite
+          ? `<button class="button ghost favorite-provider-button" data-provider-id="${escapeHtml(provider.id)}" data-favorite-id="${escapeHtml(existingFavorite?.id ?? "")}">${existingFavorite ? "お気に入りを解除" : "お気に入りに保存"}</button>`
+          : "";
+        return `<article class="provider-item"><h3>${escapeHtml(provider.name)}</h3><div class="meta"><span>${escapeHtml(provider.location)}</span><span>${formatValue(provider.themes)}</span>${publicFields}</div>${contactButton}${favoriteButton}</article>`;
       }).join("")
     : '<p class="empty">該当する事業者がありません。</p>';
   elements.requestProvider.innerHTML = items.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
@@ -483,10 +495,60 @@ function renderProviders(items, page = {}, cursor = "") {
       elements.inquiryForm.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   });
+  document.querySelectorAll(".favorite-provider-button").forEach((button) => {
+    button.addEventListener("click", () => void toggleFavorite(button.dataset.providerId ?? "", button.dataset.favoriteId ?? ""));
+  });
   renderListPagination(elements.providerPagination, page, cursor, reloadProviders, "事業者一覧のページ移動");
 }
 
 const directoryGuideKindLabels = { directory: "検索・相談", booking: "検索・予約", provider_resource: "事業者向け" };
+
+function renderFavorites(items) {
+  state.favorites = items;
+  elements.favorites.setAttribute("aria-busy", "false");
+  elements.favoritePanel.hidden = !Boolean(state.token && state.experience?.allowedActions.includes("favorite.manage"));
+  elements.favorites.innerHTML = items.length
+    ? items.map((favorite) => `<article class="directory-guide-item"><div class="meta"><span>${escapeHtml(favorite.category)}</span><span>保存日 ${escapeHtml(favorite.createdAt.slice(0, 10))}</span></div><h3>${escapeHtml(favorite.provider.name)}</h3><p>${escapeHtml(favorite.provider.location)} · ${escapeHtml(favorite.provider.themes.join("・"))}</p><button class="button ghost favorite-remove-button" data-favorite-id="${escapeHtml(favorite.id)}">お気に入りを解除</button></article>`).join("")
+    : '<p class="empty">保存した事業者はありません。</p>';
+  elements.favorites.querySelectorAll(".favorite-remove-button").forEach((button) => {
+    button.addEventListener("click", () => void toggleFavorite("", button.dataset.favoriteId ?? ""));
+  });
+}
+
+async function reloadFavorites() {
+  const visible = Boolean(state.token && state.experience?.allowedActions.includes("favorite.manage"));
+  elements.favoritePanel.hidden = !visible;
+  if (!visible) {
+    state.favorites = [];
+    elements.favorites.replaceChildren();
+    return;
+  }
+  setListStatus(elements.favoriteStatus, "loading", "保存した事業者を読み込んでいます。");
+  try {
+    const body = await api("/api/v1/favorites?limit=50");
+    renderFavorites(body.items);
+    setListStatus(elements.favoriteStatus);
+  } catch (error) {
+    setListStatus(elements.favoriteStatus, "error", "お気に入りを読み込めませんでした。再試行してください。", () => reloadFavorites());
+    throw error;
+  }
+}
+
+async function toggleFavorite(providerId, favoriteId) {
+  try {
+    if (favoriteId) {
+      await api(`/api/v1/favorites/${encodeURIComponent(favoriteId)}`, { method: "DELETE" });
+      setMessage("お気に入りから解除しました。");
+    } else {
+      await api("/api/v1/favorites", { method: "POST", body: JSON.stringify({ providerId }) });
+      setMessage("お気に入りに保存しました。");
+    }
+    await reloadFavorites();
+    await reloadProviders();
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
 
 function renderDirectoryGuides(items) {
   state.directoryGuides = items;
@@ -1328,6 +1390,7 @@ async function reload() {
   await reloadPortalPlanning();
   await reloadMediaManagement();
   await reloadRoleData();
+  await reloadFavorites();
   await reloadProviders();
   renderDirectoryGuides(contextBody.item.directoryGuides);
   setListStatus(elements.directoryGuideStatus);

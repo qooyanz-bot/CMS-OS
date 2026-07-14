@@ -47,6 +47,9 @@ describe("CMS-OSファイル永続化", () => {
     });
     assert.ok(request.id);
 
+    const favorite = portal1.createFavorite(ordererLogin.principal, "provider-legal-demo");
+    assert.equal(favorite.created, true);
+
     const inquiry = portal1.createInquiry(ordererLogin.principal, {
       category: "legal",
       providerId: "provider-legal-demo",
@@ -84,6 +87,7 @@ describe("CMS-OSファイル永続化", () => {
     assert.deepEqual(auth2.authenticate(ordererLogin.accessToken)?.accountId, ordererLogin.principal.accountId);
     const restoredRequests = portal2.listRequests(auth2.authenticate(ordererLogin.accessToken));
     assert.equal(restoredRequests[0]?.id, request.id);
+    assert.equal(portal2.listFavorites(auth2.authenticate(ordererLogin.accessToken)).items[0]?.id, favorite.item.id);
     const restoredProposals = content2.listProposals(auth2.authenticate(providerLogin.accessToken));
     assert.equal(restoredProposals[0]?.id, proposal.id);
     assert.equal(content2.getContent(auth2.authenticate(providerLogin.accessToken), draft.id)?.version, 2);

@@ -32,6 +32,8 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/portal-plans",
       "/api/v1/portal-plans/{planId}",
       "/api/v1/portal-plans/{planId}/apply",
+      "/api/v1/favorites",
+      "/api/v1/favorites/{favoriteId}",
       "/api/v1/providers",
       "/api/v1/providers/{providerId}",
       "/api/v1/providers/{providerId}/listing-submission",
@@ -96,6 +98,7 @@ describe("CMS-OS OpenAPI契約", () => {
     assert.ok(jobPath.patch);
     const listQueryParameters: Record<string, string[]> = {
       "/api/v1/providers": ["search", "theme", "location", "sort", "limit", "cursor"],
+      "/api/v1/favorites": ["limit", "cursor"],
       "/api/v1/requests": ["search", "status", "sort", "limit", "cursor"],
       "/api/v1/jobs": ["search", "employmentType", "location", "status", "sort", "limit", "cursor"],
       "/api/v1/applications": ["search", "jobId", "status", "sort", "limit", "cursor"],
