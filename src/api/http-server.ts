@@ -18,7 +18,7 @@ import { MediaService, MediaServiceError, mediaSortValues, type MediaRegisterInp
 import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type WebhookSubscriptionCreateInput, type WebhookSubscriptionUpdateInput } from "../application/webhook-service.js";
 import { OperationService, OperationServiceError, type OperationSubmitInput } from "../application/operation-service.js";
 import { operationTypes, type OperationType } from "../domain/operation-store.js";
-import { applicationStatuses, categorySlugs, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
+import { applicationStatuses, categorySlugs, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -106,7 +106,7 @@ function hasOperatorKey(request: IncomingMessage): boolean {
 const categoryEnum = [...categorySlugs];
 
 function isPortalRole(value: unknown): value is PortalRole {
-  return value === "user" || value === "orderer" || value === "provider" || value === "candidate";
+  return typeof value === "string" && portalRoles.includes(value as PortalRole);
 }
 
 function isDirectoryGuideKind(value: unknown): value is DirectoryGuide["kind"] {
@@ -519,7 +519,7 @@ async function handleMcp(
                 kind: { enum: [...directoryGuideKinds] },
                 description: { type: "string" },
                 url: { type: "string", format: "uri" },
-                targetRoles: { type: "array", items: { enum: ["user", "orderer", "provider", "candidate"] } },
+                targetRoles: { type: "array", items: { enum: [...portalRoles] } },
                 verifiedAt: { type: "string", format: "date" },
               },
               required: ["category", "name", "kind", "description", "url", "targetRoles", "verifiedAt"],
@@ -528,7 +528,7 @@ async function handleMcp(
           {
             name: "directory.update",
             description: "運営キーで外部案内を更新します。x-cms-os-operator-keyヘッダーが必要です。",
-            inputSchema: { type: "object", properties: { directoryId: { type: "string" }, category: { enum: categoryEnum }, name: { type: "string" }, kind: { enum: [...directoryGuideKinds] }, description: { type: "string" }, url: { type: "string", format: "uri" }, targetRoles: { type: "array", items: { enum: ["user", "orderer", "provider", "candidate"] } }, verifiedAt: { type: "string", format: "date" } }, required: ["directoryId"] },
+            inputSchema: { type: "object", properties: { directoryId: { type: "string" }, category: { enum: categoryEnum }, name: { type: "string" }, kind: { enum: [...directoryGuideKinds] }, description: { type: "string" }, url: { type: "string", format: "uri" }, targetRoles: { type: "array", items: { enum: [...portalRoles] } }, verifiedAt: { type: "string", format: "date" } }, required: ["directoryId"] },
           },
           {
             name: "directory.delete",
@@ -718,7 +718,7 @@ async function handleMcp(
                 email: { type: "string" },
                 password: { type: "string" },
                 category: { enum: categoryEnum },
-                role: { enum: ["user", "orderer", "provider", "candidate"] },
+                role: { enum: [...portalRoles] },
               },
               required: ["email", "password", "category"],
             },
@@ -743,7 +743,7 @@ async function handleMcp(
             description: "許可されたカテゴリとロールへ操作コンテキストを切り替えます。",
             inputSchema: {
               type: "object",
-              properties: { category: { enum: categoryEnum }, role: { enum: ["user", "orderer", "provider", "candidate"] } },
+              properties: { category: { enum: categoryEnum }, role: { enum: [...portalRoles] } },
               required: ["category", "role"],
             },
           },
@@ -752,7 +752,7 @@ async function handleMcp(
             description: "OIDC Authorization Code + PKCE認証を開始します。",
             inputSchema: {
               type: "object",
-              properties: { category: { enum: categoryEnum }, role: { enum: ["user", "orderer", "provider", "candidate"] } },
+              properties: { category: { enum: categoryEnum }, role: { enum: [...portalRoles] } },
               required: ["category"],
             },
           },

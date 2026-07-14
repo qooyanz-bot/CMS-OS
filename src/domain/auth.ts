@@ -1,5 +1,5 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import type { Account, AuthenticatedPrincipal, CategorySlug, PortalRole } from "./types.js";
+import { isRecruiterRole, type Account, type AuthenticatedPrincipal, type CategorySlug, type PortalRole } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 import { createTotpUri, generateTotpSecret, verifyTotp } from "../security/totp.js";
 import { openSecret, sealSecret } from "../security/secret-box.js";
@@ -129,7 +129,9 @@ const dummyPasswordHash = createPasswordHash("cms-os-invalid-password-dummy");
 
 function hasAssignment(account: Account, category: CategorySlug, role: PortalRole): boolean {
   return account.assignments.some(
-    (assignment) => assignment.role === role && (assignment.category === "*" || assignment.category === category),
+    (assignment) =>
+      (assignment.role === role || (isRecruiterRole(assignment.role) && isRecruiterRole(role))) &&
+      (assignment.category === "*" || assignment.category === category),
   );
 }
 

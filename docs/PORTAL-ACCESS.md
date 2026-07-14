@@ -42,6 +42,8 @@
 | `regional@example.com` | 地方創生・移住・空き家再生カテゴリの事業者 |
 | `candidate@example.com` | リクルーター |
 
+APIの公開ロールは`recruiter`を正式名称とし、既存クライアント互換のため`candidate`も同じ権限で受け付けます。
+
 ## 本番認証設定
 
 本番環境では、`NODE_ENV=production` の場合にOIDCが既定のログイン方式になります。デモアカウントとパスワードログインは既定で無効です。次の環境変数を設定してください。

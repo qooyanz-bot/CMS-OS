@@ -1,4 +1,4 @@
-import type { CategorySlug, DirectoryGuide, PortalRole } from "./types.js";
+import { isRecruiterRole, type CategorySlug, type DirectoryGuide, type PortalRole } from "./types.js";
 
 const directoryGuides: DirectoryGuide[] = [
   {
@@ -98,6 +98,7 @@ export function listAllDirectoryGuides(): DirectoryGuide[] {
 }
 
 export function listDirectoryGuides(category: CategorySlug, role: PortalRole): DirectoryGuide[] {
+  const visibleRoles: PortalRole[] = isRecruiterRole(role) ? ["candidate", "recruiter"] : [role];
   return listAllDirectoryGuides()
-    .filter((guide) => guide.category === category && guide.targetRoles.includes(role))
+    .filter((guide) => guide.category === category && visibleRoles.some((targetRole) => guide.targetRoles.includes(targetRole)));
 }

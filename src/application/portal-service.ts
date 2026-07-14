@@ -24,7 +24,7 @@ import type {
   ServiceRequest,
   VisibleProvider,
 } from "../domain/types.js";
-import { applicationStatuses, directoryGuideKinds, jobStatuses, portalRoles, requestStatuses } from "../domain/types.js";
+import { applicationStatuses, directoryGuideKinds, isRecruiterRole, jobStatuses, portalRoles, requestStatuses } from "../domain/types.js";
 
 export type ProviderUpdateInput = Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "publicFields">>;
 export type DirectoryGuideCreateInput = Omit<DirectoryGuide, "id">;
@@ -211,8 +211,9 @@ export class PortalService {
 
   public listDirectoryGuides(category: CategorySlug, principal: AuthenticatedPrincipal | null): DirectoryGuide[] {
     const role = principal?.category === category ? principal.role : "user";
+    const visibleRoles: PortalRole[] = isRecruiterRole(role) ? ["candidate", "recruiter"] : [role];
     return this.store.listDirectoryGuides()
-      .filter((guide) => guide.category === category && guide.targetRoles.includes(role));
+      .filter((guide) => guide.category === category && visibleRoles.some((targetRole) => guide.targetRoles.includes(targetRole)));
   }
 
   public createDirectoryGuide(input: DirectoryGuideCreateInput, operatorAuthorized: boolean): DirectoryGuide {
@@ -794,7 +795,7 @@ export class PortalService {
     message: string,
   ): JobApplication {
     if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
-    if (principal.role !== "candidate") throw new PortalServiceError(403, "リクルーターだけが求人へ応募できます。");
+    if (!isRecruiterRole(principal.role)) throw new PortalServiceError(403, "リクルーターだけが求人へ応募できます。");
     if (message.trim().length < 10) throw new PortalServiceError(400, "messageは10文字以上で入力してください。");
 
     const job = this.store.getJob(jobId);
@@ -827,7 +828,7 @@ export class PortalService {
 
   public listApplications(principal: AuthenticatedPrincipal | null, filters: ApplicationListFilters = {}): JobApplication[] {
     if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
-    if (principal.role !== "candidate" && principal.role !== "provider") {
+    if (!isRecruiterRole(principal.role) && principal.role !== "provider") {
       throw new PortalServiceError(403, "リクルーターまたは事業者だけが応募情報を確認できます。");
     }
 
@@ -836,7 +837,7 @@ export class PortalService {
     const status = assertAllowedFilter(filters.status, applicationStatuses, "status");
     const sort = assertAllowedFilter(filters.sort, applicationSortValues, "sort") ?? "createdAt_desc";
     const applications = this.store.listApplications(principal.category).filter((application) =>
-      principal.role === "candidate"
+      isRecruiterRole(principal.role)
         ? application.candidateId === principal.accountId
         : application.providerId === principal.providerId,
     ).filter((application) => {

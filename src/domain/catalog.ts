@@ -1,3 +1,4 @@
+import { isRecruiterRole } from "./types.js";
 import type {
   CategoryExperience,
   CategoryModule,
@@ -11,7 +12,7 @@ interface CategoryPolicy {
   slug: CategorySlug;
   label: string;
   navigation: CategoryModule[];
-  roles: Record<PortalRole, Omit<CategoryExperience, "category" | "categoryLabel" | "role" | "authenticated" | "navigation">>;
+  roles: Record<Exclude<PortalRole, "recruiter">, Omit<CategoryExperience, "category" | "categoryLabel" | "role" | "authenticated" | "navigation">>;
 }
 
 const commonActions = [
@@ -466,7 +467,8 @@ export function resolveExperience(
   authenticated: boolean,
 ): CategoryExperience {
   const policy = getCategoryPolicy(category);
-  const rolePolicy = policy.roles[role];
+  const policyRole: Exclude<PortalRole, "recruiter"> = role === "recruiter" ? "candidate" : role;
+  const rolePolicy = policy.roles[policyRole];
 
   return {
     category,
@@ -500,7 +502,7 @@ export function projectProvider(
     Object.assign(projected, provider.ordererFields);
   }
 
-  if (role === "candidate") {
+  if (isRecruiterRole(role)) {
     Object.assign(projected, provider.candidateFields);
   }
 

@@ -1,4 +1,4 @@
-export const portalRoles = ["user", "orderer", "provider", "candidate"] as const;
+export const portalRoles = ["user", "orderer", "provider", "candidate", "recruiter"] as const;
 export const categorySlugs = [
   "legal",
   "beauty",
@@ -12,6 +12,11 @@ export const categorySlugs = [
 
 export type PortalRole = (typeof portalRoles)[number];
 export type CategorySlug = (typeof categorySlugs)[number];
+
+/** 求職者向けの公開ロール。candidateは既存クライアント互換の別名として扱う。 */
+export function isRecruiterRole(role: PortalRole): boolean {
+  return role === "candidate" || role === "recruiter";
+}
 
 export const directoryGuideKinds = ["directory", "booking", "provider_resource"] as const;
 export type DirectoryGuideKind = (typeof directoryGuideKinds)[number];

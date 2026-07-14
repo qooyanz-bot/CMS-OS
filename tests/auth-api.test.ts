@@ -92,6 +92,32 @@ describe("認証REST APIとMCP", () => {
     }
   });
 
+  it("正式ロール名recruiterで既存candidateアカウントへログインできる", async () => {
+    const login = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "candidate@example.com", password: "demo-password", category: "labor-shortage", role: "recruiter" }),
+    });
+    assert.equal(login.status, 200);
+    assert.equal(login.body.principal.role, "recruiter");
+
+    const experience = await request("/api/v1/categories/labor-shortage/experience", {
+      headers: { authorization: `Bearer ${login.body.accessToken}` },
+    });
+    assert.equal(experience.status, 200);
+    assert.ok(experience.body.experience.visibleModules.includes("jobSearch"));
+    assert.ok(experience.body.experience.allowedActions.includes("application.create"));
+
+    const guides = await request("/api/v1/categories/labor-shortage/directories", {
+      headers: { authorization: `Bearer ${login.body.accessToken}` },
+    });
+    assert.equal(guides.status, 200);
+    assert.ok(guides.body.items.length > 0);
+
+    const tools = await request("/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
+    const loginTool = tools.body.result.tools.find((tool: { name: string }) => tool.name === "auth.login");
+    assert.ok(loginTool.inputSchema.properties.role.enum.includes("recruiter"));
+  });
+
   it("複数カテゴリ対応アカウントはログイン状態を保ったまま文脈を切り替えられる", async () => {
     const login = await request("/api/v1/auth/login", {
       method: "POST",
