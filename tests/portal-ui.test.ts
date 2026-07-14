@@ -80,6 +80,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   const scriptBody = await script.text();
   assert.match(scriptBody, /category-select/);
   assert.match(scriptBody, /api\/v1\/categories\/\$\{encodeURIComponent\(state\.category\)\}/);
+  assert.match(scriptBody, /async function loadCategories/);
+  assert.match(scriptBody, /api\("\/api\/v1\/categories"\)/);
+  assert.match(scriptBody, /elements\.category\.replaceChildren/);
   assert.match(scriptBody, /moduleLabels/);
   assert.match(scriptBody, /function isRecruiterRole/);
   assert.match(scriptBody, /navigationLabels\.themes/);

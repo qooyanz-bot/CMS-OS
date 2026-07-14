@@ -282,6 +282,23 @@ function updateAuthUi() {
   elements.password.required = state.authCapabilities.passwordLogin;
 }
 
+async function loadCategories() {
+  const body = await api("/api/v1/categories");
+  const categories = Array.isArray(body.items)
+    ? body.items.filter((item) => item && typeof item.slug === "string" && item.slug.trim() && typeof item.label === "string" && item.label.trim())
+    : [];
+  if (categories.length === 0) throw new Error("利用可能なカテゴリを取得できませんでした。");
+  const selectedCategory = categories.some((item) => item.slug === state.category) ? state.category : categories[0].slug;
+  elements.category.replaceChildren(...categories.map((item) => {
+    const option = document.createElement("option");
+    option.value = item.slug;
+    option.textContent = item.label;
+    return option;
+  }));
+  state.category = selectedCategory;
+  elements.category.value = selectedCategory;
+}
+
 async function loadAuthConfig() {
   const body = await api("/api/v1/auth/config");
   state.authCapabilities = body.item;
@@ -1608,6 +1625,11 @@ elements.contentForm.addEventListener("submit", async (event) => {
 });
 
 async function initialize() {
+  try {
+    await loadCategories();
+  } catch (error) {
+    setMessage(error.message);
+  }
   await loadAuthConfig();
   await completeOidcCallback();
   await reload();
