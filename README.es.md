@@ -1,86 +1,69 @@
 # CMS-OS
 
-Una plataforma empresarial de contenidos nativa para agentes de IA.
+Un sistema de operaciones de contenido nativo para agentes de IA y negocios de múltiples categorías.
 
 [日本語](README.md) · [English](README.en.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [한국어](README.ko.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
-CMS-OS gestiona en una sola plataforma la información corporativa, la contratación, las relaciones públicas, las relaciones con inversores y los blogs. Los agentes de IA ayudan con la planificación, las propuestas, los borradores, la verificación de hechos, la edición final, la optimización SEO y la publicación estática.
+CMS-OS gestiona en una sola plataforma la información corporativa, la contratación, las relaciones públicas, las relaciones con inversores, los blogs y los portales de proveedores. Los agentes de IA pueden proponer temas, planificar por posición, redactar, editar, traducir, verificar hechos, auditar SEO, solicitar aprobación y publicar mediante API y MCP.
 
-CMS-OS es un proyecto de código abierto en una fase inicial de desarrollo.
+CMS-OS se desarrolla actualmente como software de código abierto.
 
-## Objetivo
+## Funciones principales
 
-CMS-OS está diseñado para agentes de IA que entienden la información corporativa verificada y las directrices de marca. Según el objetivo, la audiencia, el sector, la región y el puesto, los agentes proponen y generan contenidos listos para revisión y publicación.
+- Propuestas de temas, planificación por rol, borradores, edición final, traducción, verificación de hechos y auditorías SEO con IA
+- Permisos por rol y categoría para `user`, `orderer`, `provider` y `recruiter`
+- Portales de proveedores y guías externas para categorías como servicios jurídicos, profesionales, belleza y contratación
+- Revisión, aprobación, publicación, retirada y versiones de contenido
+- Gestión de imágenes, vídeo y PDF con texto alternativo, datos estructurados, enlaces internos y auditorías SEO
+- Generación de sitios estáticos mediante BuilderOS Adapter y publicación en Cloudflare Pages
+- Todas las operaciones disponibles mediante REST API y MCP, con OpenAPI como contrato principal
+- Webhooks firmados, secrets cifrados, outbox de entregas y reintentos con backoff exponencial
 
-## Capacidades principales
+## Roles y vistas por categoría
 
-- Propuestas de temas, briefs, estructuras, borradores y textos finales generados por IA
-- Contenido de contratación adaptado a cada puesto
-- Gestión de contenidos de PR, IR, Blog, empresa y recursos multimedia
-- Verificación de hechos basada en datos corporativos y fuentes aprobadas
-- Títulos SEO, descripciones, enlaces internos, preguntas frecuentes y datos estructurados
-- Historial de versiones, aprobaciones, auditoría y publicación programada
-- Generación de HTML estático y publicación en Cloudflare Pages
-
-Los agentes de IA ayudan al equipo editorial. No pueden omitir la aprobación humana para contenidos sensibles como IR, información legal, remuneraciones o datos de directivos.
-
-## Portales por temas sectoriales
-
-CMS-OS guía a los visitantes hacia proveedores según el tema sectorial y cambia los datos y acciones visibles según el rol: usuario, solicitante, proveedor o reclutador. Actualmente cubre servicios jurídicos, belleza, IA generativa y transformación empresarial, escasez de mano de obra y automatización, turismo regional y turismo receptivo, movilidad DX y SDV, GX y gestión de energía y recursos, y revitalización regional, reubicación y reutilización de viviendas vacías.
-
-- Usuario: consultar proveedores públicos, guías temáticas y preguntas frecuentes
-- Solicitante: comparar proveedores, crear solicitudes, consultar presupuestos y revisar el historial
-- Proveedor: gestionar la ficha, las vacantes, las consultas, el contenido de IA, el SEO y la publicación
-- Reclutador: consultar vacantes y proveedores, presentar candidaturas y seguir su estado
-
-La lista de categorías y el procedimiento de ampliación se mantienen en el [registro de categorías](docs/CATEGORY-REGISTRY.md).
-
-## API/MCP como principio fundamental
-
-Todas las operaciones de CMS-OS deben poder ejecutarse mediante una API versionada o MCP. No debe existir ninguna operación de negocio que solo pueda realizarse desde la interfaz de administración.
-
-| Área | Cobertura de API y MCP |
+| Rol | Visibilidad y acciones principales |
 |---|---|
-| Contenido | Crear, consultar, actualizar, eliminar, buscar, versionar, traducir y archivar |
-| Edición con IA | Proponer, redactar, pulir, verificar hechos, resumir, traducir y auditar SEO |
-| Flujo de trabajo | Revisar, aprobar, rechazar, programar y retirar publicación |
-| Multimedia | Registrar, consultar, transformar y gestionar metadatos de derechos |
-| SEO | Metadatos, canonical, datos estructurados, sitemap, robots y auditoría de enlaces |
-| Publicación | Compilar, previsualizar, publicar, consultar estado y revertir |
-| Operaciones | Trabajos, reintentos, webhooks, permisos, configuración de tenants y auditoría |
+| Usuario | Contenido público, guías, proveedores públicos y consultas |
+| Ordenante | Búsqueda de proveedores, solicitudes, estado de solicitudes e información del comprador |
+| Proveedor | Sus fichas, ofertas, consultas, candidatos, contenidos de IA y flujo de publicación |
+| Reclutador | Búsqueda de empleos, candidaturas, estado e historial personal |
 
-La API se basa en REST/JSON versionado y OpenAPI. Las herramientas MCP llaman a los mismos servicios de dominio que la API y no duplican la lógica de negocio. La interfaz, los agentes de IA, la CLI y BuilderOS Adapter son clientes de API/MCP.
+La visibilidad y los permisos se definen por categoría. No se exponen datos de otra categoría o proveedor.
 
-## Publicación estática en Cloudflare Pages
+## Flujo de contenido
 
-CMS-OS genera HTML, CSS, JavaScript, imágenes y JSON-LD estáticos a partir del contenido aprobado y los publica mediante BuilderOS Adapter en Cloudflare Pages.
+```text
+REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
+→ EDITED → APPROVED → PUBLISHED
+```
 
-Este diseño separa la API, la administración y el procesamiento de IA del sitio público estático para priorizar velocidad, SEO, disponibilidad y bajo coste operativo.
+El contenido generado por IA pasa por verificación, revisión y aprobación antes de publicarse. La información sensible, como IR y asuntos legales, conserva sus fuentes y el historial de verificación.
 
-## Dirección del proyecto OSS
+## API / MCP
 
-CMS-OS aspira a ser una base de código abierto colaborativa para crear, aprobar, publicar y reutilizar contenidos empresariales.
+CMS-OS ofrece sus operaciones mediante REST versionado y MCP. Autenticación, contenidos, medios, publicación, portales, webhooks y SEO comparten los mismos servicios de dominio, con pruebas de paridad para entradas, permisos y resultados.
 
-El proyecto prioriza los hechos verificables, la trazabilidad de la salida de IA, la aprobación humana, la auditoría, el SEO, la accesibilidad, la entrega estática y la extensibilidad independiente de proveedores.
+- OpenAPI: [`docs/openapi.json`](docs/openapi.json)
+- Especificación API/MCP: [`docs/API-MCP.md`](docs/API-MCP.md)
+- Registro de categorías: [`docs/CATEGORY-REGISTRY.md`](docs/CATEGORY-REGISTRY.md)
+- Persistencia: [`docs/STORAGE.md`](docs/STORAGE.md)
 
-## Estado de desarrollo
+## Publicación estática
 
-El orden previsto es:
+CMS-OS convierte el contenido aprobado en HTML, CSS, JavaScript, medios y JSON-LD estáticos mediante BuilderOS Adapter, y puede publicarlo en Cloudflare Pages.
 
-1. Contratos API/MCP y modelos de contenido
-2. Contenidos de Blog, contratación y PR
-3. Editor Tiptap
-4. Agentes de IA para planificación, borradores y edición final
-5. Auditorías SEO y datos estructurados
-6. Flujos de aprobación
-7. Generación de HTML estático
-8. Publicación en Cloudflare Pages mediante BuilderOS Adapter
-9. Flujos de IR y distribución externa
+## Desarrollo
 
-## Política de traducción
+Requisito: Node.js 22 o posterior
 
-`README.md` es el documento fuente en japonés. Cada actualización del README debe actualizar también, en el mismo cambio, las versiones en inglés, chino simplificado, español, coreano, alemán y francés. Consulta [CONTRIBUTING.md](CONTRIBUTING.md).
+```bash
+npm ci
+npm test
+npm run dev
+```
+
+Consulta [`CONTRIBUTING.md`](CONTRIBUTING.md) para las reglas de desarrollo.
 
 ## Licencia
 
-La licencia se decidirá cuando se finalice la política inicial de desarrollo.
+La licencia se decidirá cuando finalice la política de desarrollo de código abierto.

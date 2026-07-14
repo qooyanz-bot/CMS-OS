@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AIエージェントネイティブな企業コンテンツ・業界ポータル基盤",
+  "description": "AIエージェントネイティブなマルチカテゴリ対応の企業コンテンツ基盤",
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",

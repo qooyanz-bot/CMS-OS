@@ -1,86 +1,69 @@
 # CMS-OS
 
-Une plateforme de contenu d’entreprise native pour les agents d’IA.
+Un système de gestion de contenu natif pour les agents IA et les entreprises multi-catégories.
 
 [日本語](README.md) · [English](README.en.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [한국어](README.ko.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
-CMS-OS gère les informations d’entreprise, le recrutement, les relations publiques, les relations investisseurs et les blogs dans une seule plateforme. Les agents d’IA assistent la planification, les propositions, les brouillons, la vérification des faits, la réécriture finale, l’optimisation SEO et la publication statique.
+CMS-OS gère sur une seule plateforme les informations d’entreprise, le recrutement, les relations publiques, les relations investisseurs, les blogs et les portails de prestataires. Les agents IA peuvent proposer des sujets, planifier par position, rédiger et réviser, traduire, vérifier les faits, auditer le SEO, demander une validation et publier via l’API et MCP.
 
-CMS-OS est un projet open source actuellement en phase initiale de développement.
-
-## Objectif de CMS-OS
-
-CMS-OS est conçu pour des agents d’IA capables de comprendre les informations d’entreprise vérifiées et les règles de marque. Selon l’objectif, le public, le secteur, la région et le poste, les agents proposent et produisent des contenus prêts à être relus et publiés.
+CMS-OS est actuellement développé comme logiciel open source.
 
 ## Fonctionnalités principales
 
-- Proposition de thèmes, briefs, plans, brouillons et textes finalisés par l’IA
-- Contenus de recrutement adaptés à chaque poste
-- Gestion des contenus PR, IR, Blog, entreprise et médias
-- Vérification des faits à partir des données et sources approuvées
-- Titres SEO, descriptions, liens internes, FAQ et données structurées
-- Historique des versions, validations, journaux d’audit et publication planifiée
-- Génération de HTML statique et publication sur Cloudflare Pages
+- Propositions de sujets, planification par rôle, brouillons, révision, traduction, vérification des faits et audits SEO assistés par IA
+- Autorisations par rôle et par catégorie pour `user`, `orderer`, `provider` et `recruiter`
+- Portails de prestataires et guides externes pour les catégories juridiques, professionnelles, beauté et recrutement
+- Relecture, validation, publication, dépublication et historique des versions
+- Gestion des images, vidéos et PDF avec texte alternatif, données structurées, liens internes et audits SEO
+- Génération de sites statiques avec BuilderOS Adapter et publication sur Cloudflare Pages
+- Toutes les opérations via REST API et MCP, avec OpenAPI comme contrat de référence
+- Webhooks signés, secrets chiffrés, outbox de livraison et nouvelles tentatives avec backoff exponentiel
 
-Les agents d’IA assistent l’équipe éditoriale. Les contenus sensibles, notamment l’IR, les informations juridiques, les rémunérations et les données des dirigeants, nécessitent une validation humaine.
+## Rôles et vues par catégorie
 
-## Portails par thèmes sectoriels
-
-CMS-OS guide les visiteurs vers des prestataires par thème sectoriel et adapte les données et actions visibles selon le rôle : utilisateur, donneur d’ordre, prestataire ou recruteur. Les thèmes actuels couvrent les services juridiques, la beauté, l’IA générative et la transformation des entreprises, la pénurie de main-d’œuvre et l’automatisation, le tourisme régional et réceptif, la mobilité DX et SDV, la GX et la gestion de l’énergie et des ressources, ainsi que la revitalisation régionale, la mobilité résidentielle et la réutilisation des logements vacants.
-
-- Utilisateur : consulter les prestataires publics, les guides thématiques et les FAQ
-- Donneur d’ordre : comparer les prestataires, créer une demande, échanger sur un devis et consulter l’historique
-- Prestataire : gérer la fiche, les offres d’emploi, les demandes, le contenu IA, le SEO et les workflows de publication
-- Recruteur : consulter les offres et les prestataires, candidater et suivre les candidatures
-
-La liste des catégories et la procédure d’extension sont maintenues dans le [registre des catégories](docs/CATEGORY-REGISTRY.md).
-
-## API/MCP en priorité
-
-Toutes les opérations de CMS-OS doivent être exécutables par une API versionnée ou par MCP. Aucune opération métier ne doit être disponible uniquement dans l’interface d’administration.
-
-| Domaine | Couverture API et MCP |
+| Rôle | Visibilité et actions principales |
 |---|---|
-| Contenu | Créer, consulter, modifier, supprimer, rechercher, versionner, traduire, archiver |
-| Édition IA | Proposer, rédiger, reformuler, vérifier les faits, résumer, traduire, auditer le SEO |
-| Workflow | Relire, approuver, rejeter, planifier, retirer de la publication |
-| Médias | Enregistrer, consulter, transformer et gérer les métadonnées de droits |
-| SEO | Métadonnées, canonical, données structurées, sitemap, robots et audit des liens |
-| Publication | Construire, prévisualiser, publier, consulter l’état, restaurer une version |
-| Exploitation | Tâches, nouvelles tentatives, webhooks, permissions, paramètres de tenant et audits |
+| Utilisateur | Contenu public, guides, prestataires publics et demandes |
+| Donneur d’ordre | Recherche de prestataires, demandes, état des demandes et informations d’acheteur |
+| Prestataire | Fiches propres, offres, demandes, candidats, contenus IA et workflow de publication |
+| Recruteur | Recherche d’emplois, candidatures, état et historique personnel |
 
-L’API repose sur REST/JSON versionné et OpenAPI. Les outils MCP utilisent les mêmes services de domaine que l’API et ne dupliquent pas la logique métier. L’interface, les agents d’IA, la CLI et BuilderOS Adapter sont tous des clients API/MCP.
+La visibilité et les actions sont définies par catégorie. Les données d’une autre catégorie ou d’un autre prestataire ne sont pas exposées.
 
-## Publication statique avec Cloudflare Pages
+## Workflow de contenu
 
-CMS-OS génère le HTML, le CSS, le JavaScript, les images et le JSON-LD statiques à partir des contenus approuvés, puis les publie sur Cloudflare Pages via BuilderOS Adapter.
+```text
+REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
+→ EDITED → APPROVED → PUBLISHED
+```
 
-L’API CMS, l’administration et le traitement IA restent séparés du site public statique afin de privilégier la rapidité, le SEO, la disponibilité et un faible coût d’exploitation.
+Les contenus générés par IA passent par la vérification des faits, la relecture et la validation avant publication. Les contenus sensibles, notamment IR et juridiques, conservent leurs sources et leur historique de vérification.
 
-## Orientation open source
+## API / MCP
 
-CMS-OS vise à devenir une base open source collaborative pour créer, approuver, publier et réutiliser les contenus d’entreprise.
+CMS-OS expose ses opérations via des API REST versionnées et MCP. L’authentification, les contenus, les médias, la publication, les portails, les webhooks et les audits SEO utilisent les mêmes services métier, avec des tests de parité sur les entrées, les droits et les résultats.
 
-Le projet privilégie les faits vérifiés, la traçabilité des productions IA, la validation humaine, l’auditabilité, le SEO, l’accessibilité, la diffusion statique et l’extensibilité indépendante des fournisseurs.
+- OpenAPI : [`docs/openapi.json`](docs/openapi.json)
+- Spécification API/MCP : [`docs/API-MCP.md`](docs/API-MCP.md)
+- Registre des catégories : [`docs/CATEGORY-REGISTRY.md`](docs/CATEGORY-REGISTRY.md)
+- Persistance : [`docs/STORAGE.md`](docs/STORAGE.md)
 
-## État du développement
+## Publication statique
 
-L’ordre prévu est le suivant :
+CMS-OS convertit le contenu approuvé en HTML, CSS, JavaScript, médias et JSON-LD statiques via BuilderOS Adapter, puis peut le publier sur Cloudflare Pages.
 
-1. Contrats API/MCP et modèles de contenu
-2. Contenus Blog, recrutement et PR
-3. Éditeur Tiptap
-4. Agents IA de planification, rédaction et réécriture finale
-5. Audits SEO et génération de données structurées
-6. Workflows de validation
-7. Génération de HTML statique
-8. Publication Cloudflare Pages via BuilderOS Adapter
-9. Workflows IR et distribution externe
+## Développement
 
-## Politique de traduction
+Pré-requis : Node.js 22 ou plus récent
 
-`README.md` est le document source en japonais. Chaque mise à jour du README doit être répercutée dans les versions anglaise, chinoise simplifiée, espagnole, coréenne, allemande et française dans le même changement. Voir [CONTRIBUTING.md](CONTRIBUTING.md).
+```bash
+npm ci
+npm test
+npm run dev
+```
+
+Consultez [`CONTRIBUTING.md`](CONTRIBUTING.md) pour les règles de développement.
 
 ## Licence
 
-La licence sera choisie après la finalisation de la politique initiale de développement.
+La licence sera définie après la finalisation de la politique de développement open source.

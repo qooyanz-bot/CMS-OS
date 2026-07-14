@@ -1,114 +1,75 @@
 # CMS-OS
 
-An AI-agent-native enterprise content platform.
+An AI-agent-native content operating system for multi-category businesses.
 
 [日本語](README.md) · [English](README.en.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [한국어](README.ko.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
-CMS-OS manages company information, recruitment, PR, IR, and blogs in one platform. AI agents help with planning, proposals, drafting, fact checking, polishing, SEO optimization, and static publishing.
+CMS-OS manages company information, recruiting, PR, IR, blogs, and business-provider portals on one platform. AI agents can propose topics, draft and polish content, translate it, verify facts, audit SEO, request approval, and publish through APIs and MCP.
 
-CMS-OS is an open-source project in its early development stage.
+CMS-OS is currently developed as open-source software.
 
-## What CMS-OS aims to be
+## Key capabilities
 
-CMS-OS is designed for AI agents that understand verified company information and brand guidelines. Based on the purpose, audience, industry, region, and position, agents propose and produce content that is ready for review and publication.
+- AI-assisted topic proposals, role-specific planning, drafting, polishing, translation, fact checking, and SEO audits
+- Role- and category-aware access for `user`, `orderer`, `provider`, and `recruiter`
+- Business-provider portals and external guides for categories such as legal services, professional services, beauty, and recruiting
+- Review, approval, publication, unpublication, and version history
+- Media management for images, video, and PDF, including alt text, structured data, internal links, and SEO audits
+- Static site generation through the BuilderOS Adapter and publication to Cloudflare Pages
+- Every operation exposed through REST API and MCP, with OpenAPI as the contract source of truth
+- Signed webhooks with encrypted secrets, a delivery outbox, and exponential-backoff retries
 
-## Core capabilities
+## Roles and category-aware views
 
-- AI-generated content themes, briefs, outlines, drafts, and polished copy
-- Position-aware recruitment content
-- PR, IR, blog, company, and media asset management
-- Fact checking against approved company data and sources
-- SEO titles, descriptions, internal links, FAQs, and structured data
-- Version history, approvals, audit logs, and scheduled publishing
-- Static HTML generation and Cloudflare Pages publishing
-
-AI agents support the editorial team; they do not bypass human approval for sensitive content such as IR, legal information, compensation, or executive data.
-
-## Industry theme portals
-
-CMS-OS guides visitors to providers by industry theme and changes visible data and actions according to the role: user, orderer, provider, or recruiter. The current themes cover legal services, beauty, generative AI and business transformation, labor shortages and automation, regional tourism and inbound travel, mobility DX and SDV, GX and energy/resource management, and regional revitalization, relocation, and vacant-house reuse.
-
-- User: browse public providers, theme guides, and FAQs
-- Orderer: compare providers, create requests, discuss quotes, and review request history
-- Provider: manage listings, jobs, inquiries, AI content, SEO, and publishing workflows
-- Recruiter: browse jobs and providers, apply, and track applications
-
-The category list and extension procedure are maintained in the [category registry](docs/CATEGORY-REGISTRY.md).
-
-## API/MCP-first
-
-Every CMS-OS operation must be executable through a versioned API or MCP. There must be no business operation that exists only in the administration UI.
-
-| Area | API and MCP coverage |
+| Role | Main visibility and actions |
 |---|---|
-| Content | Create, read, update, delete, search, version, translate, archive |
-| AI editing | Propose, draft, polish, fact check, summarize, translate, SEO audit |
-| Workflow | Review, approve, reject, schedule, unpublish |
-| Media | Register, retrieve, transform, and manage rights metadata |
-| SEO | Metadata, canonical, structured data, sitemap, robots, link audits |
-| Publishing | Build, preview, publish, inspect status, rollback |
-| Operations | Jobs, retries, webhooks, permissions, tenant settings, audit logs |
+| User | Public content, category guides, public providers, and inquiries |
+| Orderer | Provider search, service requests, request status, and buyer information |
+| Provider | Own listings, jobs, inquiries, applications, AI content, and publication workflow |
+| Recruiter | Job search, applications, application status, and personal application history |
 
-The API is based on versioned REST/JSON and OpenAPI. MCP tools call the same domain services as the API and must not duplicate business logic. The administration UI, AI agents, CLI, and BuilderOS Adapter are all API/MCP clients.
+Visibility and actions are defined per category. Data belonging to another category or provider is not exposed.
 
-## Cloudflare Pages static publishing
-
-CMS-OS generates static HTML, CSS, JavaScript, images, and JSON-LD from approved content and publishes them through the BuilderOS Adapter to Cloudflare Pages.
+## Content workflow
 
 ```text
-CMS-OS
-  ↓ approved content
-Static site build
-  ↓
-BuilderOS Adapter
-  ↓
-Cloudflare Pages
+REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
+→ EDITED → APPROVED → PUBLISHED
 ```
 
-The CMS API, administration UI, and AI processing remain separate from the public static site. This design targets fast delivery, strong SEO, high availability, and low operating cost.
+AI output goes through fact checking, review, and approval before publication. Accuracy-sensitive content such as IR and legal information is designed to retain evidence and verification history.
 
-- [Cloudflare Pages pricing](https://developers.cloudflare.com/pages/functions/pricing/)
-- [Cloudflare Pages limits](https://developers.cloudflare.com/pages/platform/limits/)
-- [Deploying static HTML to Cloudflare Pages](https://developers.cloudflare.com/pages/framework-guides/deploy-anything/)
+## API / MCP
 
-## Architecture
+CMS-OS operations are available through versioned REST APIs and MCP. Authentication, content, media, publication, portals, webhooks, and SEO audits share the same domain services, with parity tests covering inputs, authorization, and results.
 
-- Administration UI: Next.js, React, TypeScript
-- Editor: Tiptap
-- Database: PostgreSQL
-- Authentication and authorization: Auth provider plus row-level access control
-- AI integration: provider abstraction for multiple models
-- API: versioned REST/JSON and OpenAPI
-- MCP: MCP server for CMS, AI editing, SEO, and publishing operations
-- Async processing: queue and workflow infrastructure
-- Media: object storage
-- Publishing: static HTML generation and Cloudflare Pages
-- External integration: BuilderOS Adapter
+- OpenAPI: [`docs/openapi.json`](docs/openapi.json)
+- API/MCP specification: [`docs/API-MCP.md`](docs/API-MCP.md)
+- Category registry: [`docs/CATEGORY-REGISTRY.md`](docs/CATEGORY-REGISTRY.md)
+- Storage specification: [`docs/STORAGE.md`](docs/STORAGE.md)
 
-## Open-source direction
+## Static publishing
 
-CMS-OS aims to become a collaborative open-source foundation for creating, approving, publishing, and reusing enterprise content.
+CMS-OS converts approved content into static HTML, CSS, JavaScript, media, and JSON-LD through the BuilderOS Adapter, then can publish it to Cloudflare Pages. Operational CMS features and low-cost static delivery remain separate concerns.
 
-The project prioritizes verified facts, traceable AI output, human approval, auditability, SEO, accessibility, static delivery, and vendor-neutral extensibility.
+## Development
 
-## Development status
+Requirements: Node.js 22 or later
 
-The planned implementation order is:
+```bash
+npm ci
+npm test
+npm run dev
+```
 
-1. API/MCP contracts and content models
-2. Blog, recruitment, and PR content
-3. Tiptap editor
-4. AI planning, drafting, and polishing agents
-5. SEO audits and structured data generation
-6. Approval workflows
-7. Static HTML generation
-8. Cloudflare Pages publishing through BuilderOS Adapter
-9. IR workflows and external distribution
+`npm test` builds TypeScript and tests API/MCP parity, authentication, category access control, content, media, publication, webhooks, and persistence.
 
-## Translation policy
+## Project direction
 
-`README.md` is the Japanese source document. Every README change must be reflected in the English, Simplified Chinese, Spanish, Korean, German, and French README files in the same change set. See [CONTRIBUTING.md](CONTRIBUTING.md).
+CMS-OS aims to be a CMS-OS that AI agents can operate safely. Generation, approval, publication, and external integrations should remain verifiable through API/MCP rather than depending on a particular editor or external service. External site construction and publishing are separated into the BuilderOS Adapter.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development rules.
 
 ## License
 
-The license will be selected after the initial development policy is finalized.
+The license will be decided after the open-source development policy is finalized.

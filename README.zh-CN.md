@@ -1,96 +1,71 @@
 # CMS-OS
 
-面向 AI 智能体原生场景的企业内容管理平台。
+面向多行业企业、原生支持 AI Agent 的内容操作系统。
 
 [日本語](README.md) · [English](README.en.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [한국어](README.ko.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
-CMS-OS 在一个平台中管理企业信息、招聘、PR、IR 和 Blog。AI 智能体可以协助完成企划、提案、起草、事实核验、润色、SEO 优化和静态发布。
+CMS-OS 在一个平台中管理企业信息、招聘、公关、IR、博客和服务商门户。AI Agent 可以通过 API 和 MCP 完成主题提案、企划、初稿、润色、翻译、事实核查、SEO 审计、审批和发布。
 
-CMS-OS 目前作为开源项目处于早期开发阶段。
+CMS-OS 目前作为开源项目开发中。
 
-## CMS-OS 的目标
+## 主要功能
 
-CMS-OS 面向能够理解已验证企业信息和品牌规范的 AI 智能体。系统根据内容目的、受众、行业、地区和岗位，提出并生成可供审核和发布的内容。
+- AI 主题提案、按角色企划、撰写初稿、润色、翻译、事实核查和 SEO 审计
+- 面向 `user`、`orderer`、`provider`、`recruiter` 的角色与行业分类权限控制
+- 支持法律服务、专业服务、美容、招聘等分类的服务商门户和外部指南
+- 内容审核、审批、发布、撤回和版本历史
+- 图片、视频、PDF 等媒体管理，包括 alt 文本、结构化数据、内部链接和 SEO 审计
+- 通过 BuilderOS Adapter 生成静态网站，并支持发布到 Cloudflare Pages
+- 所有操作均通过 REST API 和 MCP 提供，OpenAPI 作为契约正本
+- 支持签名 Webhook、加密 secret、投递 outbox 和指数退避重试
 
-## 核心能力
+## 角色与分类显示
 
-- AI 生成主题、内容简报、文章结构、初稿和润色稿
-- 按招聘岗位生成内容
-- 管理 PR、IR、Blog、企业信息和媒体资源
-- 根据已批准的企业数据和来源进行事实核验
-- 生成 SEO 标题、描述、内部链接、FAQ 和结构化数据
-- 版本历史、审批、审计日志和定时发布
-- 生成静态 HTML 并发布到 Cloudflare Pages
-
-AI 智能体用于辅助编辑团队。IR、法律信息、薪酬和高管信息等敏感内容必须经过人工审核，不能绕过审批自动发布。
-
-## 按行业主题的门户
-
-CMS-OS 按行业主题引导用户查找服务提供者，并根据用户、发包方、服务提供者、求职者四种角色切换可见数据和操作权限。目前支持法律与律师、美容、生成式 AI 与业务改革、人手不足与省人化、地区旅游与入境旅游、移动出行 DX 与 SDV、GX 与节能资源循环，以及地方振兴、迁居和空置房再利用。
-
-- 用户：浏览公开服务提供者、主题指南和 FAQ
-- 发包方：比较服务提供者、创建委托、咨询报价并查看委托历史
-- 服务提供者：管理展示信息、招聘、咨询、AI 内容、SEO 和发布流程
-- 求职者：浏览职位和服务提供者、提交申请并查看申请状态
-
-分类列表和扩展步骤维护在[分类注册表](docs/CATEGORY-REGISTRY.md)中。
-
-## API/MCP 优先
-
-CMS-OS 的所有操作都必须能够通过版本化 API 或 MCP 执行。任何业务操作都不能只存在于管理后台界面中。
-
-| 操作领域 | API 和 MCP 覆盖范围 |
+| 角色 | 主要显示与操作 |
 |---|---|
-| 内容 | 创建、读取、更新、删除、搜索、版本管理、翻译、归档 |
-| AI 编辑 | 提案、起草、润色、事实核验、摘要、翻译、SEO 审计 |
-| 工作流 | 审核、批准、驳回、定时发布、取消发布 |
-| 媒体 | 注册、获取、转换和版权元数据管理 |
-| SEO | 元数据、canonical、结构化数据、sitemap、robots、链接审计 |
-| 发布 | 构建、预览、发布、状态查询、回滚 |
-| 运维 | 任务、重试、Webhook、权限、租户设置、审计日志 |
+| 用户 | 公开内容、分类指南、公开服务商和咨询 |
+| 发注者 | 服务商搜索、发注请求、请求状态和发注方信息 |
+| 服务商 | 自有信息、职位、咨询、申请者、AI 内容和发布流程 |
+| 招聘者 | 职位搜索、申请、申请状态和个人申请历史 |
 
-API 以版本化 REST/JSON 和 OpenAPI 为基础。MCP 工具调用与 API 相同的领域服务，不重复实现业务逻辑。管理后台、AI 智能体、CLI 和 BuilderOS Adapter 都作为 API/MCP 客户端使用。
+显示内容和操作权限按分类定义。其他分类或其他服务商的数据不会被暴露。
 
-## Cloudflare Pages 静态发布
-
-CMS-OS 根据已批准内容生成静态 HTML、CSS、JavaScript、图片和 JSON-LD，并通过 BuilderOS Adapter 发布到 Cloudflare Pages。
+## 内容工作流
 
 ```text
-CMS-OS
-  ↓ 已批准内容
-静态网站构建
-  ↓
-BuilderOS Adapter
-  ↓
-Cloudflare Pages
+REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
+→ EDITED → APPROVED → PUBLISHED
 ```
 
-CMS API、管理后台和 AI 处理与公开静态网站分离，以实现快速访问、强 SEO、高可用性和低运营成本。
+AI 生成内容在事实核查、审核和审批后发布。对于 IR 和法律等高准确性内容，系统保留依据和核查历史。
 
-## 开源方向
+## API / MCP
 
-CMS-OS 致力于成为用于创建、审批、发布和复用企业内容的协作式开源基础设施。
+CMS-OS 通过版本化 REST API 和 MCP 提供操作。认证、内容、媒体、发布、门户、Webhook 和 SEO 审计共用领域服务，并通过测试确保输入、权限和结果的一致性。
 
-项目重视已验证事实、可追踪的 AI 输出、人工审批、审计能力、SEO、可访问性、静态交付和不依赖单一厂商的扩展性。
+- OpenAPI：[`docs/openapi.json`](docs/openapi.json)
+- API/MCP 规格：[`docs/API-MCP.md`](docs/API-MCP.md)
+- 分类注册表：[`docs/CATEGORY-REGISTRY.md`](docs/CATEGORY-REGISTRY.md)
+- 持久化规格：[`docs/STORAGE.md`](docs/STORAGE.md)
 
-## 开发状态
+## 静态发布
 
-计划按以下顺序实现：
+CMS-OS 通过 BuilderOS Adapter 将已审批内容转换为静态 HTML、CSS、JavaScript、媒体和 JSON-LD，并可发布到 Cloudflare Pages。运营型 CMS 功能与低成本静态分发保持分离。
 
-1. API/MCP 契约和内容模型
-2. Blog、招聘和 PR 内容
-3. Tiptap 编辑器
-4. AI 企划、起草和润色智能体
-5. SEO 审计和结构化数据生成
-6. 审批工作流
-7. 静态 HTML 生成
-8. 通过 BuilderOS Adapter 发布到 Cloudflare Pages
-9. IR 工作流和外部发布
+## 开发
 
-## 翻译规则
+要求：Node.js 22 或更高版本
 
-`README.md` 是日文正本。每次更新README时，必须在同一变更中同步更新英文、简体中文、西班牙语、韩语、德语和法语版本。请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)。
+```bash
+npm ci
+npm test
+npm run dev
+```
+
+`npm test` 会构建 TypeScript，并测试 API/MCP 一致性、认证、分类权限、内容、媒体、发布、Webhook 和持久化。
+
+开发规则请参阅 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 许可证
 
-许可证将在初期开发方针确定后选定。
+许可证将在开源开发方针确定后决定。
