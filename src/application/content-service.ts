@@ -31,6 +31,20 @@ export class ContentServiceError extends Error {
   }
 }
 
+export type ContentCreateInput = {
+  category: CategorySlug;
+  contentType: ContentType;
+  audience: ContentAudience;
+  title: string;
+  summary: string;
+  body: string;
+  slug?: string | undefined;
+  sourceFacts?: string[] | undefined;
+  locale?: ContentLocale | undefined;
+  proposalId?: string | undefined;
+  seo?: Partial<ContentSeo> | undefined;
+};
+
 const audienceLabels: Record<ContentAudience, string> = {
   customer: "顧客・発注者",
   candidate: "求職者・リクルーター",
@@ -174,19 +188,7 @@ export class ContentService {
 
   public createContent(
     principal: AuthenticatedPrincipal | null,
-    input: {
-      category: CategorySlug;
-      contentType: ContentType;
-      audience: ContentAudience;
-      title: string;
-      summary: string;
-      body: string;
-      slug?: string | undefined;
-      sourceFacts?: string[] | undefined;
-      locale?: ContentLocale | undefined;
-      proposalId?: string | undefined;
-      seo?: Partial<ContentSeo> | undefined;
-    },
+    input: ContentCreateInput,
   ): ContentRecord {
     this.portal.assertAction(principal, input.category, "content.create");
     this.assertProvider(principal, input.category);

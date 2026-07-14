@@ -18,6 +18,7 @@ CMS-OS 目前作为开源项目开发中。
 - 通过 BuilderOS Adapter 生成静态网站，并支持发布到 Cloudflare Pages
 - 所有操作均通过 REST API 和 MCP 提供，OpenAPI 作为契约正本
 - 支持签名 Webhook、加密 secret、投递 outbox 和指数退避重试
+- 支持异步内容创建任务、任务状态查询、外部调度器批量执行和幂等键
 
 ## 角色与分类显示
 

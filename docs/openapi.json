@@ -440,6 +440,58 @@
         "responses": { "200": { "description": "取り消し済みWebhook購読", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookSubscriptionResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
+    "/api/v1/operations": {
+      "get": {
+        "tags": ["Operations"],
+        "operationId": "listAsyncOperations",
+        "summary": "非同期ジョブ一覧",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+          { "name": "cursor", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "非同期ジョブ一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AsyncOperationListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "post": {
+        "tags": ["Operations"],
+        "operationId": "submitAsyncOperation",
+        "summary": "非同期コンテンツ作成ジョブ投入",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKeyHeader" }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AsyncOperationSubmitRequest" } } } },
+        "responses": { "202": { "description": "キュー投入済みジョブ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AsyncOperationResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/v1/operations/execute-pending": {
+      "post": {
+        "tags": ["Operations"],
+        "operationId": "executePendingAsyncOperations",
+        "summary": "キュー済み非同期ジョブの実行",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AsyncOperationExecutePendingRequest" } } } },
+        "responses": { "200": { "description": "実行結果一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AsyncOperationBatchResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/operations/{operationId}": {
+      "get": {
+        "tags": ["Operations"],
+        "operationId": "getAsyncOperation",
+        "summary": "非同期ジョブ状態取得",
+        "parameters": [{ "$ref": "#/components/parameters/OperationIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "非同期ジョブ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AsyncOperationResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/operations/{operationId}/execute": {
+      "post": {
+        "tags": ["Operations"],
+        "operationId": "executeAsyncOperation",
+        "summary": "非同期ジョブ実行",
+        "parameters": [{ "$ref": "#/components/parameters/OperationIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "実行済み非同期ジョブ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AsyncOperationResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
     "/api/v1/content/proposals": {
       "post": {
         "tags": ["Content"],
@@ -940,6 +992,8 @@
       "MediaAssetIdPath": { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "WebhookSubscriptionIdPath": { "name": "subscriptionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "WebhookDeliveryIdPath": { "name": "deliveryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "OperationIdPath": { "name": "operationId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "IdempotencyKeyHeader": { "name": "Idempotency-Key", "in": "header", "required": false, "schema": { "type": "string", "maxLength": 200 } },
       "PublicationScheduleIdPath": { "name": "scheduleId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "ProviderIdPath": { "name": "providerId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
       "DirectoryIdPath": { "name": "directoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
@@ -1071,6 +1125,14 @@
       "Application": { "type": "object", "required": ["id", "category", "jobId", "providerId", "candidateId", "message", "status", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "jobId": { "type": "string" }, "providerId": { "type": "string" }, "candidateId": { "type": "string" }, "message": { "type": "string" }, "status": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
       "ApplicationResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Application" } } },
       "ApplicationListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Application" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
+      "AsyncOperationType": { "type": "string", "enum": ["content.create"] },
+      "AsyncOperationStatus": { "type": "string", "enum": ["queued", "running", "succeeded", "failed"] },
+      "AsyncOperation": { "type": "object", "required": ["id", "category", "providerId", "operation", "status", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "operation": { "$ref": "#/components/schemas/AsyncOperationType" }, "status": { "$ref": "#/components/schemas/AsyncOperationStatus" }, "startedAt": { "type": "string", "format": "date-time" }, "completedAt": { "type": "string", "format": "date-time" }, "result": { "type": "object", "additionalProperties": true }, "error": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "AsyncOperationSubmitRequest": { "type": "object", "required": ["operation", "input"], "properties": { "operation": { "$ref": "#/components/schemas/AsyncOperationType" }, "input": { "$ref": "#/components/schemas/ContentCreateRequest" } }, "additionalProperties": false },
+      "AsyncOperationExecutePendingRequest": { "type": "object", "properties": { "limit": { "type": "integer", "minimum": 1, "maximum": 50 } }, "additionalProperties": false },
+      "AsyncOperationResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/AsyncOperation" } } },
+      "AsyncOperationListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/AsyncOperation" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
+      "AsyncOperationBatchResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/AsyncOperation" } } } },
       "WebhookEventType": { "type": "string", "enum": ["content.created", "content.updated", "content.archived", "content.published", "media.created", "media.updated", "media.archived", "media.seo_audited", "publication.published", "publication.unpublished"] },
       "WebhookSubscriptionStatus": { "type": "string", "enum": ["active", "paused", "revoked"] },
       "WebhookDeliveryStatus": { "type": "string", "enum": ["pending", "retrying", "delivered", "failed"] },

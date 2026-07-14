@@ -18,6 +18,7 @@ CMS-OS wird derzeit als Open-Source-Software entwickelt.
 - Statische Seitengenerierung über den BuilderOS Adapter und Veröffentlichung auf Cloudflare Pages
 - Alle Vorgänge über REST API und MCP; OpenAPI ist die maßgebliche Vertragsspezifikation
 - Signierte Webhooks, verschlüsselte Secrets, Delivery-Outbox und Wiederholungen mit exponentiellem Backoff
+- Asynchrone Jobs zur Inhaltserstellung mit Statusabfrage, Ausführung durch externe Scheduler und Idempotenzschlüsseln
 
 ## Rollen und kategoriebezogene Ansichten
 

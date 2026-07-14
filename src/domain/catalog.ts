@@ -97,6 +97,8 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
     "media.manage",
     "webhook.read",
     "webhook.manage",
+    "operation.read",
+    "operation.submit",
   ];
 
   return {
@@ -247,6 +249,8 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "media.manage",
           "webhook.read",
           "webhook.manage",
+          "operation.read",
+          "operation.submit",
         ],
         notices: ["資格・登録情報と公開事実を分けて管理します。"],
       },
@@ -343,6 +347,8 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "media.manage",
           "webhook.read",
           "webhook.manage",
+          "operation.read",
+          "operation.submit",
         ],
         notices: ["店舗情報、料金、営業時間は最終確認日とともに公開します。"],
       },

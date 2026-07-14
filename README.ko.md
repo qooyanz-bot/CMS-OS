@@ -18,6 +18,7 @@ CMS-OS는 현재 오픈 소스로 개발 중입니다.
 - BuilderOS Adapter를 통한 정적 사이트 생성 및 Cloudflare Pages 공개
 - 모든 작업을 REST API와 MCP로 제공하고 OpenAPI를 계약의 기준으로 사용
 - 서명된 Webhook, 암호화된 secret, 전달 outbox, 지수 백오프 재시도
+- 비동기 콘텐츠 생성 작업, 작업 상태 조회, 외부 스케줄러 실행, 멱등성 키
 
 ## 역할과 카테고리별 화면
 

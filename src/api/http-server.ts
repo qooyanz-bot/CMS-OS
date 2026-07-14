@@ -7,6 +7,7 @@ import { applicationSortValues, jobSortValues, PortalService, PortalServiceError
 import {
   ContentService,
   ContentServiceError,
+  type ContentCreateInput,
   isContentAudience,
   isContentLocale,
   isContentType,
@@ -15,6 +16,8 @@ import {
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
 import { MediaService, MediaServiceError, mediaSortValues, type MediaRegisterInput, type MediaUpdateInput } from "../application/media-service.js";
 import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type WebhookSubscriptionCreateInput, type WebhookSubscriptionUpdateInput } from "../application/webhook-service.js";
+import { OperationService, OperationServiceError, type OperationSubmitInput } from "../application/operation-service.js";
+import { operationTypes, type OperationType } from "../domain/operation-store.js";
 import { applicationStatuses, categorySlugs, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
@@ -351,6 +354,36 @@ function parseWebhookUpdateInput(input: Record<string, unknown>): WebhookSubscri
   return patch;
 }
 
+function parseContentCreateInput(input: Record<string, unknown>): ContentCreateInput {
+  if (!isCategorySlug(input.category) || !isContentType(input.contentType) || !isContentAudience(input.audience) || typeof input.title !== "string" || typeof input.summary !== "string" || typeof input.body !== "string") {
+    throw new Error("category、contentType、audience、title、summary、bodyが必要です。");
+  }
+  if (input.slug !== undefined && typeof input.slug !== "string") throw new Error("slugは文字列で指定してください。");
+  if (input.locale !== undefined && !isContentLocale(input.locale)) throw new Error(`localeは${contentLocales.join(", ")}のいずれかを指定してください。`);
+  if (input.proposalId !== undefined && typeof input.proposalId !== "string") throw new Error("proposalIdは文字列で指定してください。");
+  const seo = parseContentSeoPatch(input.seo);
+  const sourceFacts = parseOptionalStringArray(input.sourceFacts, "sourceFacts");
+  return {
+    category: input.category,
+    contentType: input.contentType,
+    audience: input.audience,
+    title: input.title,
+    summary: input.summary,
+    body: input.body,
+    ...(typeof input.slug === "string" ? { slug: input.slug } : {}),
+    ...(isContentLocale(input.locale) ? { locale: input.locale } : {}),
+    ...(typeof input.proposalId === "string" ? { proposalId: input.proposalId } : {}),
+    ...(sourceFacts ? { sourceFacts } : {}),
+    ...(seo ? { seo } : {}),
+  };
+}
+
+function parseOperationSubmitInput(input: Record<string, unknown>): OperationSubmitInput {
+  if (typeof input.operation !== "string" || !operationTypes.includes(input.operation as OperationType)) throw new Error("operationは有効な非同期操作を指定してください。");
+  if (!input.input || typeof input.input !== "object" || Array.isArray(input.input)) throw new Error("inputはオブジェクトで指定してください。");
+  return { operation: input.operation as OperationType, input: parseContentCreateInput(input.input as Record<string, unknown>) };
+}
+
 function parsePaginationValue(value: unknown, fieldName: string, fallback: number): number {
   if (value === undefined || value === null || value === "") return fallback;
   const raw = typeof value === "number" ? String(value) : value;
@@ -392,7 +425,7 @@ function parseQueryString(url: URL, fieldName: string): string | undefined {
 }
 
 function serviceErrorStatus(error: unknown): number {
-  return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError || error instanceof MediaServiceError || error instanceof WebhookServiceError ? error.statusCode : 400;
+  return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError || error instanceof MediaServiceError || error instanceof WebhookServiceError || error instanceof OperationServiceError ? error.statusCode : 400;
 }
 
 function getClientAddress(request: IncomingMessage): string {
@@ -434,6 +467,7 @@ async function handleMcp(
   publication: PublicationService,
   media: MediaService,
   webhook: WebhookService,
+  operation: OperationService,
   authRateLimiter: FixedWindowRateLimiter,
 ): Promise<void> {
   const body = await readJson(request);
@@ -648,6 +682,31 @@ async function handleMcp(
           {
             name: "webhook.deliver_pending",
             description: "再試行時刻を迎えたWebhook配信を上限件数まで送信します。",
+            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 } }, required: [] },
+          },
+          {
+            name: "operation.submit",
+            description: "非同期コンテンツ作成ジョブを投入します。Idempotency-Keyで重複投入を防止できます。",
+            inputSchema: { type: "object", properties: { operation: { enum: [...operationTypes] }, input: { type: "object" }, idempotencyKey: { type: "string", maxLength: 200 } }, required: ["operation", "input"] },
+          },
+          {
+            name: "operation.list",
+            description: "現在の事業者が投入した非同期ジョブを取得します。",
+            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
+          },
+          {
+            name: "operation.get",
+            description: "非同期ジョブの状態を取得します。",
+            inputSchema: { type: "object", properties: { operationId: { type: "string" } }, required: ["operationId"] },
+          },
+          {
+            name: "operation.execute",
+            description: "指定した非同期ジョブを実行します。",
+            inputSchema: { type: "object", properties: { operationId: { type: "string" } }, required: ["operationId"] },
+          },
+          {
+            name: "operation.execute_pending",
+            description: "キューにある非同期ジョブを上限件数まで実行します。",
             inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 } }, required: [] },
           },
           {
@@ -1613,6 +1672,45 @@ async function handleMcp(
       return;
     }
 
+    if (name === "operation.submit") {
+      const idempotencyKey = typeof argumentsObject.idempotencyKey === "string" ? argumentsObject.idempotencyKey : undefined;
+      const result = operation.submit(principal, parseOperationSubmitInput(argumentsObject), idempotencyKey);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "operation.list") {
+      const limit = argumentsObject.limit === undefined ? undefined : argumentsObject.limit;
+      const cursor = argumentsObject.cursor === undefined ? undefined : argumentsObject.cursor;
+      if (limit !== undefined && typeof limit !== "number") throw new Error("limitは整数で指定してください。");
+      if (cursor !== undefined && typeof cursor !== "number") throw new Error("cursorは整数で指定してください。");
+      const result = operation.list(principal, { ...(limit !== undefined ? { limit } : {}), ...(cursor !== undefined ? { cursor } : {}) });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "operation.get") {
+      if (typeof argumentsObject.operationId !== "string") throw new Error("operationIdを指定してください。");
+      const result = operation.get(principal, argumentsObject.operationId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "operation.execute") {
+      if (typeof argumentsObject.operationId !== "string") throw new Error("operationIdを指定してください。");
+      const result = await operation.execute(principal, argumentsObject.operationId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "operation.execute_pending") {
+      const limit = argumentsObject.limit === undefined ? 10 : argumentsObject.limit;
+      if (typeof limit !== "number") throw new Error("limitは整数で指定してください。");
+      const result = await operation.executePending(principal, limit);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: { items: result } } });
+      return;
+    }
+
     if (name === "content.propose") {
       if (!isCategorySlug(argumentsObject.category) || !isContentType(argumentsObject.contentType) || !isContentAudience(argumentsObject.audience) || typeof argumentsObject.topic !== "string") {
         throw new Error("category、contentType、audience、topicが必要です。");
@@ -1911,10 +2009,12 @@ export function createHttpServer(
   publication?: PublicationService,
   media?: MediaService,
   webhook = new WebhookService(portal),
+  operation?: OperationService,
 ): Server {
   content ??= new ContentService(portal, undefined, webhook);
   publication ??= new PublicationService(portal, content, undefined, undefined, undefined, webhook);
   media ??= new MediaService(portal, undefined, webhook);
+  operation ??= new OperationService(portal, content);
   const authRateLimiter = new FixedWindowRateLimiter(10, 10 * 60 * 1000);
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
@@ -2439,6 +2539,70 @@ export function createHttpServer(
           writeJson(response, 200, { item });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "Webhook購読を操作できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/operations") {
+        try {
+          const body = await readJson(request);
+          const rawIdempotencyKey = request.headers["idempotency-key"];
+          const idempotencyKey = typeof rawIdempotencyKey === "string" ? rawIdempotencyKey : undefined;
+          const item = operation.submit(principal, parseOperationSubmitInput(body), idempotencyKey);
+          writeJson(response, 202, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "非同期ジョブを投入できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/operations") {
+        try {
+          writeJson(response, 200, operation.list(principal, parsePaginationQuery(url)));
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "非同期ジョブを取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/operations/execute-pending") {
+        try {
+          const body = await readJson(request);
+          const limit = body.limit === undefined ? 10 : body.limit;
+          if (typeof limit !== "number") throw new Error("limitは整数で指定してください。");
+          writeJson(response, 200, { items: await operation.executePending(principal, limit) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "非同期ジョブを実行できません。" });
+        }
+        return;
+      }
+
+      const operationActionMatch = url.pathname.match(/^\/api\/v1\/operations\/([^/]+)\/(execute)$/);
+      if (request.method === "POST" && operationActionMatch) {
+        const operationId = operationActionMatch[1];
+        if (!operationId) {
+          writeJson(response, 400, { error: "operationIdを指定してください。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: await operation.execute(principal, operationId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "非同期ジョブを実行できません。" });
+        }
+        return;
+      }
+
+      const operationMatch = url.pathname.match(/^\/api\/v1\/operations\/([^/]+)$/);
+      if (request.method === "GET" && operationMatch) {
+        const operationId = operationMatch[1];
+        if (!operationId) {
+          writeJson(response, 400, { error: "operationIdを指定してください。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: operation.get(principal, operationId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "非同期ジョブを取得できません。" });
         }
         return;
       }
@@ -3251,7 +3415,7 @@ export function createHttpServer(
       }
 
       if (request.method === "POST" && url.pathname === "/mcp") {
-        await handleMcp(request, response, auth, portal, content, publication, media, webhook, authRateLimiter);
+        await handleMcp(request, response, auth, portal, content, publication, media, webhook, operation, authRateLimiter);
         return;
       }
 
