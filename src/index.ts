@@ -5,6 +5,7 @@ import { PublicationService } from "./application/publication-service.js";
 import { MediaService } from "./application/media-service.js";
 import { WebhookService } from "./application/webhook-service.js";
 import { OperationService } from "./application/operation-service.js";
+import { PortalPlanningService } from "./application/portal-planning-service.js";
 import { createHttpServer } from "./api/http-server.js";
 import { PortalStore } from "./domain/portal-store.js";
 import { ContentStore } from "./domain/content-store.js";
@@ -35,7 +36,8 @@ async function main(): Promise<void> {
   const publication = new PublicationService(portal, content, undefined, undefined, new PublicationStore(stateStore), webhook);
   const media = new MediaService(portal, new MediaStore(stateStore), webhook);
   const operation = new OperationService(portal, content, stateStore);
-  const server = createHttpServer(auth, portal, content, publication, media, webhook, operation);
+  const portalPlanning = new PortalPlanningService(portal, stateStore);
+  const server = createHttpServer(auth, portal, content, publication, media, webhook, operation, portalPlanning);
 
   const shutdown = async (): Promise<void> => {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

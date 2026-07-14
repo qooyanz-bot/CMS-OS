@@ -30,6 +30,7 @@ npm run dev
 - `portal-directory-guides.json`
 - `portal-jobs.json`
 - `portal-applications.json`
+- `portal-plans.json`（事業者ごとのテーマ・地域別ポータル計画、検索意図、ページ案、ギャップ）
 - `content-proposals.json`
 - `content-records.json`
 - `content-versions.json`

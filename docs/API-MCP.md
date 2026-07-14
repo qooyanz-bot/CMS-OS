@@ -31,6 +31,7 @@ BuilderOS Adapter ─┘
 | 依頼・送客 | 依頼作成、担当事業者への割当、依頼一覧、問い合わせ、ステータス更新 |
 | 採用 | 求人検索、応募作成、応募状況、事業者側の応募確認 |
 | ポータル案内 | カテゴリ別の外部ディレクトリ、予約、事業者向け案内 |
+| ポータル計画 | テーマ・地域・対象ポジションから検索意図、SEOページ案、不足情報、次アクションを生成 |
 | 運用 | ジョブ、再試行、Webhook、監査ログ、権限、テナント設定 |
 
 RESTに定義したCMS操作は、対応するMCPツールを必ず持つ。`tests/api-mcp-parity.test.ts`がOpenAPIの`operationId`とMCPツールの対応、`tools/list`の網羅性、各入力スキーマを自動検証する。新しいREST操作を追加する場合は、同じ変更で対応MCPツールと対応表を追加する。
@@ -59,6 +60,9 @@ GET  /api/v1/categories/{category}/directories
 POST /api/v1/directories                  # 運営キーで外部案内を追加
 PATCH /api/v1/directories/{directoryId}   # 運営キーで外部案内を更新
 DELETE /api/v1/directories/{directoryId}  # 運営キーで外部案内を削除
+POST /api/v1/portal-plans                 # 事業者がテーマ・地域・対象ポジションから計画を生成
+GET  /api/v1/portal-plans?limit=50&cursor=0
+GET  /api/v1/portal-plans/{planId}
 外部案内の管理操作は `CMS_OS_OPERATOR_KEY` と `x-cms-os-operator-key` ヘッダーで保護します。通常のログインロールには運営キーを渡しません。
 POST /api/v1/auth/oidc/start
 GET  /api/v1/auth/oidc/callback

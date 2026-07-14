@@ -327,6 +327,64 @@ export type ContentType = (typeof contentTypes)[number];
 export const contentAudiences = ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] as const;
 export type ContentAudience = (typeof contentAudiences)[number];
 
+export const portalPlanGoals = ["discovery", "conversion", "recruiting", "regional"] as const;
+export type PortalPlanGoal = (typeof portalPlanGoals)[number];
+
+export const portalPlanIntentKinds = ["informational", "commercial", "transactional", "local", "recruiting"] as const;
+export type PortalPlanIntentKind = (typeof portalPlanIntentKinds)[number];
+
+export const portalPlanPageTypes = ["hub", "theme", "region", "provider_directory", "faq", "jobs", "request"] as const;
+export type PortalPlanPageType = (typeof portalPlanPageTypes)[number];
+
+export interface PortalPlanSearchIntent {
+  kind: PortalPlanIntentKind;
+  label: string;
+  query: string;
+  readerNeed: string;
+  recommendedPageId: string;
+}
+
+export interface PortalPlanPageIdea {
+  id: string;
+  pageType: PortalPlanPageType;
+  path: string;
+  title: string;
+  purpose: string;
+  primaryKeyword: string;
+  internalLinks: string[];
+}
+
+export interface PortalPlanGap {
+  code: string;
+  severity: "high" | "medium" | "low";
+  message: string;
+  recommendation: string;
+}
+
+export interface PortalPlanCoverage {
+  providerCount: number;
+  externalGuideCount: number;
+  jobCount: number;
+  availableModules: string[];
+}
+
+export interface PortalPlan {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  categoryLabel: string;
+  theme: string;
+  region?: string;
+  audience: ContentAudience;
+  goal: PortalPlanGoal;
+  coverage: PortalPlanCoverage;
+  searchIntents: PortalPlanSearchIntent[];
+  pageIdeas: PortalPlanPageIdea[];
+  gaps: PortalPlanGap[];
+  nextActions: string[];
+  generatedAt: string;
+}
+
 export const contentLocales = ["ja", "en", "zh-CN", "es", "ko", "de", "fr"] as const;
 export type ContentLocale = (typeof contentLocales)[number];
 

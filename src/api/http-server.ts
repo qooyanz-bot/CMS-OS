@@ -17,8 +17,9 @@ import { PublicationService, PublicationServiceError } from "../application/publ
 import { MediaService, MediaServiceError, mediaSortValues, type MediaRegisterInput, type MediaUpdateInput } from "../application/media-service.js";
 import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type WebhookSubscriptionCreateInput, type WebhookSubscriptionUpdateInput } from "../application/webhook-service.js";
 import { OperationService, OperationServiceError, type OperationSubmitInput } from "../application/operation-service.js";
+import { PortalPlanningService, PortalPlanningServiceError, type PortalPlanCreateInput } from "../application/portal-planning-service.js";
 import { operationTypes, type OperationType } from "../domain/operation-store.js";
-import { applicationStatuses, categorySlugs, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
+import { applicationStatuses, categorySlugs, contentAudiences, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -384,6 +385,21 @@ function parseOperationSubmitInput(input: Record<string, unknown>): OperationSub
   return { operation: input.operation as OperationType, input: parseContentCreateInput(input.input as Record<string, unknown>) };
 }
 
+function parsePortalPlanCreateInput(input: Record<string, unknown>): PortalPlanCreateInput {
+  if (!isCategorySlug(input.category) || typeof input.theme !== "string" || typeof input.audience !== "string" || !contentAudiences.includes(input.audience as ContentAudience)) {
+    throw new Error("category、theme、audienceを正しく指定してください。");
+  }
+  if (input.region !== undefined && typeof input.region !== "string") throw new Error("regionは文字列で指定してください。");
+  if (input.goal !== undefined && (typeof input.goal !== "string" || !portalPlanGoals.includes(input.goal as PortalPlanGoal))) throw new Error("goalが不正です。");
+  return {
+    category: input.category,
+    theme: input.theme,
+    audience: input.audience as ContentAudience,
+    ...(typeof input.region === "string" ? { region: input.region } : {}),
+    ...(typeof input.goal === "string" ? { goal: input.goal as PortalPlanGoal } : {}),
+  };
+}
+
 function parsePaginationValue(value: unknown, fieldName: string, fallback: number): number {
   if (value === undefined || value === null || value === "") return fallback;
   const raw = typeof value === "number" ? String(value) : value;
@@ -425,7 +441,7 @@ function parseQueryString(url: URL, fieldName: string): string | undefined {
 }
 
 function serviceErrorStatus(error: unknown): number {
-  return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError || error instanceof MediaServiceError || error instanceof WebhookServiceError || error instanceof OperationServiceError ? error.statusCode : 400;
+  return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError || error instanceof MediaServiceError || error instanceof WebhookServiceError || error instanceof OperationServiceError || error instanceof PortalPlanningServiceError ? error.statusCode : 400;
 }
 
 function getClientAddress(request: IncomingMessage): string {
@@ -468,6 +484,7 @@ async function handleMcp(
   media: MediaService,
   webhook: WebhookService,
   operation: OperationService,
+  portalPlanning: PortalPlanningService,
   authRateLimiter: FixedWindowRateLimiter,
 ): Promise<void> {
   const body = await readJson(request);
@@ -507,6 +524,31 @@ async function handleMcp(
             name: "category.get",
             description: "カテゴリ、現在のロールに対応する表示体験、外部案内をまとめて取得します。",
             inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
+          },
+          {
+            name: "portal.plan",
+            description: "カテゴリ、テーマ、地域、対象ポジションから検索意図とSEOページ案を生成します。事業者向けです。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                category: { enum: categoryEnum },
+                theme: { type: "string", minLength: 2, maxLength: 100 },
+                region: { type: "string", maxLength: 100 },
+                audience: { enum: [...contentAudiences] },
+                goal: { enum: [...portalPlanGoals] },
+              },
+              required: ["category", "theme", "audience"],
+            },
+          },
+          {
+            name: "portal.plan.list",
+            description: "現在の事業者が作成したポータル計画を取得します。",
+            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
+          },
+          {
+            name: "portal.plan.get",
+            description: "作成済みポータル計画を1件取得します。",
+            inputSchema: { type: "object", properties: { planId: { type: "string" } }, required: ["planId"] },
           },
           {
             name: "directory.create",
@@ -1245,6 +1287,25 @@ async function handleMcp(
     if (name === "category.get") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
       const result = { item: portal.getCategoryContext(argumentsObject.category, principal) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "portal.plan") {
+      const result = portalPlanning.create(principal, parsePortalPlanCreateInput(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "portal.plan.list") {
+      const result = portalPlanning.list(principal, parsePaginationArguments(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "portal.plan.get") {
+      if (typeof argumentsObject.planId !== "string") throw new Error("planIdが必要です。");
+      const result = { item: portalPlanning.get(principal, argumentsObject.planId) };
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2010,11 +2071,13 @@ export function createHttpServer(
   media?: MediaService,
   webhook = new WebhookService(portal),
   operation?: OperationService,
+  portalPlanning?: PortalPlanningService,
 ): Server {
   content ??= new ContentService(portal, undefined, webhook);
   publication ??= new PublicationService(portal, content, undefined, undefined, undefined, webhook);
   media ??= new MediaService(portal, undefined, webhook);
   operation ??= new OperationService(portal, content);
+  portalPlanning ??= new PortalPlanningService(portal);
   const authRateLimiter = new FixedWindowRateLimiter(10, 10 * 60 * 1000);
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
@@ -2237,6 +2300,40 @@ export function createHttpServer(
           return;
         }
         writeJson(response, 200, { items: portal.listDirectoryGuides(category, principal) });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/portal-plans") {
+        try {
+          const body = await readJson(request);
+          writeJson(response, 201, { item: portalPlanning.create(principal, parsePortalPlanCreateInput(body)) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "ポータル計画を作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/portal-plans") {
+        try {
+          writeJson(response, 200, portalPlanning.list(principal, parsePaginationQuery(url)));
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "ポータル計画を取得できません。" });
+        }
+        return;
+      }
+
+      const portalPlanMatch = url.pathname.match(/^\/api\/v1\/portal-plans\/([^/]+)$/);
+      if (request.method === "GET" && portalPlanMatch) {
+        const planId = portalPlanMatch[1];
+        if (!planId) {
+          writeJson(response, 400, { error: "planIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: portalPlanning.get(principal, planId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "ポータル計画を取得できません。" });
+        }
         return;
       }
 
@@ -3415,7 +3512,7 @@ export function createHttpServer(
       }
 
       if (request.method === "POST" && url.pathname === "/mcp") {
-        await handleMcp(request, response, auth, portal, content, publication, media, webhook, operation, authRateLimiter);
+        await handleMcp(request, response, auth, portal, content, publication, media, webhook, operation, portalPlanning, authRateLimiter);
         return;
       }
 
