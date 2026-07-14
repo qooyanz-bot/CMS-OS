@@ -1202,7 +1202,7 @@ async function handleMcp(
           },
           {
             name: "publication.schedule_execute",
-            description: "外部Cronから呼び出し、期限を迎えた予約公開を実行します。",
+            description: "事業者の予約公開を実行します。運営キーを付けた外部Cronから呼び出すと、全カテゴリの期限到来分を実行します。",
             inputSchema: { type: "object", properties: { before: { type: "string", format: "date-time" } }, required: [] },
           },
           {
@@ -2058,7 +2058,9 @@ async function handleMcp(
 
     if (name === "publication.schedule_execute") {
       if (argumentsObject.before !== undefined && typeof argumentsObject.before !== "string") throw new Error("beforeは文字列で指定してください。");
-      const result = await publication.executeSchedules(principal, typeof argumentsObject.before === "string" ? argumentsObject.before : undefined);
+      const result = hasOperatorKey(request)
+        ? await publication.executeSchedulesAsOperator(typeof argumentsObject.before === "string" ? argumentsObject.before : undefined)
+        : await publication.executeSchedules(principal, typeof argumentsObject.before === "string" ? argumentsObject.before : undefined);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: { items: result } } });
       return;
     }
@@ -3107,7 +3109,9 @@ export function createHttpServer(
           return;
         }
         try {
-          const items = await publication.executeSchedules(principal, typeof body.before === "string" ? body.before : undefined);
+          const items = hasOperatorKey(request)
+            ? await publication.executeSchedulesAsOperator(typeof body.before === "string" ? body.before : undefined)
+            : await publication.executeSchedules(principal, typeof body.before === "string" ? body.before : undefined);
           writeJson(response, 200, { items });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "予約公開を実行できません。" });

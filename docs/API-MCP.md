@@ -158,7 +158,7 @@ PATCH /api/v1/jobs/{jobId}
 | `job.search` / `GET /api/v1/jobs` | `search`、`employmentType`、`location`、`status` | `title_asc`、`title_desc`、`location_asc` |
 | `application.list` / `GET /api/v1/applications` | `search`、`jobId`、`status` | `createdAt_desc`、`createdAt_asc`、`status` |
 
-予約公開は`publication.schedule` / `POST /api/v1/publications/schedules`で作成します。作成時に承認済みコンテンツの静的スナップショットを固定するため、予約後に編集された内容が意図せず混ざりません。`publication.schedule_list` / `GET /api/v1/publications/schedules`で一覧を取得し、未実行の予約だけを`publication.schedule_cancel`で取り消せます。Cloudflare Cronなどの外部ジョブは`publication.schedule_execute` / `POST /api/v1/publications/schedules/execute`を呼び出し、期限を迎えた予約を実行します。ドライランでは予約を実行済みにせず、実デプロイ成功時だけコンテンツとスケジュールを公開済みへ進めます。
+予約公開は`publication.schedule` / `POST /api/v1/publications/schedules`で作成します。作成時に承認済みコンテンツの静的スナップショットを固定するため、予約後に編集された内容が意図せず混ざりません。`publication.schedule_list` / `GET /api/v1/publications/schedules`で一覧を取得し、未実行の予約だけを`publication.schedule_cancel`で取り消せます。事業者トークンで`publication.schedule_execute` / `POST /api/v1/publications/schedules/execute`を呼び出すと自社分を実行し、`CMS_OS_OPERATOR_KEY`と`x-cms-os-operator-key`を付けて呼び出すと全カテゴリの期限到来分を運営ジョブとして実行します。ドライランでは予約を実行済みにせず、実デプロイ成功時だけコンテンツとスケジュールを公開済みへ進めます。
 
 公開済みコンテンツの除外は`publication.unpublish` / `POST /api/v1/publications/unpublish`で行います。除外対象を含まない新しい静的スナップショットをBuilderOS Adapter経由でデプロイし、実デプロイ成功時だけ対象コンテンツをアーカイブし、対象を含む未実行の予約公開を取消します。dry-runやデプロイ失敗時はCMSの公開状態を変更しません。
 

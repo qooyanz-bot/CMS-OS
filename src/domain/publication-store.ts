@@ -69,6 +69,11 @@ export class PublicationStore {
       .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor));
   }
 
+  /** 運営スケジューラが全カテゴリの期限到来分を確認するための一覧です。 */
+  public listAllSchedules(): PublicationScheduleRecord[] {
+    return [...this.schedules].sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor));
+  }
+
   public updateSchedule(scheduleId: string, patch: Partial<PublicationScheduleRecord>): PublicationScheduleRecord | undefined {
     const schedule = this.getSchedule(scheduleId);
     if (!schedule) return undefined;

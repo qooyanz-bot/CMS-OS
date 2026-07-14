@@ -245,6 +245,34 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(mcpDeleted.body.result.structuredContent.deleted, true);
   });
 
+  it("運営キーで全カテゴリの予約公開実行をRESTとMCPから起動できる", async () => {
+    const denied = await request("/api/v1/publications/schedules/execute", {
+      method: "POST",
+      body: JSON.stringify({ before: new Date(Date.now() + 60_000).toISOString() }),
+    });
+    assert.equal(denied.status, 401);
+
+    const executed = await request("/api/v1/publications/schedules/execute", {
+      method: "POST",
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+      body: JSON.stringify({ before: new Date(Date.now() + 60_000).toISOString() }),
+    });
+    assert.equal(executed.status, 200);
+    assert.deepEqual(executed.body.items, []);
+
+    const mcpExecuted = await request("/mcp", {
+      method: "POST",
+      headers: { "x-cms-os-operator-key": "test-operator-key" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 46,
+        method: "tools/call",
+        params: { name: "publication.schedule_execute", arguments: { before: new Date(Date.now() + 60_000).toISOString() } },
+      }),
+    });
+    assert.deepEqual(mcpExecuted.body.result.structuredContent.items, []);
+  });
+
   it("発注者は注文者向けの情報を取得でき、一般ユーザーには取得できない", async () => {
     const userLogin = await request("/api/v1/auth/login", {
       method: "POST",

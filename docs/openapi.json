@@ -797,8 +797,8 @@
       "post": {
         "tags": ["Publication"],
         "operationId": "executePublicationSchedules",
-        "summary": "期限を迎えた予約公開を実行",
-        "security": [{ "BearerAuth": [] }],
+        "summary": "期限を迎えた予約公開を実行（運営キーで全カテゴリ対応）",
+        "security": [{ "BearerAuth": [] }, { "OperatorKey": [] }],
         "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationScheduleExecuteRequest" } } } },
         "responses": { "200": { "description": "予約公開の実行結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationScheduleExecuteResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }

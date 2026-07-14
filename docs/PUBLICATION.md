@@ -51,9 +51,9 @@ POST /api/v1/publications/{publicationId}/rollback
 
 - `GET /api/v1/publications/schedules` / `publication.schedule_list`：事業者自身の予約一覧
 - `POST /api/v1/publications/schedules/{scheduleId}/cancel` / `publication.schedule_cancel`：未実行予約の取消
-- `POST /api/v1/publications/schedules/execute` / `publication.schedule_execute`：外部Cronから期限到来分を実行
+- `POST /api/v1/publications/schedules/execute` / `publication.schedule_execute`：事業者トークンで自社分を実行。`x-cms-os-operator-key`を付けた運営Cronでは全カテゴリの期限到来分を実行
 
-実行入口はCMS-OS内部のタイマーに依存せず、Cloudflare Cronや外部ジョブからAPI/MCPで呼び出します。Cloudflare Pagesへの実デプロイが成功した場合だけ、予約を`executed`、対象コンテンツを`published`へ更新します。ドライランでは予約を保持し、再実行できます。
+実行入口はCMS-OS内部のタイマーに依存せず、Cloudflare Cronや外部ジョブからAPI/MCPで呼び出します。運営ジョブは`CMS_OS_OPERATOR_KEY`と`x-cms-os-operator-key`を使用し、事業者ごとのアクセストークンを外部ジョブへ配布せずに全カテゴリを処理できます。Cloudflare Pagesへの実デプロイが成功した場合だけ、予約を`executed`、対象コンテンツを`published`へ更新します。ドライランでは予約を保持し、再実行できます。
 
 ## 公開履歴とロールバック
 

@@ -174,6 +174,15 @@ function deploymentRecord(deployment: CloudflarePagesDeploymentResult): Publicat
   };
 }
 
+export type PublicationScheduleExecutionResult = {
+  schedule: PublicationScheduleRecord;
+  status: "executed" | "dry_run" | "failed";
+  publication?: PublicationBuildResult;
+  deployment?: CloudflarePagesDeploymentResult;
+  publishedContentIds?: string[];
+  error?: string;
+};
+
 function absoluteUrl(baseUrl: string, path: string): string {
   return new URL(path, `${baseUrl}/`).toString();
 }
@@ -860,23 +869,11 @@ export class PublicationService {
     return cancelled;
   }
 
-  public async executeSchedules(
-    principal: AuthenticatedPrincipal | null,
-    before?: string,
-  ): Promise<Array<{ schedule: PublicationScheduleRecord; status: "executed" | "dry_run" | "failed"; publication?: PublicationBuildResult; deployment?: CloudflarePagesDeploymentResult; publishedContentIds?: string[]; error?: string }>> {
-    if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
-    if (principal.role !== "provider" || !principal.providerId) {
-      throw new PublicationServiceError(403, "予約公開の実行は事業者だけが利用できます。");
-    }
-    this.portal.assertAction(principal, principal.category, "publication.schedule_execute");
-    const cutoff = before === undefined ? Date.now() : Date.parse(before);
-    if (!Number.isFinite(cutoff)) throw new PublicationServiceError(400, "beforeはISO 8601形式の日時で指定してください。");
-
-    const dueSchedules = this.publicationStore
-      .listSchedules(principal.category, principal.providerId)
-      .filter((schedule) => schedule.status === "scheduled" && Date.parse(schedule.scheduledFor) <= cutoff);
-    const results: Array<{ schedule: PublicationScheduleRecord; status: "executed" | "dry_run" | "failed"; publication?: PublicationBuildResult; deployment?: CloudflarePagesDeploymentResult; publishedContentIds?: string[]; error?: string }> = [];
-
+  private async executeScheduleRecords(
+    dueSchedules: PublicationScheduleRecord[],
+    principalForSchedule: (schedule: PublicationScheduleRecord) => AuthenticatedPrincipal,
+  ): Promise<PublicationScheduleExecutionResult[]> {
+    const results: PublicationScheduleExecutionResult[] = [];
     for (const schedule of dueSchedules) {
       const storedPublication = this.publicationStore.get(schedule.publicationId);
       if (!storedPublication) {
@@ -893,7 +890,7 @@ export class PublicationService {
         files: storedPublication.files.map((file) => ({ ...file })),
       };
       try {
-        const deployed = await this.publishBuilt(principal, publication);
+        const deployed = await this.publishBuilt(principalForSchedule(schedule), publication);
         if (deployed.deployment.status === "submitted") {
           const executedSchedule = this.publicationStore.updateSchedule(schedule.id, {
             status: "executed",
@@ -911,6 +908,44 @@ export class PublicationService {
       }
     }
     return results;
+  }
+
+  private parseScheduleCutoff(before?: string): number {
+    const cutoff = before === undefined ? Date.now() : Date.parse(before);
+    if (!Number.isFinite(cutoff)) throw new PublicationServiceError(400, "beforeはISO 8601形式の日時で指定してください。");
+    return cutoff;
+  }
+
+  public async executeSchedules(
+    principal: AuthenticatedPrincipal | null,
+    before?: string,
+  ): Promise<PublicationScheduleExecutionResult[]> {
+    if (!principal) throw new PublicationServiceError(401, "ログインが必要です。");
+    if (principal.role !== "provider" || !principal.providerId) {
+      throw new PublicationServiceError(403, "予約公開の実行は事業者だけが利用できます。");
+    }
+    this.portal.assertAction(principal, principal.category, "publication.schedule_execute");
+    const cutoff = this.parseScheduleCutoff(before);
+    const dueSchedules = this.publicationStore
+      .listSchedules(principal.category, principal.providerId)
+      .filter((schedule) => schedule.status === "scheduled" && Date.parse(schedule.scheduledFor) <= cutoff);
+    return this.executeScheduleRecords(dueSchedules, () => principal);
+  }
+
+  /** Cloudflare Cronなどの運営ジョブから、全カテゴリの予約公開を実行します。 */
+  public async executeSchedulesAsOperator(before?: string): Promise<PublicationScheduleExecutionResult[]> {
+    const cutoff = this.parseScheduleCutoff(before);
+    const dueSchedules = this.publicationStore
+      .listAllSchedules()
+      .filter((schedule) => schedule.status === "scheduled" && Date.parse(schedule.scheduledFor) <= cutoff);
+    return this.executeScheduleRecords(dueSchedules, (schedule) => ({
+      accountId: "cms-os-scheduler",
+      email: "scheduler@cms-os.internal",
+      displayName: "CMS-OSスケジューラ",
+      category: schedule.category,
+      role: "provider",
+      providerId: schedule.providerId,
+    }));
   }
 
   public listHistory(principal: AuthenticatedPrincipal | null): PublicationHistorySummary[] {

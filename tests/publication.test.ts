@@ -372,7 +372,7 @@ describe("CMS-OS承認済み静的公開", () => {
       [scheduledDraft.id],
       "https://www.example.com",
     );
-    const executed = await publication.executeSchedules(login.principal, new Date(Date.now() + 120_000).toISOString());
+    const executed = await publication.executeSchedulesAsOperator(new Date(Date.now() + 120_000).toISOString());
     assert.equal(executed.length, 1);
     assert.equal(executed[0]?.status, "executed");
     assert.equal(executed[0]?.schedule.id, schedule.id);
