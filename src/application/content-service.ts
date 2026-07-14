@@ -25,6 +25,7 @@ import {
   type SeoSiteAuditResult,
 } from "../domain/types.js";
 import type { WebhookService } from "./webhook-service.js";
+import { DeterministicContentAgentAdapter, type ContentAgentAdapter } from "../integrations/content-agent-adapter.js";
 
 export class ContentServiceError extends Error {
   public constructor(public readonly statusCode: number, message: string) {
@@ -175,21 +176,12 @@ function createOutline(audience: ContentAudience): string[] {
   ];
 }
 
-function createBody(title: string, proposal: ContentProposal): string {
-  const sections = proposal.outline
-    .map((heading) => `## ${heading}\n\n${proposal.topic}について、${audienceIntents[proposal.audience]}ための情報を整理します。\n`)
-    .join("\n");
-  const facts = proposal.sourceFacts.length > 0
-    ? `\n## 確認済み情報\n\n${proposal.sourceFacts.map((fact) => `- ${fact}`).join("\n")}\n`
-    : "\n## 編集メモ\n\n公開前に、企業が保有する一次情報と出典を追加してください。\n";
-  return `# ${title}\n\n${proposal.rationale}\n\n${sections}${facts}`.trim();
-}
-
 export class ContentService {
   public constructor(
     private readonly portal: PortalService,
     private readonly store = new ContentStore(),
     private readonly webhook?: WebhookService,
+    private readonly agent: ContentAgentAdapter = new DeterministicContentAgentAdapter(),
   ) {}
 
   public createProposal(
@@ -205,7 +197,7 @@ export class ContentService {
     const primaryKeyword = (input.primaryKeyword?.trim() || topic).slice(0, 80);
     const sourceFacts = trimList(input.sourceFacts);
     const relatedKeywords = trimList([...(input.relatedKeywords ?? []), topic, audienceLabels[input.audience]]);
-    const proposal: Omit<ContentProposal, "id" | "createdAt"> = {
+    const proposalSeed: Omit<ContentProposal, "id" | "createdAt"> = {
       category: input.category,
       providerId: principal.providerId!,
       contentType: input.contentType,
@@ -217,6 +209,20 @@ export class ContentService {
       outline: createOutline(input.audience),
       sourceFacts,
       rationale: `${contentTypeLabels[input.contentType]}として、${audienceLabels[input.audience]}に向けて「${topic}」を伝える企画です。${audienceIntents[input.audience]}。`,
+    };
+    const generated = this.agent.propose({
+      ...proposalSeed,
+      audienceLabel: audienceLabels[input.audience],
+      contentTypeLabel: contentTypeLabels[input.contentType],
+    });
+    const outline = trimList(generated.outline);
+    if (outline.length === 0) throw new ContentServiceError(502, "AIエージェントが有効な企画構成を返しませんでした。");
+    const proposal: Omit<ContentProposal, "id" | "createdAt"> = {
+      ...proposalSeed,
+      searchIntent: this.normalizeAgentText(generated.searchIntent, "searchIntent", 500),
+      relatedKeywords: trimList(generated.relatedKeywords),
+      outline,
+      rationale: this.normalizeAgentText(generated.rationale, "rationale", 2_000),
     };
     return this.store.createProposal(proposal);
   }
@@ -318,32 +324,27 @@ export class ContentService {
     const proposal = this.getOwnedProposal(principal, proposalId);
     this.portal.assertAction(principal, proposal.category, "content.draft");
 
-    const title = `${proposal.topic}｜${audienceLabels[proposal.audience]}向け${contentTypeLabels[proposal.contentType]}`;
-    const summary = limit(`${proposal.topic}について、${audienceIntents[proposal.audience]}ためのCMS-OS編集原稿です。`, 160);
-    const seoTitle = limit(title, 60);
-    const seoDescription = limit(summary, 160);
+    const generated = this.agent.draft({
+      proposal,
+      audienceLabel: audienceLabels[proposal.audience],
+      audienceIntent: audienceIntents[proposal.audience],
+      contentTypeLabel: contentTypeLabels[proposal.contentType],
+      jsonLdType: jsonLdTypes[proposal.contentType],
+    });
+    const title = this.normalizeAgentText(generated.title, "title", 160);
+    const summary = this.normalizeAgentText(generated.summary, "summary", 320);
+    const body = this.normalizeAgentText(generated.body, "body", 200_000);
+    const slug = `content-${proposal.id.slice(-12)}`;
     const created = this.store.createContent({
       category: proposal.category,
       providerId: proposal.providerId,
       contentType: proposal.contentType,
       audience: proposal.audience,
       title,
-      slug: `content-${proposal.id.slice(-12)}`,
+      slug,
       summary,
-      body: createBody(title, proposal),
-      seo: {
-        title: seoTitle,
-        description: seoDescription,
-        keywords: [proposal.primaryKeyword, ...proposal.relatedKeywords],
-        canonicalPath: `/content/content-${proposal.id.slice(-12)}`,
-        ogTitle: seoTitle,
-        ogDescription: seoDescription,
-        jsonLdType: jsonLdTypes[proposal.contentType],
-        faq: proposal.outline.slice(-1).map((question) => ({
-          question: `${question}は確認できますか？`,
-          answer: "公開前に一次情報と担当者の確認結果を反映します。",
-        })),
-      },
+      body,
+      seo: this.createSeoForContent(proposal.contentType, title, summary, slug, generated.seo),
       sourceFacts: proposal.sourceFacts,
       proposalId: proposal.id,
       locale: "ja",
@@ -429,32 +430,43 @@ export class ContentService {
 
     const localeSegment = input.targetLocale.toLocaleLowerCase().replace(/[^a-z0-9-]/g, "-");
     const targetLabel = localeLabels[input.targetLocale];
-    const translationNote = input.instructions?.trim() ? `\n\n> 翻訳指示: ${this.normalizeEditableText(input.instructions, "instructions", 1000)}` : "";
+    const normalizedInstructions = input.instructions?.trim()
+      ? this.normalizeEditableText(input.instructions, "instructions", 1000)
+      : undefined;
+    const generated = this.agent.translate({
+      source,
+      targetLocale: input.targetLocale,
+      targetLabel,
+      ...(normalizedInstructions !== undefined ? { instructions: normalizedInstructions } : {}),
+    });
     const title = input.title !== undefined
       ? this.normalizeEditableText(input.title, "title", 160)
-      : `【${targetLabel}翻訳下書き】${source.title}`;
+      : this.normalizeAgentText(generated.title, "title", 160);
     const summary = input.summary !== undefined
       ? this.normalizeEditableText(input.summary, "summary", 320)
-      : `翻訳先: ${targetLabel}。原文「${source.summary}」をもとにした翻訳下書きです。`;
+      : this.normalizeAgentText(generated.summary, "summary", 320);
     const body = input.body !== undefined
       ? this.normalizeEditableText(input.body, "body", 200_000)
-      : `# ${title}\n\n> 翻訳先: ${targetLabel}\n> 原文コンテンツID: ${source.id}\n> 原文バージョン: ${source.version}\n\n${source.body}${translationNote}`;
+      : this.normalizeAgentText(generated.body, "body", 200_000);
     const seo: ContentSeo = {
       ...source.seo,
+      ...(generated.seo ?? {}),
       ...(input.seo ?? {}),
-      title: input.seo?.title !== undefined ? input.seo.title : `【${targetLabel}】${source.seo.title}`,
-      description: input.seo?.description !== undefined ? input.seo.description : `翻訳版: ${source.seo.description}`,
-      ogTitle: input.seo?.ogTitle !== undefined ? input.seo.ogTitle : `【${targetLabel}】${source.seo.ogTitle}`,
-      ogDescription: input.seo?.ogDescription !== undefined ? input.seo.ogDescription : `翻訳版: ${source.seo.ogDescription}`,
-      keywords: input.seo?.keywords !== undefined ? trimList(input.seo.keywords) : trimList([...source.seo.keywords, input.targetLocale]),
-      canonicalPath: input.seo?.canonicalPath !== undefined ? input.seo.canonicalPath : `/${localeSegment}${source.seo.canonicalPath}`,
+      title: input.seo?.title !== undefined ? input.seo.title : generated.seo?.title ?? `【${targetLabel}】${source.seo.title}`,
+      description: input.seo?.description !== undefined ? input.seo.description : generated.seo?.description ?? `翻訳版: ${source.seo.description}`,
+      ogTitle: input.seo?.ogTitle !== undefined ? input.seo.ogTitle : generated.seo?.ogTitle ?? `【${targetLabel}】${source.seo.ogTitle}`,
+      ogDescription: input.seo?.ogDescription !== undefined ? input.seo.ogDescription : generated.seo?.ogDescription ?? `翻訳版: ${source.seo.ogDescription}`,
+      keywords: input.seo?.keywords !== undefined ? trimList(input.seo.keywords) : trimList(generated.seo?.keywords ?? [...source.seo.keywords, input.targetLocale]),
+      canonicalPath: input.seo?.canonicalPath !== undefined ? input.seo.canonicalPath : generated.seo?.canonicalPath ?? `/${localeSegment}${source.seo.canonicalPath}`,
       faq: input.seo?.faq !== undefined ? input.seo.faq.map((item) => ({ ...item })) : source.seo.faq.map((item) => ({ ...item })),
     };
-    seo.title = limit(seo.title.trim(), 60);
-    seo.description = limit(seo.description.trim(), 160);
-    seo.ogTitle = limit(seo.ogTitle.trim(), 60);
-    seo.ogDescription = limit(seo.ogDescription.trim(), 160);
-    if (!seo.canonicalPath.startsWith("/")) seo.canonicalPath = `/${localeSegment}${source.seo.canonicalPath}`;
+    const normalizedSeo = this.createSeoForContent(
+      source.contentType,
+      title,
+      summary,
+      `${source.slug}-${localeSegment}`,
+      seo,
+    );
 
     const created = this.store.createContent({
       category: source.category,
@@ -465,7 +477,7 @@ export class ContentService {
       slug: `${source.slug}-${localeSegment}`,
       summary,
       body,
-      seo,
+      seo: normalizedSeo,
       sourceFacts: [...source.sourceFacts],
       proposalId: source.proposalId,
       locale: input.targetLocale,
@@ -681,16 +693,16 @@ export class ContentService {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "content.polish");
     if (content.status === "review_requested") throw new ContentServiceError(409, "レビュー中のコンテンツは清書できません。差し戻しを待ってください。");
-    const normalizedBody = content.body
-      .replace(/\r\n/g, "\n")
-      .replace(/[ \t]+\n/g, "\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-    const instructionNote = instructions?.trim() ? `\n\n> 清書方針: ${instructions.trim()}` : "";
+    const generated = this.agent.polish({ content, ...(instructions !== undefined ? { instructions } : {}) });
+    const title = generated.title !== undefined ? this.normalizeAgentText(generated.title, "title", 160) : content.title;
+    const summary = generated.summary !== undefined ? this.normalizeAgentText(generated.summary, "summary", 320) : content.summary;
+    const body = this.normalizeAgentText(generated.body, "body", 200_000);
     const updated = this.store.updateContent(content.id, {
-      body: `${normalizedBody}${instructionNote}`,
+      title,
+      summary,
+      body,
       status: "polished",
-      seo: { ...content.seo, title: limit(content.seo.title.trim(), 60), description: limit(content.seo.description.trim(), 160) },
+      seo: this.createSeoForContent(content.contentType, title, summary, content.slug, { ...content.seo, ...(generated.seo ?? {}) }),
     }, { reason: "polished", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     this.emitContentEvent("content.updated", updated);
@@ -982,6 +994,12 @@ export class ContentService {
   private normalizeEditableText(value: string, fieldName: string, maxLength: number): string {
     const normalized = value.trim();
     if (!normalized) throw new ContentServiceError(400, `${fieldName}は空にできません。`);
+    return limit(normalized, maxLength);
+  }
+
+  private normalizeAgentText(value: string, fieldName: string, maxLength: number): string {
+    const normalized = value.trim();
+    if (!normalized) throw new ContentServiceError(502, `AIエージェントが${fieldName}を返しませんでした。`);
     return limit(normalized, maxLength);
   }
 
