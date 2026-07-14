@@ -238,6 +238,11 @@ describe("CMS-OS非同期操作ジョブ", () => {
     assert.equal(partialResult.body.item.status, "failed");
     assert.equal(partialResult.body.item.result.completedCount, 1);
     assert.equal(partialResult.body.item.result.contentIds.length, 1);
+    const retriedPartial = await request(`/api/v1/operations/${partial.body.item.id}/execute`, { method: "POST" });
+    assert.equal(retriedPartial.status, 200);
+    assert.equal(retriedPartial.body.item.status, "failed");
+    assert.deepEqual(retriedPartial.body.item.result.contentIds, partialResult.body.item.result.contentIds);
+    assert.equal(retriedPartial.body.item.result.completedCount, 1);
 
     const oversized = await request("/api/v1/operations", {
       method: "POST",

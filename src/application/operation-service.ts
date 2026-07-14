@@ -166,16 +166,26 @@ export class OperationService {
     const job = this.getOwned(principal, operationId);
     if (job.status === "succeeded") return this.toSummary(job);
     if (job.status === "running") throw new OperationServiceError(409, "ジョブはすでに実行中です。");
-    const running = this.store.update(job.id, { status: "running", startedAt: new Date().toISOString(), error: undefined, completedAt: undefined, result: undefined });
+    const previousResult = job.status === "failed" ? job.result : undefined;
+    const running = this.store.update(job.id, {
+      status: "running",
+      startedAt: new Date().toISOString(),
+      error: undefined,
+      completedAt: undefined,
+      ...(previousResult ? { result: previousResult } : { result: undefined }),
+    });
     if (!running) throw new OperationServiceError(404, "ジョブが見つかりません。");
     let partialResult: Record<string, unknown> | undefined;
     try {
       let result: Record<string, unknown>;
       if (job.operation === "content.create_batch") {
         const batch = running.input as unknown as ContentCreateBatchInput;
-        const contentIds: string[] = [];
-        partialResult = { contentIds, completedCount: 0, totalCount: batch.items.length };
-        for (const item of batch.items) {
+        const resumedIds = Array.isArray(previousResult?.contentIds)
+          ? previousResult.contentIds.filter((value): value is string => typeof value === "string").slice(0, batch.items.length)
+          : [];
+        const contentIds = [...resumedIds];
+        partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.items.length };
+        for (const item of batch.items.slice(contentIds.length)) {
           const created = this.content.createContent(principal, item);
           contentIds.push(created.id);
           partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.items.length };
@@ -183,9 +193,12 @@ export class OperationService {
         result = { contentIds, itemCount: contentIds.length };
       } else if (job.operation === "content.propose_batch") {
         const batch = running.input as unknown as ContentProposeBatchInput;
-        const proposalIds: string[] = [];
-        partialResult = { proposalIds, completedCount: 0, totalCount: batch.items.length };
-        for (const item of batch.items) {
+        const resumedIds = Array.isArray(previousResult?.proposalIds)
+          ? previousResult.proposalIds.filter((value): value is string => typeof value === "string").slice(0, batch.items.length)
+          : [];
+        const proposalIds = [...resumedIds];
+        partialResult = { proposalIds: [...proposalIds], completedCount: proposalIds.length, totalCount: batch.items.length };
+        for (const item of batch.items.slice(proposalIds.length)) {
           const created = this.content.createProposal(principal, item);
           proposalIds.push(created.id);
           partialResult = { proposalIds: [...proposalIds], completedCount: proposalIds.length, totalCount: batch.items.length };
@@ -193,9 +206,12 @@ export class OperationService {
         result = { proposalIds, itemCount: proposalIds.length };
       } else if (job.operation === "content.draft_batch") {
         const batch = running.input as unknown as ContentDraftBatchInput;
-        const contentIds: string[] = [];
-        partialResult = { contentIds, completedCount: 0, totalCount: batch.proposalIds.length };
-        for (const proposalId of batch.proposalIds) {
+        const resumedIds = Array.isArray(previousResult?.contentIds)
+          ? previousResult.contentIds.filter((value): value is string => typeof value === "string").slice(0, batch.proposalIds.length)
+          : [];
+        const contentIds = [...resumedIds];
+        partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.proposalIds.length };
+        for (const proposalId of batch.proposalIds.slice(contentIds.length)) {
           const created = this.content.createDraft(principal, proposalId);
           contentIds.push(created.id);
           partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.proposalIds.length };
@@ -203,9 +219,12 @@ export class OperationService {
         result = { contentIds, itemCount: contentIds.length };
       } else if (job.operation === "content.polish_batch") {
         const batch = running.input as unknown as ContentPolishBatchInput;
-        const contentIds: string[] = [];
-        partialResult = { contentIds, completedCount: 0, totalCount: batch.contentIds.length };
-        for (const contentId of batch.contentIds) {
+        const resumedIds = Array.isArray(previousResult?.contentIds)
+          ? previousResult.contentIds.filter((value): value is string => typeof value === "string").slice(0, batch.contentIds.length)
+          : [];
+        const contentIds = [...resumedIds];
+        partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.contentIds.length };
+        for (const contentId of batch.contentIds.slice(contentIds.length)) {
           const polished = this.content.polishContent(principal, contentId, batch.instructions);
           contentIds.push(polished.id);
           partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.contentIds.length };
@@ -214,8 +233,11 @@ export class OperationService {
       } else if (job.operation === "content.prepare_batch") {
         const batch = running.input as unknown as ContentPrepareBatchInput;
         const items: Array<{ proposalId: string; contentId: string; status: string; factCheckPassed: boolean; seoScore: number }> = [];
-        partialResult = { items, completedCount: 0, totalCount: batch.items.length };
-        for (const input of batch.items) {
+        const resumedItems = Array.isArray(previousResult?.items) ? previousResult.items : [];
+        const resumedCount = Math.min(resumedItems.length, batch.items.length);
+        items.push(...resumedItems.slice(0, resumedCount) as typeof items);
+        partialResult = { items: [...items], completedCount: items.length, totalCount: batch.items.length };
+        for (const input of batch.items.slice(items.length)) {
           const proposal = this.content.createProposal(principal, input);
           const draft = this.content.createDraft(principal, proposal.id);
           const polished = this.content.polishContent(principal, draft.id, batch.instructions);
