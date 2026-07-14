@@ -694,12 +694,13 @@ export class InMemoryAuthService implements AuthService {
   }
 
   private toPrincipal(account: Account, category: CategorySlug, role: PortalRole): AuthenticatedPrincipal {
+    const normalizedRole: PortalRole = role === "candidate" ? "recruiter" : role;
     return {
       accountId: account.id,
       email: account.email,
       displayName: account.displayName,
       category,
-      role,
+      role: normalizedRole,
       availableContexts: listAvailableContexts(account),
       ...(account.providerId ? { providerId: account.providerId } : {}),
     };

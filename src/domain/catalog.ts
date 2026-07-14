@@ -535,13 +535,14 @@ export function resolveExperience(
   authenticated: boolean,
 ): CategoryExperience {
   const policy = getCategoryPolicy(category);
-  const policyRole: Exclude<PortalRole, "recruiter"> = role === "recruiter" ? "candidate" : role;
+  const normalizedRole: PortalRole = role === "candidate" ? "recruiter" : role;
+  const policyRole: Exclude<PortalRole, "recruiter"> = normalizedRole === "recruiter" ? "candidate" : normalizedRole;
   const rolePolicy = policy.roles[policyRole];
 
   return {
     category,
     categoryLabel: policy.label,
-    role,
+    role: normalizedRole,
     authenticated,
     navigation: policy.navigation,
     visibleModules: rolePolicy.visibleModules,

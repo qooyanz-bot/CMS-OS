@@ -221,7 +221,7 @@ describe("認証REST APIとMCP", () => {
         method: "tools/call",
         params: {
           name: "auth.login",
-          arguments: { email: "orderer@example.com", password: "demo-password", category: "legal", role: "orderer" },
+          arguments: { email: "candidate@example.com", password: "demo-password", category: "legal", role: "candidate" },
         },
       }),
     });
@@ -235,7 +235,7 @@ describe("認証REST APIとMCP", () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "auth.me", arguments: {} } }),
     });
     assert.equal(me.status, 200);
-    assert.equal(me.body.result.structuredContent.principal.role, "orderer");
+    assert.equal(me.body.result.structuredContent.principal.role, "recruiter");
     assert.ok(Array.isArray(me.body.result.structuredContent.principal.availableContexts));
 
     const logout = await request("/mcp", {

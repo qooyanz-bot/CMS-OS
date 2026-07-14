@@ -131,6 +131,7 @@ describe("CMS-OS OpenAPI契約", () => {
     }
     assert.deepEqual(specification.components.securitySchemes.BearerAuth, { type: "http", scheme: "bearer", bearerFormat: "opaque-session-token" });
     assert.deepEqual(specification.components.securitySchemes.OperatorKey, { type: "apiKey", in: "header", name: "x-cms-os-operator-key" });
+    assert.deepEqual(specification.components.schemas.AuthRole?.enum, ["user", "orderer", "provider", "recruiter"]);
     assert.ok(specification.components.schemas.Category?.properties?.themes);
     assert.ok(specification.components.schemas.CategoryContext?.properties?.themeOptions);
     assert.deepEqual(specification.components.schemas.AsyncOperationType?.enum, ["content.create", "content.create_batch", "content.propose_batch", "content.draft_batch", "content.polish_batch", "content.prepare_batch"]);
