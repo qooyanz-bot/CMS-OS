@@ -1878,6 +1878,19 @@ elements.mfaForm.addEventListener("submit", (event) => {
 });
 elements.account.addEventListener("change", () => {
   elements.email.value = elements.account.value;
+  if (state.token) return;
+  const selected = elements.account.selectedOptions[0];
+  const category = selected?.dataset.category;
+  const role = selected?.dataset.role;
+  if (category && state.categories.some((item) => item.slug === category)) {
+    state.category = category;
+    elements.category.value = category;
+  }
+  renderRoleOptions();
+  if (role && Array.from(elements.role.options).some((option) => option.value === role)) {
+    elements.role.value = role;
+    state.role = role;
+  }
 });
 elements.logout.addEventListener("click", logout);
 elements.siteSeoAuditButton.addEventListener("click", () => void runSiteSeoAudit());

@@ -85,6 +85,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /login-form/);
   assert.match(body, /mfa-panel/);
   assert.match(body, /value="recruiter"/);
+  assert.match(body, /data-category="beauty" data-role="provider"/);
+  assert.match(body, /data-category="labor-shortage" data-role="recruiter"/);
 
   const script = await fetch(`${baseUrl}/app.js`);
   assert.equal(script.status, 200);
@@ -96,6 +98,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /elements\.category\.replaceChildren/);
   assert.match(scriptBody, /availableContexts/);
   assert.match(scriptBody, /function renderRoleOptions/);
+  assert.match(scriptBody, /selectedOptions/);
+  assert.match(scriptBody, /dataset\.category/);
   assert.match(scriptBody, /function applyPrincipal/);
   assert.match(scriptBody, /moduleLabels/);
   assert.match(scriptBody, /function isRecruiterRole/);
