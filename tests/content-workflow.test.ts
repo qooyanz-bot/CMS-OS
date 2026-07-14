@@ -219,6 +219,39 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(restored.body.item.status, "drafted");
   });
 
+  it("ページSEO監査がH1重複、薄い本文、FAQ構造化データ欠落を検出する", async () => {
+    const providerLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "lawyer@example.com", password: "demo-password", category: "legal", role: "provider" }),
+    });
+    assert.equal(providerLogin.status, 200);
+    const headers = { authorization: `Bearer ${providerLogin.body.accessToken}` };
+    const content = await request("/api/v1/content", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        category: "legal",
+        contentType: "blog",
+        audience: "customer",
+        title: "相談ガイド",
+        summary: "相談前に確認するための短い案内です。",
+        body: "# 主見出し\n\n短い本文です。\n\n# 重複見出し",
+        slug: "seo-audit-rule-check",
+        sourceFacts: ["監査ルール検証用の一次情報です。"],
+        seo: { keywords: ["法律相談"], jsonLdType: "FAQPage", faq: [] },
+      }),
+    });
+    assert.equal(content.status, 201);
+
+    const audit = await request(`/api/v1/content/${content.body.item.id}/seo-audit`, { method: "POST", headers });
+    assert.equal(audit.status, 200);
+    const codes = audit.body.item.issues.map((issue: { code: string }) => issue.code);
+    assert.ok(codes.includes("H1_MULTIPLE"));
+    assert.ok(codes.includes("SEO_BODY_THIN"));
+    assert.ok(codes.includes("FAQ_JSONLD_EMPTY"));
+    assert.ok(codes.includes("PRIMARY_KEYWORD_NOT_IN_TITLE"));
+  });
+
   it("主要なAI編集操作をMCPから発見でき、事業者自身のコンテンツだけ取得できる", async () => {
     const tools = await request("/mcp", {
       method: "POST",

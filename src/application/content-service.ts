@@ -741,17 +741,37 @@ export class ContentService {
     }
     const issues: SeoAuditResult["issues"] = [];
     const primaryKeyword = content.seo.keywords[0] ?? "";
+    const normalizedPrimaryKeyword = primaryKeyword.toLocaleLowerCase("ja-JP");
+    const normalizedSeoTitle = content.seo.title.toLocaleLowerCase("ja-JP");
+    const h1Headings = content.body.match(/^#(?!#)\s+.+$/gm) ?? [];
+    const plainBody = content.body
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/[`*_>#-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     if (content.seo.title.length < 10 || content.seo.title.length > 60) {
       issues.push({ code: "SEO_TITLE_LENGTH", severity: "warning", field: "seo.title", message: "SEOタイトルは10〜60文字を目安にしてください。", recommendation: "検索意図を残しながらタイトルを調整してください。" });
     }
     if (content.seo.description.length < 50 || content.seo.description.length > 160) {
       issues.push({ code: "SEO_DESCRIPTION_LENGTH", severity: "warning", field: "seo.description", message: "メタディスクリプションは50〜160文字を目安にしてください。", recommendation: "読者が得られる情報と次の行動を具体化してください。" });
     }
-    if (primaryKeyword && !`${content.seo.title}\n${content.body}`.toLocaleLowerCase("ja-JP").includes(primaryKeyword.toLocaleLowerCase("ja-JP"))) {
+    if (primaryKeyword && !`${content.seo.title}\n${content.body}`.toLocaleLowerCase("ja-JP").includes(normalizedPrimaryKeyword)) {
       issues.push({ code: "PRIMARY_KEYWORD_MISSING", severity: "warning", field: "seo.keywords", message: "主キーワードがタイトルまたは本文に含まれていません。", recommendation: "検索意図を損なわない範囲で自然に追加してください。" });
     }
-    if (!content.body.match(/^# /m)) {
+    if (primaryKeyword && !normalizedSeoTitle.includes(normalizedPrimaryKeyword)) {
+      issues.push({ code: "PRIMARY_KEYWORD_NOT_IN_TITLE", severity: "warning", field: "seo.title", message: "主キーワードがSEOタイトルに含まれていません。", recommendation: "検索意図を保ちながら、主キーワードをSEOタイトルへ自然に含めてください。" });
+    }
+    if (h1Headings.length === 0) {
       issues.push({ code: "H1_MISSING", severity: "error", field: "body", message: "本文にH1見出しがありません。", recommendation: "ページごとに主題を表すH1を1つ設定してください。" });
+    }
+    if (h1Headings.length > 1) {
+      issues.push({ code: "H1_MULTIPLE", severity: "error", field: "body", message: "本文にH1見出しが複数あります。", recommendation: "ページの主題を表すH1を1つに整理し、下位見出しはH2以降にしてください。" });
+    }
+    if (plainBody.length < 200) {
+      issues.push({ code: "SEO_BODY_THIN", severity: "warning", field: "body", message: "本文の可読テキストが少なく、検索意図に十分答えられない可能性があります。", recommendation: "結論、根拠、具体例、次の行動を追加し、読者の疑問を解消してください。" });
+    }
+    if (content.seo.jsonLdType === "FAQPage" && content.seo.faq.length === 0) {
+      issues.push({ code: "FAQ_JSONLD_EMPTY", severity: "error", field: "seo.faq", message: "FAQPageのJSON-LDにFAQ項目がありません。", recommendation: "質問と回答を登録するか、JSON-LDタイプを本文に合うものへ変更してください。" });
     }
     if (!content.seo.canonicalPath.startsWith("/")) {
       issues.push({ code: "CANONICAL_INVALID", severity: "error", field: "seo.canonicalPath", message: "canonicalPathはサイト内パスで指定してください。", recommendation: "先頭にスラッシュを付けた正規URLパスを設定してください。" });

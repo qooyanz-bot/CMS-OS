@@ -24,7 +24,7 @@ import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type We
 import { MAX_BATCH_ITEMS, OperationService, OperationServiceError, type ContentCreateBatchInput, type ContentDraftBatchInput, type ContentPolishBatchInput, type ContentPrepareBatchInput, type ContentProposeBatchInput, type OperationSubmitInput } from "../application/operation-service.js";
 import { PortalPlanningService, PortalPlanningServiceError, type PortalPlanCreateInput } from "../application/portal-planning-service.js";
 import { operationTypes, type OperationType } from "../domain/operation-store.js";
-import { applicationStatuses, bookingStatuses as bookingStatusValues, categorySlugs, contentAudiences, contentLocales, contentTypes, contentWorkflowStatuses, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type BookingStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
+import { applicationStatuses, bookingStatuses as bookingStatusValues, categorySlugs, contentAudiences, contentLocales, contentTypes, contentWorkflowStatuses, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type BookingStatus, type CategorySlug, type ContentJsonLdType, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -81,6 +81,10 @@ function getBearerToken(request: IncomingMessage): string | undefined {
 
 function isCategorySlug(value: unknown): value is CategorySlug {
   return typeof value === "string" && (categorySlugs as readonly string[]).includes(value);
+}
+
+function isContentJsonLdType(value: unknown): value is ContentJsonLdType {
+  return typeof value === "string" && ["Organization", "Article", "BlogPosting", "JobPosting", "NewsArticle", "FAQPage"].includes(value);
 }
 
 function isRequestStatus(value: unknown): value is RequestStatus {
@@ -244,6 +248,10 @@ function parseContentSeoPatch(value: unknown): Partial<ContentSeo> | undefined {
       if (typeof input[field] !== "string") throw new Error(`seo.${field}は文字列で指定してください。`);
       result[field] = input[field] as string;
     }
+  }
+  if (input.jsonLdType !== undefined) {
+    if (!isContentJsonLdType(input.jsonLdType)) throw new Error("seo.jsonLdTypeが不正です。");
+    result.jsonLdType = input.jsonLdType;
   }
   if (input.keywords !== undefined) {
     if (!Array.isArray(input.keywords) || input.keywords.some((item) => typeof item !== "string")) throw new Error("seo.keywordsは文字列配列で指定してください。");
