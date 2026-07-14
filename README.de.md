@@ -13,6 +13,7 @@ CMS-OS wird derzeit als Open-Source-Software entwickelt.
 - KI-gestützte Themenvorschläge, rollenbezogene Planung, Entwürfe, Überarbeitung, Übersetzung, Faktenprüfung und SEO-Audits
 - Rollen- und kategoriebezogene Berechtigungen für `user`, `orderer`, `provider` und `recruiter`
 - Anbieterportale und externe Hinweise für Kategorien wie Rechts- und Fachdienstleistungen, Beauty und Recruiting
+- Beauty-Buchungsanfragen mit Bestätigung oder Stornierung durch Anbieter und rollenbezogener Statusverwaltung
 - Prüfung, Freigabe, Veröffentlichung, Rücknahme und Versionshistorie von Inhalten
 - Medienverwaltung für Bilder, Videos und PDFs mit Alt-Text, strukturierten Daten, internen Links und SEO-Audits
 - Statische Seitengenerierung über den BuilderOS Adapter und Veröffentlichung auf Cloudflare Pages
@@ -26,7 +27,7 @@ CMS-OS wird derzeit als Open-Source-Software entwickelt.
 | Rolle | Wichtigste Sichtbarkeit und Aktionen |
 |---|---|
 | Benutzer | Öffentliche Inhalte, Kategoriehinweise, öffentliche Anbieter und Anfragen |
-| Auftraggeber | Anbietersuche, Aufträge, Auftragsstatus und Auftraggeberinformationen |
+| Auftraggeber | Anbietersuche, Aufträge, Beauty-Buchungsanfragen, Auftrags- und Buchungsstatus sowie Auftraggeberinformationen |
 | Anbieter | Eigene Einträge, Jobs, Anfragen, Bewerber, KI-Inhalte und Veröffentlichungsworkflow |
 | Recruiter | Jobsuche, Bewerbungen, Bewerbungsstatus und eigene Bewerbungshistorie |
 

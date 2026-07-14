@@ -13,6 +13,7 @@ CMS-OS is currently developed as open-source software.
 - AI-assisted topic proposals, role-specific planning, drafting, polishing, translation, fact checking, and SEO audits
 - Role- and category-aware access for `user`, `orderer`, `provider`, and `recruiter`
 - Business-provider portals and external guides for categories such as legal services, professional services, beauty, and recruiting
+- Beauty booking requests with provider confirmation or cancellation and role-scoped status management
 - Review, approval, publication, unpublication, and version history
 - Media management for images, video, and PDF, including alt text, structured data, internal links, and SEO audits
 - Static site generation through the BuilderOS Adapter and publication to Cloudflare Pages
@@ -26,7 +27,7 @@ CMS-OS is currently developed as open-source software.
 | Role | Main visibility and actions |
 |---|---|
 | User | Public content, category guides, public providers, and inquiries |
-| Orderer | Provider search, service requests, request status, and buyer information |
+| Orderer | Provider search, service requests, beauty booking requests, request and booking status, and buyer information |
 | Provider | Own listings, jobs, inquiries, applications, AI content, and publication workflow |
 | Recruiter | Job search, applications, application status, and personal application history |
 

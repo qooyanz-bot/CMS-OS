@@ -13,6 +13,7 @@ CMS-OS se desarrolla actualmente como software de código abierto.
 - Propuestas de temas, planificación por rol, borradores, edición final, traducción, verificación de hechos y auditorías SEO con IA
 - Permisos por rol y categoría para `user`, `orderer`, `provider` y `recruiter`
 - Portales de proveedores y guías externas para categorías como servicios jurídicos, profesionales, belleza y contratación
+- Solicitudes de reserva para belleza, con confirmación o cancelación del proveedor y estados separados por rol
 - Revisión, aprobación, publicación, retirada y versiones de contenido
 - Gestión de imágenes, vídeo y PDF con texto alternativo, datos estructurados, enlaces internos y auditorías SEO
 - Generación de sitios estáticos mediante BuilderOS Adapter y publicación en Cloudflare Pages
@@ -26,7 +27,7 @@ CMS-OS se desarrolla actualmente como software de código abierto.
 | Rol | Visibilidad y acciones principales |
 |---|---|
 | Usuario | Contenido público, guías, proveedores públicos y consultas |
-| Ordenante | Búsqueda de proveedores, solicitudes, estado de solicitudes e información del comprador |
+| Ordenante | Búsqueda de proveedores, solicitudes, reservas de belleza, estados de solicitudes y reservas e información del comprador |
 | Proveedor | Sus fichas, ofertas, consultas, candidatos, contenidos de IA y flujo de publicación |
 | Reclutador | Búsqueda de empleos, candidaturas, estado e historial personal |
 
