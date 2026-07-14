@@ -103,6 +103,33 @@ const moduleLabels = {
   applicationStatus: "応募状況",
 };
 
+const navigationAnchorTargets = {
+  themes: "provider-discovery",
+  menus: "provider-discovery",
+  providers: "provider-discovery",
+  guides: "directory-guide-panel",
+  styles: "directory-guide-panel",
+  jobs: "job-panel",
+  requests: "request-panel",
+  bookings: "booking-panel",
+  applications: "application-panel",
+  providerDashboard: "provider-management-panel",
+  listingManagement: "provider-management-panel",
+  inquiryManagement: "inquiry-management-panel",
+  menuManagement: "provider-management-panel",
+  bookingManagement: "booking-status-panel",
+  styleManagement: "provider-management-panel",
+  jobManagement: "job-management-panel",
+  contentAssistant: "content-editor-panel",
+  seoAssistant: "content-editor-panel",
+};
+
+function resolveNavigationTarget(id) {
+  if (id === "requests" && state.role === "provider") return "request-inbox-panel";
+  if (id === "bookings" && state.role === "provider") return "booking-status-panel";
+  return navigationAnchorTargets[id];
+}
+
 const elements = {
   category: document.querySelector("#category-select"),
   account: document.querySelector("#account-select"),
@@ -123,6 +150,7 @@ const elements = {
   badge: document.querySelector("#role-badge"),
   notice: document.querySelector("#category-notice"),
   modules: document.querySelector("#module-list"),
+  navigation: document.querySelector("#experience-navigation"),
   workflowTitle: document.querySelector("#workflow-title"),
   workflowCopy: document.querySelector("#workflow-copy"),
   workflowOne: document.querySelector("#workflow-step-one"),
@@ -445,6 +473,17 @@ function renderExperience(experience, navigation = [], themeOptions = []) {
   elements.modules.innerHTML = experience.visibleModules
     .map((module) => `<span>${escapeHtml(moduleLabels[module] ?? navigationLabels[module] ?? module)}</span>`)
     .join("");
+  elements.navigation.replaceChildren();
+  for (const item of Array.isArray(navigation) ? navigation : []) {
+    const targetId = resolveNavigationTarget(item.id);
+    if (!targetId || !document.getElementById(targetId)) continue;
+    const link = document.createElement("a");
+    link.href = `#${targetId}`;
+    link.textContent = item.label;
+    link.dataset.navigationId = item.id;
+    elements.navigation.append(link);
+  }
+  elements.navigation.hidden = elements.navigation.childElementCount === 0;
 
   const actionLabel = experience.visibleModules.includes("booking")
     ? "予約する"

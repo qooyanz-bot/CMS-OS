@@ -142,7 +142,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
 
     assert.deepEqual(ids(guestExperience), ["themes", "providers", "guides"]);
     assert.deepEqual(ids(ordererContext), ["menus", "providers", "styles", "requests", "bookings"]);
-    assert.deepEqual(ids(providerContext), ["providerDashboard", "listingManagement", "inquiryManagement", "jobManagement", "contentAssistant", "seoAssistant"]);
+    assert.deepEqual(ids(providerContext), ["requests", "applications", "providerDashboard", "listingManagement", "inquiryManagement", "jobManagement", "contentAssistant", "seoAssistant"]);
     assert.deepEqual(ids(recruiterContext), ["jobs", "providers", "guides", "applications"]);
 
     const mcpContext = await request("/mcp", {

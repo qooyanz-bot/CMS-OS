@@ -65,6 +65,9 @@ select:focus, input:focus, textarea:focus { border-color: rgba(184, 243, 106, .6
 .badge { color: var(--accent); border-color: rgba(184, 243, 106, .25); }
 .module-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
 .module-list span { background: rgba(184, 243, 106, .08); border: 1px solid rgba(184, 243, 106, .16); border-radius: 999px; color: #d9f8ae; font-size: 12px; padding: 7px 10px; }
+.experience-navigation { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.experience-navigation a { color: var(--text); background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 999px; padding: 8px 11px; font-size: 12px; font-weight: 800; text-decoration: none; }
+.experience-navigation a:hover { border-color: rgba(184, 243, 106, .55); color: var(--accent); }
 .workflow-card { background: linear-gradient(145deg, rgba(246, 184, 122, .12), var(--panel)); }
 .workflow-line { display: grid; grid-template-columns: 28px 1fr; gap: 11px 10px; align-items: center; margin-top: 24px; }
 .workflow-line span { color: var(--warm); font-size: 12px; font-weight: 900; }

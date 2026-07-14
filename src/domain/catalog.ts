@@ -563,6 +563,9 @@ function resolveRoleNavigation(
     for (const module of policy.navigation) {
       if (visibleModules.includes(module.id)) add(module.id, module.label);
     }
+    if (allowedActions.includes("request.status.update")) add("requests", "依頼受信箱");
+    if (allowedActions.includes("booking.read")) add("bookings", "予約管理");
+    if (allowedActions.includes("application.status.update")) add("applications", "応募者管理");
     for (const moduleId of [
       "providerDashboard",
       "listingManagement",
