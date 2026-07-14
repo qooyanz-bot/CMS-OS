@@ -16,6 +16,7 @@ CMS-OS se desarrolla actualmente como software de código abierto.
 - Revisión, aprobación, publicación, retirada y versiones de contenido
 - Gestión de imágenes, vídeo y PDF con texto alternativo, datos estructurados, enlaces internos y auditorías SEO
 - Generación de sitios estáticos mediante BuilderOS Adapter y publicación en Cloudflare Pages
+- Portal Planning Agent para generar intenciones de búsqueda, propuestas de contenido y páginas SEO por tema, región y audiencia
 - Todas las operaciones disponibles mediante REST API y MCP, con OpenAPI como contrato principal
 - Webhooks firmados, secrets cifrados, outbox de entregas y reintentos con backoff exponencial
 - Trabajos asíncronos de creación de contenido, estado de trabajos, ejecución desde planificadores externos y claves de idempotencia

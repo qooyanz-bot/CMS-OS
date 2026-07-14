@@ -31,6 +31,7 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/categories/{category}/directories",
       "/api/v1/portal-plans",
       "/api/v1/portal-plans/{planId}",
+      "/api/v1/portal-plans/{planId}/apply",
       "/api/v1/providers",
       "/api/v1/providers/{providerId}",
       "/api/v1/providers/{providerId}/listing-submission",

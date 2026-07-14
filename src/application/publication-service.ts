@@ -232,6 +232,24 @@ function providerRoute(category: CategorySlug, providerId: string): string {
   return `${categoryRoute(category)}/providers/${safeId}`;
 }
 
+function facetRoute(category: CategorySlug, facetType: "themes" | "regions", value: string): string {
+  return `${categoryRoute(category)}/${facetType}/${encodeURIComponent(value.trim())}`;
+}
+
+function uniqueFacetValues(providers: VisibleProvider[], selector: (provider: VisibleProvider) => string): string[] {
+  return [...new Set(providers.map(selector).map((value) => value.trim()).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, "ja-JP", { numeric: true }));
+}
+
+function uniqueThemeValues(providers: VisibleProvider[]): string[] {
+  return [...new Set(providers.flatMap((provider) => provider.themes.map((theme) => theme.trim())).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, "ja-JP", { numeric: true }));
+}
+
+function providersForFacet(providers: VisibleProvider[], facetType: "theme" | "region", value: string): VisibleProvider[] {
+  return providers.filter((provider) => facetType === "theme" ? provider.themes.some((theme) => theme.trim() === value) : provider.location.trim() === value);
+}
+
 function relatedContentsFor(content: ContentRecord, contents: ContentRecord[]): ContentRecord[] {
   const keywords = new Set(content.seo.keywords.map((keyword) => keyword.toLocaleLowerCase("ja-JP")).filter(Boolean));
   return contents
@@ -427,6 +445,8 @@ function categoryHtml(category: PublishedCategory, contents: ContentRecord[], pr
   const contentLinks = contents.map((content) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(content)}/`))}">${escapeHtml(content.title)}</a><span>${escapeHtml(content.summary)}</span></li>`).join("\n");
   const providerLinks = providers.slice(0, 8).map((provider) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`))}">${escapeHtml(provider.name)}</a><span>${escapeHtml(provider.location)} · ${escapeHtml(provider.themes.join("・"))}</span></li>`).join("\n");
   const guideLinks = guides.map((guide) => `<li><a href="${escapeHtml(guide.url)}" rel="nofollow noopener noreferrer">${escapeHtml(guide.name)}</a><span>${escapeHtml(guide.description)}</span></li>`).join("\n");
+  const themeLinks = uniqueThemeValues(providers).map((theme) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${facetRoute(category.slug, "themes", theme)}/`))}">${escapeHtml(theme)}</a><span>${escapeHtml(theme)}に対応する公開事業者</span></li>`).join("\n");
+  const regionLinks = uniqueFacetValues(providers, (provider) => provider.location).map((region) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${facetRoute(category.slug, "regions", region)}/`))}">${escapeHtml(region)}</a><span>${escapeHtml(region)}の公開事業者</span></li>`).join("\n");
   const itemList = [...contents.map((content) => absoluteUrl(baseUrl, `/${routeFor(content)}/`)), ...providers.map((provider) => absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`))];
   const jsonLd = jsonLdString({
     "@context": "https://schema.org",
@@ -454,6 +474,8 @@ function categoryHtml(category: PublishedCategory, contents: ContentRecord[], pr
     <p><a class="directory-link" href="${escapeHtml(providerUrl)}">事業者一覧を見る（${providers.length}件）</a></p>
     <h2>公開情報</h2><ul class="content-index">${contentLinks || "<li>公開情報は準備中です。</li>"}</ul>
     <h2>注目の事業者</h2><ul class="content-index">${providerLinks || "<li>掲載事業者は準備中です。</li>"}</ul>
+    <h2>テーマ別案内</h2><ul class="content-index">${themeLinks || "<li>テーマ別案内は準備中です。</li>"}</ul>
+    <h2>地域別案内</h2><ul class="content-index">${regionLinks || "<li>地域別案内は準備中です。</li>"}</ul>
     <h2>外部の事業者案内</h2><ul class="content-index">${guideLinks || "<li>外部案内は準備中です。</li>"}</ul>
   </main></body>
 </html>`;
@@ -493,6 +515,34 @@ function providerDetailHtml(category: PublishedCategory, provider: VisibleProvid
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(provider.name)} | ${escapeHtml(category.label)} | CMS-OS</title><meta name="description" content="${escapeHtml(provider.name)}の${escapeHtml(category.label)}に関する公開プロフィール、対応テーマ、地域情報です。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><meta property="og:type" content="profile"><meta property="og:title" content="${escapeHtml(provider.name)}"><meta property="og:description" content="${escapeHtml(provider.themes.join("・"))}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li aria-current="page">${escapeHtml(provider.name)}</li></ol></nav><p class="eyebrow">CMS-OS / Provider profile</p><h1>${escapeHtml(provider.name)}</h1><p class="lead-answer">${escapeHtml(provider.name)}は${escapeHtml(category.label)}カテゴリに掲載されている事業者です。対応テーマと公開情報を確認できます。</p><dl class="provider-facts"><dt>対応テーマ</dt><dd>${escapeHtml(provider.themes.join("・"))}</dd><dt>地域</dt><dd>${escapeHtml(provider.location)}</dd></dl>${visibleProviderFields(provider) ? `<h2>公開情報</h2><ul class="provider-facts-list">${visibleProviderFields(provider)}</ul>` : ""}</main></body></html>`;
 }
 
+function facetPageHtml(
+  category: PublishedCategory,
+  facetType: "theme" | "region",
+  value: string,
+  providers: VisibleProvider[],
+  contents: ContentRecord[],
+  baseUrl: string,
+): string {
+  const label = facetType === "theme" ? "テーマ" : "地域";
+  const routeType = facetType === "theme" ? "themes" : "regions";
+  const canonical = absoluteUrl(baseUrl, `/${facetRoute(category.slug, routeType, value)}/`);
+  const categoryUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`);
+  const providerLinks = providers.map((provider) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`))}">${escapeHtml(provider.name)}</a><span>${escapeHtml(provider.location)} · ${escapeHtml(provider.themes.join("・"))}</span></li>`).join("\n");
+  const relatedContents = contents.filter((content) => [content.title, content.summary, ...content.seo.keywords].some((field) => field.includes(value))).slice(0, 8);
+  const contentLinks = relatedContents.map((content) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(content)}/`))}">${escapeHtml(content.title)}</a><span>${escapeHtml(content.summary)}</span></li>`).join("\n");
+  const itemList = providers.map((provider) => ({ "@type": "ListItem", position: 0, name: provider.name, url: absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`) }));
+  itemList.forEach((item, index) => { item.position = index + 1; });
+  const jsonLd = jsonLdString({
+    "@context": "https://schema.org",
+    "@graph": [
+      { "@type": "CollectionPage", name: `${value}の${category.label}事業者案内`, description: `${value}に対応する${category.label}の公開事業者と関連情報を案内します。`, url: canonical, inLanguage: "ja-JP" },
+      { "@type": "ItemList", name: `${value}の事業者一覧`, itemListElement: itemList },
+      breadcrumbJsonLd([{ name: "ホーム", url: absoluteUrl(baseUrl, "/") }, { name: category.label, url: categoryUrl }, { name: `${label}: ${value}`, url: canonical }]),
+    ],
+  });
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(value)}の${escapeHtml(category.label)}事業者・公開情報 | CMS-OS</title><meta name="description" content="${escapeHtml(value)}に対応する${escapeHtml(category.label)}の事業者、対応内容、公開情報を確認できます。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li aria-current="page">${escapeHtml(value)}</li></ol></nav><p class="eyebrow">CMS-OS / ${escapeHtml(label)} landing page</p><h1>${escapeHtml(value)}の${escapeHtml(category.label)}事業者・公開情報</h1><p class="lead-answer">${escapeHtml(value)}に対応する${escapeHtml(category.label)}の公開事業者を、確認済みの公開情報とともに案内します。</p><h2>対応事業者</h2><ul class="content-index">${providerLinks || "<li>掲載事業者は準備中です。</li>"}</ul>${contentLinks ? `<h2>関連する公開情報</h2><ul class="content-index">${contentLinks}</ul>` : ""}<p><a class="directory-link" href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}のカテゴリーハブへ戻る</a></p></main></body></html>`;
+}
+
 const css = `:root{color-scheme:light;--ink:#17202a;--muted:#64748b;--line:#dbe3ea;--accent:#0f766e}*{box-sizing:border-box}body{margin:0;background:#f8fafc;color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.8}.page-shell{max-width:860px;margin:0 auto;padding:48px 24px}.eyebrow{color:var(--accent);font-size:.8rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.breadcrumbs{color:var(--muted);font-size:.82rem;margin-bottom:28px}.breadcrumbs ol{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}.breadcrumbs li:not(:last-child)::after{content:"/";margin-left:8px;color:#94a3b8}.breadcrumbs a{color:var(--accent)}.article-header{border-bottom:1px solid var(--line);margin-bottom:32px;padding-bottom:24px}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.2;margin:0 0 16px}h2{margin-top:40px;line-height:1.3}.lead-answer{background:#ecfdf5;border-left:4px solid var(--accent);margin:20px 0;padding:16px 18px}.summary{color:#334155;font-size:1.12rem}.meta{color:var(--muted);font-size:.86rem}.article-body h2{border-left:4px solid var(--accent);padding-left:12px;margin-top:40px}.article-body h3{margin-top:28px}.article-body a{color:var(--accent);text-decoration:underline;text-underline-offset:.15em}.article-body blockquote{border-left:3px solid var(--line);color:var(--muted);margin:24px 0;padding-left:16px}.article-body li{margin:6px 0}.table-wrap{overflow-x:auto;margin:24px 0}.article-body table{border-collapse:collapse;min-width:620px;width:100%}.article-body th,.article-body td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}.article-body th{background:#ecfdf5}.content-index{list-style:none;margin:20px 0;padding:0}.content-index li{border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px;padding:18px 0}.content-index a{color:var(--accent);font-size:1.15rem;font-weight:700}.content-index span{color:var(--muted)}.related-section,.faq-section{border-top:1px solid var(--line);margin-top:40px;padding-top:10px}.faq-item{border-bottom:1px solid var(--line);padding:8px 0}.faq-item h3{font-size:1.05rem}.faq-item p{color:#334155}.directory-link{color:var(--accent);font-weight:700}.provider-facts{background:#fff;border:1px solid var(--line);display:grid;gap:8px;grid-template-columns:10rem 1fr;padding:18px}.provider-facts dt{color:var(--muted);font-weight:700}.provider-facts dd{margin:0}.provider-facts-list{list-style:none;padding:0}.provider-facts-list li{border-bottom:1px solid var(--line);padding:10px 0}`;
 
 function sitemapXml(
@@ -507,7 +557,14 @@ function sitemapXml(
     const lastmod = categoryContents.map((content) => content.updatedAt).sort().at(-1);
     entries.push({ url: absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`), ...(lastmod ? { lastmod } : {}) });
     entries.push({ url: absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/providers/`) });
-    for (const provider of providersByCategory.get(category.slug) ?? []) {
+    const providers = providersByCategory.get(category.slug) ?? [];
+    for (const theme of uniqueThemeValues(providers)) {
+      entries.push({ url: absoluteUrl(baseUrl, `/${facetRoute(category.slug, "themes", theme)}/`) });
+    }
+    for (const region of uniqueFacetValues(providers, (provider) => provider.location)) {
+      entries.push({ url: absoluteUrl(baseUrl, `/${facetRoute(category.slug, "regions", region)}/`) });
+    }
+    for (const provider of providers) {
       entries.push({ url: absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`) });
     }
   }
@@ -518,9 +575,16 @@ function sitemapXml(
 
 function llmsText(contents: ContentRecord[], categories: PublishedCategory[], providersByCategory: Map<CategorySlug, VisibleProvider[]>, baseUrl: string): string {
   const categoryPages = categories.map((category) => `- [${category.label}](${absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`)}): ${category.label}の公開情報と事業者案内`).join("\n");
+  const facetPages = categories.flatMap((category) => {
+    const providers = providersByCategory.get(category.slug) ?? [];
+    return [
+      ...uniqueThemeValues(providers).map((theme) => `- [${theme} / ${category.label}](${absoluteUrl(baseUrl, `/${facetRoute(category.slug, "themes", theme)}/`)}): テーマ別の公開事業者案内`),
+      ...uniqueFacetValues(providers, (provider) => provider.location).map((region) => `- [${region} / ${category.label}](${absoluteUrl(baseUrl, `/${facetRoute(category.slug, "regions", region)}/`)}): 地域別の公開事業者案内`),
+    ];
+  }).join("\n");
   const providerPages = categories.flatMap((category) => (providersByCategory.get(category.slug) ?? []).map((provider) => `- [${provider.name}](${absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`)}): ${category.label} / ${provider.location} / ${provider.themes.join("・")}`)).join("\n");
   const contentPages = contents.map((content) => `- [${content.title}](${absoluteUrl(baseUrl, `/${routeFor(content)}/`)}): ${content.summary}（最終更新: ${content.updatedAt.slice(0, 10)}）`).join("\n");
-  return `# CMS-OS公開コンテンツ\n\n> 承認済みコンテンツ、カテゴリーハブ、事業者プロフィールの機械可読インデックスです。\n> 情報の利用時は各ページの最終更新日と一次情報を確認してください。\n\n## Categories\n${categoryPages || "- 準備中"}\n\n## Providers\n${providerPages || "- 準備中"}\n\n## Pages\n${contentPages || "- 準備中"}\n`;
+  return `# CMS-OS公開コンテンツ\n\n> 承認済みコンテンツ、カテゴリーハブ、テーマ・地域別案内、事業者プロフィールの機械可読インデックスです。\n> 情報の利用時は各ページの最終更新日と一次情報を確認してください。\n\n## Categories\n${categoryPages || "- 準備中"}\n\n## Themes and Regions\n${facetPages || "- 準備中"}\n\n## Providers\n${providerPages || "- 準備中"}\n\n## Pages\n${contentPages || "- 準備中"}\n`;
 }
 
 export class PublicationService {
@@ -573,10 +637,21 @@ export class PublicationService {
 
     const providerDirectoryFiles = publishedCategories.flatMap((category) => {
       const providers = providersByCategory.get(category.slug) ?? [];
+      const categoryContents = contents.filter((content) => content.category === category.slug);
       const guides = this.portal.listDirectoryGuides(category.slug, null);
       return [
-        { path: `${categoryRoute(category.slug)}/index.html`, contentType: "text/html; charset=utf-8", content: categoryHtml(category, contents.filter((content) => content.category === category.slug), providers, guides, baseUrl) },
+        { path: `${categoryRoute(category.slug)}/index.html`, contentType: "text/html; charset=utf-8", content: categoryHtml(category, categoryContents, providers, guides, baseUrl) },
         { path: `${categoryRoute(category.slug)}/providers/index.html`, contentType: "text/html; charset=utf-8", content: providerDirectoryHtml(category, providers, baseUrl) },
+        ...uniqueThemeValues(providers).map((theme) => ({
+          path: `${facetRoute(category.slug, "themes", theme)}/index.html`,
+          contentType: "text/html; charset=utf-8",
+          content: facetPageHtml(category, "theme", theme, providersForFacet(providers, "theme", theme), categoryContents, baseUrl),
+        })),
+        ...uniqueFacetValues(providers, (provider) => provider.location).map((region) => ({
+          path: `${facetRoute(category.slug, "regions", region)}/index.html`,
+          contentType: "text/html; charset=utf-8",
+          content: facetPageHtml(category, "region", region, providersForFacet(providers, "region", region), categoryContents, baseUrl),
+        })),
         ...providers.map((provider) => ({
           path: `${providerRoute(category.slug, provider.id)}/index.html`,
           contentType: "text/html; charset=utf-8",

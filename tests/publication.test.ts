@@ -123,6 +123,10 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(fileMap.has("categories/legal/index.html"));
     assert.ok(fileMap.has("categories/legal/providers/index.html"));
     assert.ok(fileMap.has("categories/legal/providers/provider-legal-demo/index.html"));
+    const legalThemePath = `categories/legal/themes/${encodeURIComponent("相続")}/index.html`;
+    const legalRegionPath = `categories/legal/regions/${encodeURIComponent("東京都")}/index.html`;
+    assert.ok(fileMap.has(legalThemePath));
+    assert.ok(fileMap.has(legalRegionPath));
     assert.ok(fileMap.has("categories/ai-business/index.html"));
     assert.ok(fileMap.has("categories/ai-business/providers/provider-ai-business-demo/index.html"));
     assert.match(fileMap.get(pagePath) ?? "", /application\/ld\+json/);
@@ -134,12 +138,19 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get(pagePath) ?? "", /hreflang="ja"/);
     assert.match(fileMap.get("sitemap.xml") ?? "", /https:\/\/www\.example\.com/);
     assert.match(fileMap.get("sitemap.xml") ?? "", /categories\/legal\/providers\/provider-legal-demo/);
+    assert.match(fileMap.get("sitemap.xml") ?? "", /categories\/legal\/themes\//);
     assert.match(fileMap.get("robots.txt") ?? "", /Sitemap: https:\/\/www\.example\.com\/sitemap\.xml/);
     assert.match(fileMap.get("robots.txt") ?? "", /GPTBot/);
     assert.match(fileMap.get("robots.txt") ?? "", /Disallow: \/api\//);
     assert.match(fileMap.get("llms.txt") ?? "", /Provider/);
+    assert.match(fileMap.get("llms.txt") ?? "", /Themes and Regions/);
     assert.match(fileMap.get("llms.txt") ?? "", /ai-business/);
     assert.match(fileMap.get("categories/legal/index.html") ?? "", /弁護士ドットコム/);
+    assert.match(fileMap.get("categories/legal/index.html") ?? "", /テーマ別案内/);
+    assert.match(fileMap.get(legalThemePath) ?? "", /CollectionPage/);
+    assert.match(fileMap.get(legalThemePath) ?? "", /相続/);
+    assert.match(fileMap.get(legalThemePath) ?? "", /<link rel="canonical" href="https:\/\/www\.example\.com\/categories\/legal\/themes\//);
+    assert.doesNotMatch(fileMap.get(legalThemePath) ?? "", /%25E7/);
     assert.match(fileMap.get("categories\/legal\/providers\/provider-legal-demo\/index.html") ?? "", /Organization/);
 
     const scheduledFor = new Date(Date.now() + 60_000).toISOString();

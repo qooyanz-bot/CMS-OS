@@ -5,6 +5,7 @@ import { after, before, describe, it } from "node:test";
 import type { Server } from "node:http";
 import { InMemoryAuthService } from "../src/domain/auth.js";
 import { PortalService } from "../src/application/portal-service.js";
+import { ContentService } from "../src/application/content-service.js";
 import { PortalPlanningService } from "../src/application/portal-planning-service.js";
 import { createHttpServer } from "../src/api/http-server.js";
 import { JsonStateStore } from "../src/infrastructure/json-state-store.js";
@@ -66,6 +67,23 @@ describe("CMS-OS Portal Planning Agent", () => {
     assert.equal(fetched.status, 200);
     assert.equal(fetched.body.item.id, planId);
 
+    const applied = await request(`/api/v1/portal-plans/${planId}/apply`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({}),
+    });
+    assert.equal(applied.status, 201);
+    assert.equal(applied.body.plan.appliedProposalIds.length, applied.body.proposals.length);
+    assert.ok(applied.body.proposals.some((proposal: { audience: string; contentType: string }) => proposal.audience === "customer" && proposal.contentType === "blog"));
+    const reapplied = await request(`/api/v1/portal-plans/${planId}/apply`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({}),
+    });
+    assert.equal(reapplied.status, 201);
+    assert.deepEqual(reapplied.body.plan.appliedProposalIds, applied.body.plan.appliedProposalIds);
+    assert.deepEqual(reapplied.body.proposals.map((proposal: { id: string }) => proposal.id), applied.body.proposals.map((proposal: { id: string }) => proposal.id));
+
     const orderer = await request("/api/v1/portal-plans", {
       method: "POST",
       headers: { authorization: `Bearer ${ordererToken}` },
@@ -80,6 +98,7 @@ describe("CMS-OS Portal Planning Agent", () => {
     assert.ok(names.includes("portal.plan"));
     assert.ok(names.includes("portal.plan.list"));
     assert.ok(names.includes("portal.plan.get"));
+    assert.ok(names.includes("portal.plan.apply"));
 
     const result = await request("/mcp", {
       method: "POST",
@@ -97,10 +116,15 @@ describe("CMS-OS Portal Planning Agent", () => {
     try {
       const stateStore = new JsonStateStore(directory);
       const provider = auth.authenticate(providerToken);
-      const first = new PortalPlanningService(portal, stateStore);
+      const content = new ContentService(portal);
+      const first = new PortalPlanningService(portal, stateStore, undefined, content);
       const created = first.create(provider, { category: "legal", theme: "相続", audience: "customer" });
-      const second = new PortalPlanningService(portal, stateStore);
-      assert.equal(second.get(provider, created.id).theme, "相続");
+      const applied = first.apply(provider, created.id);
+      const second = new PortalPlanningService(portal, stateStore, undefined, content);
+      const restored = second.get(provider, created.id);
+      assert.equal(restored.theme, "相続");
+      assert.deepEqual(restored.appliedProposalIds, applied.proposals.map((proposal) => proposal.id));
+      assert.deepEqual(second.apply(provider, created.id).proposals.map((proposal) => proposal.id), applied.proposals.map((proposal) => proposal.id));
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

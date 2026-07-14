@@ -69,6 +69,9 @@ POST /api/v1/publications/{publicationId}/rollback
 |---|---|
 | `index.html` | 公開コンテンツ一覧 |
 | `content/{slug}/index.html` | 各コンテンツの静的HTML |
+| `categories/{category}/themes/{theme}/index.html` | テーマ別の事業者案内 |
+| `categories/{category}/regions/{region}/index.html` | 地域別の事業者案内 |
+| `categories/{category}/providers/index.html` | カテゴリ別事業者一覧 |
 | `assets/cms-os.css` | 最小表示スタイル |
 | `sitemap.xml` | 公開ページの検索エンジン向け一覧 |
 | `robots.txt` | クローラーの公開方針とsitemap URL |

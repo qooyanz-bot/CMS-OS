@@ -3,6 +3,8 @@ import type {
   AuthenticatedPrincipal,
   CategorySlug,
   ContentAudience,
+  ContentProposal,
+  ContentType,
   PortalPlan,
   PortalPlanGoal,
   PortalPlanGap,
@@ -11,6 +13,7 @@ import type {
 } from "../domain/types.js";
 import { contentAudiences, portalPlanGoals } from "../domain/types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
+import { ContentService } from "./content-service.js";
 import { PortalService, PortalServiceError, type PortalPage } from "./portal-service.js";
 
 export class PortalPlanningServiceError extends Error {
@@ -54,6 +57,12 @@ function addPage(
   pages.push({ ...input, internalLinks: input.internalLinks ?? [] });
 }
 
+function contentTypeForPage(pageType: PortalPlanPageIdea["pageType"]): ContentType {
+  if (pageType === "jobs") return "job";
+  if (pageType === "hub" || pageType === "provider_directory" || pageType === "request") return "company";
+  return "blog";
+}
+
 export class PortalPlanningService {
   private readonly store: PortalPlanStore;
 
@@ -61,6 +70,7 @@ export class PortalPlanningService {
     private readonly portal: PortalService,
     stateStore?: StateStore,
     store?: PortalPlanStore,
+    private readonly content?: ContentService,
   ) {
     this.store = store ?? new PortalPlanStore(stateStore);
   }
@@ -203,6 +213,33 @@ export class PortalPlanningService {
       gaps,
       nextActions,
     });
+  }
+
+  public apply(principal: AuthenticatedPrincipal | null, planId: string): { plan: PortalPlan; proposals: ContentProposal[] } {
+    const plan = this.get(principal, planId);
+    if (!this.content) throw new PortalPlanningServiceError(503, "コンテンツサービスが接続されていません。");
+
+    const existingIds = plan.appliedProposalIds ?? [];
+    if (existingIds.length > 0) {
+      const existing = this.content.listProposals(principal).filter((proposal) => existingIds.includes(proposal.id));
+      return { plan, proposals: existing };
+    }
+
+    const proposals = plan.pageIdeas.map((page) => this.content!.createProposal(principal, {
+      category: plan.category,
+      contentType: contentTypeForPage(page.pageType),
+      audience: page.pageType === "jobs" ? "candidate" : plan.audience,
+      topic: page.title,
+      primaryKeyword: page.primaryKeyword,
+      relatedKeywords: [plan.theme, ...(plan.region ? [plan.region] : []), page.pageType],
+      sourceFacts: [],
+    }));
+    const updated = this.store.update(plan.id, {
+      appliedProposalIds: proposals.map((proposal) => proposal.id),
+      appliedAt: new Date().toISOString(),
+    });
+    if (!updated) throw new PortalPlanningServiceError(404, "指定されたポータル計画が見つかりません。");
+    return { plan: updated, proposals };
   }
 
   public list(principal: AuthenticatedPrincipal | null, pagination: { limit?: number; cursor?: number } = {}): PortalPage<PortalPlan> {

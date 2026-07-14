@@ -382,6 +382,8 @@ export interface PortalPlan {
   pageIdeas: PortalPlanPageIdea[];
   gaps: PortalPlanGap[];
   nextActions: string[];
+  appliedProposalIds?: string[];
+  appliedAt?: string;
   generatedAt: string;
 }
 

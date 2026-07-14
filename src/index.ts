@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   const publication = new PublicationService(portal, content, undefined, undefined, new PublicationStore(stateStore), webhook);
   const media = new MediaService(portal, new MediaStore(stateStore), webhook);
   const operation = new OperationService(portal, content, stateStore);
-  const portalPlanning = new PortalPlanningService(portal, stateStore);
+  const portalPlanning = new PortalPlanningService(portal, stateStore, undefined, content);
   const server = createHttpServer(auth, portal, content, publication, media, webhook, operation, portalPlanning);
 
   const shutdown = async (): Promise<void> => {

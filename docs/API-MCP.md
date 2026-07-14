@@ -63,6 +63,7 @@ DELETE /api/v1/directories/{directoryId}  # 運営キーで外部案内を削除
 POST /api/v1/portal-plans                 # 事業者がテーマ・地域・対象ポジションから計画を生成
 GET  /api/v1/portal-plans?limit=50&cursor=0
 GET  /api/v1/portal-plans/{planId}
+POST /api/v1/portal-plans/{planId}/apply  # ページ案をコンテンツ企画案へ冪等に反映
 外部案内の管理操作は `CMS_OS_OPERATOR_KEY` と `x-cms-os-operator-key` ヘッダーで保護します。通常のログインロールには運営キーを渡しません。
 POST /api/v1/auth/oidc/start
 GET  /api/v1/auth/oidc/callback

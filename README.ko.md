@@ -16,6 +16,7 @@ CMS-OS는 현재 오픈 소스로 개발 중입니다.
 - 콘텐츠 검토, 승인, 공개, 비공개, 버전 이력
 - 이미지·동영상·PDF 관리, alt 텍스트·구조화 데이터·내부 링크·SEO 감사
 - BuilderOS Adapter를 통한 정적 사이트 생성 및 Cloudflare Pages 공개
+- Portal Planning Agent를 통한 주제·지역·대상 포지션별 검색 의도, 콘텐츠 기획, SEO 페이지 생성
 - 모든 작업을 REST API와 MCP로 제공하고 OpenAPI를 계약의 기준으로 사용
 - 서명된 Webhook, 암호화된 secret, 전달 outbox, 지수 백오프 재시도
 - 비동기 콘텐츠 생성 작업, 작업 상태 조회, 외부 스케줄러 실행, 멱등성 키
