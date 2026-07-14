@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PortalService, PortalServiceError, type PortalPage } from "./portal-service.js";
 import { MediaStore } from "../domain/media-store.js";
 import { mediaRightsStatuses, mediaStatuses, mediaTypes, type AuthenticatedPrincipal, type MediaAsset, type MediaRightsStatus, type MediaSeoAuditIssue, type MediaSeoAuditResult, type MediaSiteSeoAuditResult, type MediaStatus, type MediaTransformSpec, type MediaType } from "../domain/types.js";
+import type { WebhookService } from "./webhook-service.js";
 
 export class MediaServiceError extends Error {
   public constructor(public readonly statusCode: number, message: string) {
@@ -80,6 +81,7 @@ export class MediaService {
   public constructor(
     private readonly portal: PortalService,
     private readonly store = new MediaStore(),
+    private readonly webhook?: WebhookService,
   ) {}
 
   public listAssets(
@@ -123,7 +125,7 @@ export class MediaService {
     const name = input.name.trim();
     const title = (input.title ?? name).trim();
     if (!title || title.length > 200) throw new MediaServiceError(400, "titleは1〜200文字で指定してください。");
-    return this.store.createAsset({
+    const created = this.store.createAsset({
       category: input.category,
       providerId: principal.providerId as string,
       name,
@@ -144,6 +146,8 @@ export class MediaService {
       ...(input.licenseExpiresAt ? { licenseExpiresAt: input.licenseExpiresAt } : {}),
       status: input.status ?? "draft",
     });
+    this.webhook?.emit(created.category, created.providerId, "media.created", { assetId: created.id, mediaType: created.mediaType, status: created.status });
+    return created;
   }
 
   public updateAsset(principal: AuthenticatedPrincipal | null, assetId: string, input: MediaUpdateInput): MediaAsset {
@@ -178,6 +182,7 @@ export class MediaService {
       ...(input.status !== undefined ? { status: input.status } : {}),
     });
     if (!updated) throw new MediaServiceError(404, "メディアアセットが見つかりません。");
+    this.webhook?.emit(updated.category, updated.providerId, "media.updated", { assetId: updated.id, mediaType: updated.mediaType, status: updated.status });
     return updated;
   }
 
@@ -187,6 +192,7 @@ export class MediaService {
     if (!asset) throw new MediaServiceError(404, "メディアアセットが見つかりません。");
     const archived = this.store.archiveAsset(asset.id);
     if (!archived) throw new MediaServiceError(404, "メディアアセットが見つかりません。");
+    this.webhook?.emit(archived.category, archived.providerId, "media.archived", { assetId: archived.id, mediaType: archived.mediaType, status: archived.status });
     return archived;
   }
 
@@ -196,6 +202,7 @@ export class MediaService {
     if (!asset) throw new MediaServiceError(404, "メディアアセットが見つかりません。");
     const result = this.createAssetSeoAudit(asset, new Date());
     if (!this.store.saveSeoAudit(asset.id, result)) throw new MediaServiceError(500, "メディアSEO監査結果を保存できませんでした。");
+    this.webhook?.emit(result.category, result.providerId, "media.seo_audited", { assetId: result.assetId, score: result.score, issueCount: result.issues.length });
     return result;
   }
 
@@ -210,7 +217,7 @@ export class MediaService {
     });
     const issues = results.flatMap((result) => result.issues.map((issue) => ({ ...issue, assetId: result.assetId })));
     const score = results.length === 0 ? 100 : Math.round(results.reduce((total, result) => total + result.score, 0) / results.length);
-    return this.store.saveSiteSeoAudit({
+    const result = this.store.saveSiteSeoAudit({
       category: principal.category,
       providerId: principal.providerId,
       assetCount: assets.length,
@@ -218,6 +225,8 @@ export class MediaService {
       issues,
       auditedAt: auditedAt.toISOString(),
     });
+    this.webhook?.emit(result.category, result.providerId, "media.seo_audited", { assetCount: result.assetCount, score: result.score, issueCount: result.issues.length });
+    return result;
   }
 
   public transformAsset(principal: AuthenticatedPrincipal | null, assetId: string, input: MediaTransformInput): MediaAsset {
@@ -242,6 +251,7 @@ export class MediaService {
         })
       : derived;
     if (!updated) throw new MediaServiceError(500, "変換アセットを保存できませんでした。");
+    this.webhook?.emit(updated.category, updated.providerId, "media.created", { assetId: updated.id, derivedFromAssetId: source.id, mediaType: updated.mediaType, status: updated.status });
     return updated;
   }
 

@@ -3,6 +3,7 @@ import { PortalService } from "./application/portal-service.js";
 import { ContentService } from "./application/content-service.js";
 import { PublicationService } from "./application/publication-service.js";
 import { MediaService } from "./application/media-service.js";
+import { WebhookService } from "./application/webhook-service.js";
 import { createHttpServer } from "./api/http-server.js";
 import { PortalStore } from "./domain/portal-store.js";
 import { ContentStore } from "./domain/content-store.js";
@@ -28,10 +29,11 @@ async function main(): Promise<void> {
   const stateStore = await createStateStore();
   const auth = new InMemoryAuthService(stateStore, authOptionsFromEnvironment());
   const portal = new PortalService(auth, new PortalStore(stateStore));
-  const content = new ContentService(portal, new ContentStore(stateStore));
-  const publication = new PublicationService(portal, content, undefined, undefined, new PublicationStore(stateStore));
-  const media = new MediaService(portal, new MediaStore(stateStore));
-  const server = createHttpServer(auth, portal, content, publication, media);
+  const webhook = new WebhookService(portal, undefined, stateStore);
+  const content = new ContentService(portal, new ContentStore(stateStore), webhook);
+  const publication = new PublicationService(portal, content, undefined, undefined, new PublicationStore(stateStore), webhook);
+  const media = new MediaService(portal, new MediaStore(stateStore), webhook);
+  const server = createHttpServer(auth, portal, content, publication, media, webhook);
 
   const shutdown = async (): Promise<void> => {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

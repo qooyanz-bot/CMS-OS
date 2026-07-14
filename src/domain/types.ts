@@ -148,6 +148,58 @@ export interface MediaSiteSeoAuditResult {
   auditedAt: string;
 }
 
+export const webhookEventTypes = [
+  "content.created",
+  "content.updated",
+  "content.archived",
+  "content.published",
+  "media.created",
+  "media.updated",
+  "media.archived",
+  "media.seo_audited",
+  "publication.published",
+  "publication.unpublished",
+] as const;
+export type WebhookEventType = (typeof webhookEventTypes)[number];
+
+export const webhookSubscriptionStatuses = ["active", "paused", "revoked"] as const;
+export type WebhookSubscriptionStatus = (typeof webhookSubscriptionStatuses)[number];
+
+export const webhookDeliveryStatuses = ["pending", "retrying", "delivered", "failed"] as const;
+export type WebhookDeliveryStatus = (typeof webhookDeliveryStatuses)[number];
+
+export interface WebhookSubscription {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  endpointUrl: string;
+  events: WebhookEventType[];
+  description?: string;
+  secretHint: string;
+  status: WebhookSubscriptionStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  subscriptionId: string;
+  category: CategorySlug;
+  providerId: string;
+  eventType: WebhookEventType;
+  payload: Record<string, unknown>;
+  signature: string;
+  status: WebhookDeliveryStatus;
+  attempts: number;
+  responseStatus?: number;
+  error?: string;
+  lastAttemptAt?: string;
+  nextRetryAt?: string;
+  deliveredAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MediaAsset {
   id: string;
   category: CategorySlug;

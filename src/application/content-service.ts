@@ -18,9 +18,11 @@ import {
   type ContentType,
   type ContentVersionRecord,
   type FactCheckResult,
+  type WebhookEventType,
   type SeoAuditResult,
   type SeoSiteAuditResult,
 } from "../domain/types.js";
+import type { WebhookService } from "./webhook-service.js";
 
 export class ContentServiceError extends Error {
   public constructor(public readonly statusCode: number, message: string) {
@@ -125,6 +127,7 @@ export class ContentService {
   public constructor(
     private readonly portal: PortalService,
     private readonly store = new ContentStore(),
+    private readonly webhook?: WebhookService,
   ) {}
 
   public createProposal(
@@ -216,7 +219,7 @@ export class ContentService {
     }
     const slug = input.slug === undefined ? `content-${randomUUID().slice(-12)}` : this.normalizeSlug(input.slug);
     const seo = this.createSeoForContent(input.contentType, title, summary, slug, input.seo);
-    return this.store.createContent({
+    const created = this.store.createContent({
       category: input.category,
       providerId: principal.providerId,
       contentType: input.contentType,
@@ -231,6 +234,8 @@ export class ContentService {
       locale,
       status: "drafted",
     }, { ...(principal.accountId ? { actorId: principal.accountId } : {}) });
+    this.emitContentEvent("content.created", created);
+    return created;
   }
 
   public createDraft(principal: AuthenticatedPrincipal | null, proposalId: string): ContentRecord {
@@ -241,7 +246,7 @@ export class ContentService {
     const summary = limit(`${proposal.topic}について、${audienceIntents[proposal.audience]}ためのCMS-OS編集原稿です。`, 160);
     const seoTitle = limit(title, 60);
     const seoDescription = limit(summary, 160);
-    return this.store.createContent({
+    const created = this.store.createContent({
       category: proposal.category,
       providerId: proposal.providerId,
       contentType: proposal.contentType,
@@ -268,6 +273,8 @@ export class ContentService {
       locale: "ja",
       status: "drafted",
     }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
+    this.emitContentEvent("content.created", created);
+    return created;
   }
 
   public listContent(principal: AuthenticatedPrincipal | null): ContentRecord[] {
@@ -336,7 +343,7 @@ export class ContentService {
     seo.ogDescription = limit(seo.ogDescription.trim(), 160);
     if (!seo.canonicalPath.startsWith("/")) seo.canonicalPath = `/${localeSegment}${source.seo.canonicalPath}`;
 
-    return this.store.createContent({
+    const created = this.store.createContent({
       category: source.category,
       providerId: source.providerId,
       contentType: source.contentType,
@@ -356,6 +363,8 @@ export class ContentService {
       },
       status: "drafted",
     }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
+    this.emitContentEvent("content.created", created);
+    return created;
   }
 
   public listVersions(principal: AuthenticatedPrincipal | null, contentId: string): ContentVersionRecord[] {
@@ -382,6 +391,7 @@ export class ContentService {
     if (content.status === "review_requested") throw new ContentServiceError(409, "レビュー中のコンテンツは復元できません。レビューを完了してから実行してください。");
     const restored = this.store.restoreVersion(content.id, versionNumber, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!restored) throw new ContentServiceError(404, "指定されたコンテンツ版が見つかりません。");
+    this.emitContentEvent("content.updated", restored);
     return restored;
   }
 
@@ -476,6 +486,7 @@ export class ContentService {
 
     const updated = this.store.updateContent(content.id, patch, { reason: "updated", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    this.emitContentEvent("content.updated", updated);
     return updated;
   }
 
@@ -485,7 +496,7 @@ export class ContentService {
     if (content.status === "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツは複製できません。復元してから実行してください。");
     const copySuffix = randomUUID().slice(0, 8);
 
-    return this.store.createContent({
+    const duplicated = this.store.createContent({
       category: content.category,
       providerId: content.providerId,
       contentType: content.contentType,
@@ -501,6 +512,8 @@ export class ContentService {
       ...(content.translationOf ? { translationOf: { ...content.translationOf } } : {}),
       status: "drafted",
     }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
+    this.emitContentEvent("content.created", duplicated);
+    return duplicated;
   }
 
   public archiveContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
@@ -510,6 +523,7 @@ export class ContentService {
     if (content.status === "archived") return content;
     const archived = this.store.updateContent(content.id, { status: "archived" }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!archived) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    this.emitContentEvent("content.archived", archived);
     return archived;
   }
 
@@ -525,6 +539,7 @@ export class ContentService {
       ...(principal?.accountId ? { actorId: principal.accountId } : {}),
     });
     if (!unpublished) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    this.emitContentEvent("content.archived", unpublished);
     return unpublished;
   }
 
@@ -534,6 +549,7 @@ export class ContentService {
     if (content.status !== "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツだけを復元できます。");
     const restored = this.store.updateContent(content.id, { status: "drafted" }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!restored) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    this.emitContentEvent("content.updated", restored);
     return restored;
   }
 
@@ -544,6 +560,7 @@ export class ContentService {
     if (content.status !== "approved") throw new ContentServiceError(409, "承認済みコンテンツだけを公開できます。");
     const published = this.store.updateContent(content.id, { status: "published" }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!published) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    this.emitContentEvent("content.published", published);
     return published;
   }
 
@@ -563,6 +580,7 @@ export class ContentService {
       seo: { ...content.seo, title: limit(content.seo.title.trim(), 60), description: limit(content.seo.description.trim(), 160) },
     }, { reason: "polished", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
+    this.emitContentEvent("content.updated", updated);
     return updated;
   }
 
@@ -586,6 +604,7 @@ export class ContentService {
         reviewedAt: new Date().toISOString(),
       });
     }
+    this.emitContentEvent("content.updated", updated);
     return updated;
   }
 
@@ -827,6 +846,16 @@ export class ContentService {
     const updated = this.store.updateContent(content.id, { lastFactCheck: result }, { incrementVersion: false });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return result;
+  }
+
+  private emitContentEvent(eventType: WebhookEventType, content: ContentRecord): void {
+    this.webhook?.emit(content.category, content.providerId, eventType, {
+      contentId: content.id,
+      contentType: content.contentType,
+      locale: content.locale,
+      status: content.status,
+      version: content.version,
+    });
   }
 
   private getOwnedProposal(principal: AuthenticatedPrincipal | null, proposalId: string): ContentProposal {

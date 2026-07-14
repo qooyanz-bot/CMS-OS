@@ -14,7 +14,8 @@ import {
 } from "../application/content-service.js";
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
 import { MediaService, MediaServiceError, mediaSortValues, type MediaRegisterInput, type MediaUpdateInput } from "../application/media-service.js";
-import { applicationStatuses, categorySlugs, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, providerListingStatuses, requestStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type ProviderListingStatus, type RequestStatus } from "../domain/types.js";
+import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type WebhookSubscriptionCreateInput, type WebhookSubscriptionUpdateInput } from "../application/webhook-service.js";
+import { applicationStatuses, categorySlugs, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -313,6 +314,43 @@ function parseMediaTransformInput(input: Record<string, unknown>): MediaTransfor
   };
 }
 
+function parseWebhookEvents(value: unknown): WebhookEventType[] {
+  if (!Array.isArray(value) || value.some((event) => typeof event !== "string" || !webhookEventTypes.includes(event as WebhookEventType))) throw new Error("eventsは有効なWebhookイベントの配列で指定してください。");
+  return value as WebhookEventType[];
+}
+
+function parseWebhookCreateInput(input: Record<string, unknown>): WebhookSubscriptionCreateInput {
+  if (!isCategorySlug(input.category) || typeof input.endpointUrl !== "string") throw new Error("categoryとendpointUrlが必要です。");
+  const events = parseWebhookEvents(input.events);
+  if (input.description !== undefined && typeof input.description !== "string") throw new Error("descriptionは文字列で指定してください。");
+  if (input.secret !== undefined && typeof input.secret !== "string") throw new Error("secretは文字列で指定してください。");
+  return {
+    category: input.category,
+    endpointUrl: input.endpointUrl,
+    events,
+    ...(typeof input.description === "string" ? { description: input.description } : {}),
+    ...(typeof input.secret === "string" ? { secret: input.secret } : {}),
+  };
+}
+
+function parseWebhookUpdateInput(input: Record<string, unknown>): WebhookSubscriptionUpdateInput {
+  const patch: WebhookSubscriptionUpdateInput = {};
+  if (input.endpointUrl !== undefined) {
+    if (typeof input.endpointUrl !== "string") throw new Error("endpointUrlは文字列で指定してください。");
+    patch.endpointUrl = input.endpointUrl;
+  }
+  if (input.events !== undefined) patch.events = parseWebhookEvents(input.events);
+  if (input.description !== undefined) {
+    if (typeof input.description !== "string") throw new Error("descriptionは文字列で指定してください。");
+    patch.description = input.description;
+  }
+  if (input.status !== undefined) {
+    if (typeof input.status !== "string" || !webhookSubscriptionStatuses.includes(input.status as (typeof webhookSubscriptionStatuses)[number])) throw new Error("statusが不正です。");
+    patch.status = input.status as (typeof webhookSubscriptionStatuses)[number];
+  }
+  return patch;
+}
+
 function parsePaginationValue(value: unknown, fieldName: string, fallback: number): number {
   if (value === undefined || value === null || value === "") return fallback;
   const raw = typeof value === "number" ? String(value) : value;
@@ -354,7 +392,7 @@ function parseQueryString(url: URL, fieldName: string): string | undefined {
 }
 
 function serviceErrorStatus(error: unknown): number {
-  return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError || error instanceof MediaServiceError ? error.statusCode : 400;
+  return error instanceof AuthServiceError || error instanceof PortalServiceError || error instanceof ContentServiceError || error instanceof PublicationServiceError || error instanceof MediaServiceError || error instanceof WebhookServiceError ? error.statusCode : 400;
 }
 
 function getClientAddress(request: IncomingMessage): string {
@@ -395,6 +433,7 @@ async function handleMcp(
   content: ContentService,
   publication: PublicationService,
   media: MediaService,
+  webhook: WebhookService,
   authRateLimiter: FixedWindowRateLimiter,
 ): Promise<void> {
   const body = await readJson(request);
@@ -570,6 +609,46 @@ async function handleMcp(
             name: "media.asset_seo_audit",
             description: "指定したメディアアセットのSEO・アクセシビリティ監査を実行します。",
             inputSchema: { type: "object", properties: { assetId: { type: "string" } }, required: ["assetId"] },
+          },
+          {
+            name: "webhook.list",
+            description: "現在の事業者が管理するWebhook購読を取得します。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "webhook.create",
+            description: "Webhook購読を作成します。secretは作成時に一度だけ返されます。",
+            inputSchema: { type: "object", properties: { category: { enum: categoryEnum }, endpointUrl: { type: "string", format: "uri" }, events: { type: "array", items: { enum: [...webhookEventTypes] } }, description: { type: "string" }, secret: { type: "string" } }, required: ["category", "endpointUrl", "events"] },
+          },
+          {
+            name: "webhook.update",
+            description: "Webhook購読の送信先、イベント、状態を更新します。",
+            inputSchema: { type: "object", properties: { subscriptionId: { type: "string" }, endpointUrl: { type: "string", format: "uri" }, events: { type: "array", items: { enum: [...webhookEventTypes] } }, description: { type: "string" }, status: { enum: [...webhookSubscriptionStatuses] } }, required: ["subscriptionId"] },
+          },
+          {
+            name: "webhook.revoke",
+            description: "Webhook購読を取り消します。既存の配信履歴は保持します。",
+            inputSchema: { type: "object", properties: { subscriptionId: { type: "string" } }, required: ["subscriptionId"] },
+          },
+          {
+            name: "webhook.deliveries",
+            description: "Webhook配信アウトボックスの状態を取得します。",
+            inputSchema: { type: "object", properties: { status: { enum: [...webhookDeliveryStatuses] }, eventType: { enum: [...webhookEventTypes] }, sort: { enum: [...webhookDeliverySortValues] }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
+          },
+          {
+            name: "webhook.retry",
+            description: "失敗または再試行待ちのWebhook配信を手動再試行キューへ戻します。",
+            inputSchema: { type: "object", properties: { deliveryId: { type: "string" } }, required: ["deliveryId"] },
+          },
+          {
+            name: "webhook.deliver",
+            description: "指定したWebhook配信を送信します。",
+            inputSchema: { type: "object", properties: { deliveryId: { type: "string" } }, required: ["deliveryId"] },
+          },
+          {
+            name: "webhook.deliver_pending",
+            description: "再試行時刻を迎えたWebhook配信を上限件数まで送信します。",
+            inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 } }, required: [] },
           },
           {
             name: "auth.login",
@@ -1473,6 +1552,67 @@ async function handleMcp(
       return;
     }
 
+    if (name === "webhook.list") {
+      const result = { items: webhook.listSubscriptions(principal) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "webhook.create") {
+      const result = webhook.createSubscription(principal, parseWebhookCreateInput(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "webhook.update") {
+      if (typeof argumentsObject.subscriptionId !== "string") throw new Error("subscriptionIdを指定してください。");
+      const result = webhook.updateSubscription(principal, argumentsObject.subscriptionId, parseWebhookUpdateInput(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "webhook.revoke") {
+      if (typeof argumentsObject.subscriptionId !== "string") throw new Error("subscriptionIdを指定してください。");
+      const result = webhook.revokeSubscription(principal, argumentsObject.subscriptionId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "webhook.deliveries") {
+      const status = parseOptionalEnumValue(argumentsObject.status, "status", webhookDeliveryStatuses);
+      const eventType = parseOptionalEnumValue(argumentsObject.eventType, "eventType", webhookEventTypes);
+      const sort = parseOptionalEnumValue(argumentsObject.sort, "sort", webhookDeliverySortValues);
+      const result = webhook.listDeliveries(principal, {
+        ...(status ? { status } : {}),
+        ...(eventType ? { eventType } : {}),
+        ...(sort ? { sort } : {}),
+      }, parsePaginationArguments(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "webhook.retry") {
+      if (typeof argumentsObject.deliveryId !== "string") throw new Error("deliveryIdを指定してください。");
+      const result = webhook.retryDelivery(principal, argumentsObject.deliveryId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "webhook.deliver") {
+      if (typeof argumentsObject.deliveryId !== "string") throw new Error("deliveryIdを指定してください。");
+      const result = await webhook.deliverDelivery(principal, argumentsObject.deliveryId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "webhook.deliver_pending") {
+      const limit = argumentsObject.limit === undefined ? 10 : argumentsObject.limit;
+      if (typeof limit !== "number") throw new Error("limitは整数で指定してください。");
+      const result = await webhook.deliverPending(principal, limit);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: { items: result } } });
+      return;
+    }
+
     if (name === "content.propose") {
       if (!isCategorySlug(argumentsObject.category) || !isContentType(argumentsObject.contentType) || !isContentAudience(argumentsObject.audience) || typeof argumentsObject.topic !== "string") {
         throw new Error("category、contentType、audience、topicが必要です。");
@@ -1767,10 +1907,14 @@ async function handleMcp(
 export function createHttpServer(
   auth: AuthService,
   portal: PortalService,
-  content = new ContentService(portal),
-  publication = new PublicationService(portal, content),
-  media = new MediaService(portal),
+  content?: ContentService,
+  publication?: PublicationService,
+  media?: MediaService,
+  webhook = new WebhookService(portal),
 ): Server {
+  content ??= new ContentService(portal, undefined, webhook);
+  publication ??= new PublicationService(portal, content, undefined, undefined, undefined, webhook);
+  media ??= new MediaService(portal, undefined, webhook);
   const authRateLimiter = new FixedWindowRateLimiter(10, 10 * 60 * 1000);
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
@@ -2211,6 +2355,90 @@ export function createHttpServer(
           else writeJson(response, 200, { item: media.archiveAsset(principal, assetId) });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "メディアを操作できませんでした。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/webhooks") {
+        try {
+          writeJson(response, 200, { items: webhook.listSubscriptions(principal) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "Webhook購読を取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/webhooks") {
+        try {
+          const result = webhook.createSubscription(principal, parseWebhookCreateInput(await readJson(request)));
+          writeJson(response, 201, { item: result.subscription, secret: result.secret });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "Webhook購読を作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/webhooks/deliveries") {
+        try {
+          const status = parseOptionalEnumValue(url.searchParams.get("status"), "status", webhookDeliveryStatuses);
+          const eventType = parseOptionalEnumValue(url.searchParams.get("eventType"), "eventType", webhookEventTypes);
+          const sort = parseOptionalEnumValue(url.searchParams.get("sort"), "sort", webhookDeliverySortValues);
+          writeJson(response, 200, {
+            ...webhook.listDeliveries(principal, {
+              ...(status ? { status } : {}),
+              ...(eventType ? { eventType } : {}),
+              ...(sort ? { sort } : {}),
+            }, parsePaginationQuery(url)),
+          });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "Webhook配信を取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/webhooks/deliveries/deliver-pending") {
+        try {
+          const body = await readJson(request);
+          const limit = body.limit === undefined ? 10 : body.limit;
+          if (typeof limit !== "number") throw new Error("limitは整数で指定してください。");
+          writeJson(response, 200, { items: await webhook.deliverPending(principal, limit) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "Webhook配信に失敗しました。" });
+        }
+        return;
+      }
+
+      const webhookDeliveryActionMatch = url.pathname.match(/^\/api\/v1\/webhooks\/deliveries\/([^/]+)\/(retry|deliver)$/);
+      if (request.method === "POST" && webhookDeliveryActionMatch) {
+        const deliveryId = webhookDeliveryActionMatch[1];
+        const action = webhookDeliveryActionMatch[2];
+        if (!deliveryId) {
+          writeJson(response, 400, { error: "deliveryIdを指定してください。" });
+          return;
+        }
+        try {
+          const item = action === "retry" ? webhook.retryDelivery(principal, deliveryId) : await webhook.deliverDelivery(principal, deliveryId);
+          writeJson(response, 200, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "Webhook配信を操作できません。" });
+        }
+        return;
+      }
+
+      const webhookSubscriptionMatch = url.pathname.match(/^\/api\/v1\/webhooks\/([^/]+)$/);
+      if (webhookSubscriptionMatch && (request.method === "PATCH" || request.method === "DELETE")) {
+        const subscriptionId = webhookSubscriptionMatch[1];
+        if (!subscriptionId) {
+          writeJson(response, 400, { error: "subscriptionIdを指定してください。" });
+          return;
+        }
+        try {
+          const item = request.method === "DELETE"
+            ? webhook.revokeSubscription(principal, subscriptionId)
+            : webhook.updateSubscription(principal, subscriptionId, parseWebhookUpdateInput(await readJson(request)));
+          writeJson(response, 200, { item });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "Webhook購読を操作できません。" });
         }
         return;
       }
@@ -3023,7 +3251,7 @@ export function createHttpServer(
       }
 
       if (request.method === "POST" && url.pathname === "/mcp") {
-        await handleMcp(request, response, auth, portal, content, publication, media, authRateLimiter);
+        await handleMcp(request, response, auth, portal, content, publication, media, webhook, authRateLimiter);
         return;
       }
 

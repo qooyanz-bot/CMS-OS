@@ -4,6 +4,7 @@ import type { PortalService } from "./portal-service.js";
 import { PublicationStore } from "../domain/publication-store.js";
 import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, PublicationBuildResult, PublicationDeploymentRecord, PublicationHistorySummary, PublicationScheduleRecord, PublicationScheduleSummary, VisibleProvider } from "../domain/types.js";
 import { BuilderOSAdapter, BuilderOSAdapterError, type CloudflarePagesDeployOptions, type CloudflarePagesDeploymentResult } from "../integrations/builderos-adapter.js";
+import type { WebhookService } from "./webhook-service.js";
 
 export class PublicationServiceError extends Error {
   public constructor(public readonly statusCode: number, message: string) {
@@ -535,6 +536,7 @@ export class PublicationService {
       ...(process.env.CMS_OS_CLOUDFLARE_DRY_RUN === "true" ? { dryRun: true } : {}),
     }),
     private readonly publicationStore = new PublicationStore(),
+    private readonly webhook?: WebhookService,
   ) {}
 
   public build(
@@ -668,6 +670,9 @@ export class PublicationService {
         status: deployment.status === "submitted" ? "published" : "built",
         deployment: deploymentRecord(deployment),
       });
+      if (deployment.status === "submitted" && principal?.providerId) {
+        this.webhook?.emit(principal.category, principal.providerId, "publication.published", { publicationId: publication.publicationId, contentIds: publishedContentIds });
+      }
       return { publication, deployment, publishedContentIds };
     } catch (error) {
       if (error instanceof BuilderOSAdapterError) {
@@ -712,6 +717,7 @@ export class PublicationService {
         principal.providerId,
         unpublishedContentIds,
       );
+      this.webhook?.emit(principal.category, principal.providerId, "publication.unpublished", { publicationId: publication.publicationId, contentIds: unpublishedContentIds, cancelledScheduleIds });
       return { publication, deployment, unpublishedContentIds, cancelledScheduleIds };
     } catch (error) {
       if (error instanceof BuilderOSAdapterError) {

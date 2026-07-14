@@ -40,6 +40,8 @@ npm run dev
 - `publication-schedules.json`
 - `portal-media-assets.json`（画像・動画・PDFのメタデータ、権利状態、派生アセット）
 - `media-seo-audits.json`（メディアSEO監査の履歴。アセット単位の直近結果はメディアアセットにも保持）
+- `webhook-subscriptions.json`（Webhook購読と暗号化secret。暗号化キーは `CMS_OS_WEBHOOK_ENCRYPTION_KEY` を使用し、未指定時は `CMS_OS_AUTH_ENCRYPTION_KEY` を使用）
+- `webhook-deliveries.json`（署名付きWebhook配信アウトボックス、試行回数、再試行状態）
 
 セッション、OIDC state、MFAチャレンジは生値ではなくハッシュ化した値を保存します。MFA秘密鍵は`CMS_OS_AUTH_ENCRYPTION_KEY`で暗号化します。ファイルモードは単一インスタンスの開発・小規模検証用であり、複数プロセスからの同時書き込みや暗号化バックアップは別途運用設計が必要です。本番はPostgreSQLと秘密管理基盤を使用してください。
 
