@@ -182,6 +182,11 @@ const elements = {
   providerManagementMessage: document.querySelector("#provider-management-message"),
   listingStatus: document.querySelector("#listing-status"),
   listingSubmitButton: document.querySelector("#listing-submit-button"),
+  portalPlanningPanel: document.querySelector("#portal-planning-panel"),
+  portalPlanningForm: document.querySelector("#portal-planning-form"),
+  portalPlanningMessage: document.querySelector("#portal-planning-message"),
+  portalPlanResult: document.querySelector("#portal-plan-result"),
+  portalPlanList: document.querySelector("#portal-plan-list"),
   jobManagementPanel: document.querySelector("#job-management-panel"),
   jobManagementForm: document.querySelector("#job-management-form"),
   jobManagementMessage: document.querySelector("#job-management-message"),
@@ -747,6 +752,79 @@ function setMediaManagementMessage(message = "") {
   elements.mediaManagementMessage.textContent = message;
 }
 
+function setPortalPlanningMessage(message = "") {
+  elements.portalPlanningMessage.textContent = message;
+}
+
+function renderPortalPlan(plan, proposals = []) {
+  if (!plan) {
+    elements.portalPlanResult.hidden = true;
+    elements.portalPlanResult.replaceChildren();
+    return;
+  }
+  const pageItems = Array.isArray(plan.pageIdeas) ? plan.pageIdeas : [];
+  const gaps = Array.isArray(plan.gaps) ? plan.gaps : [];
+  const proposalCount = proposals.length || plan.appliedProposalIds?.length || 0;
+  elements.portalPlanResult.hidden = false;
+  elements.portalPlanResult.innerHTML = `
+    <article class="editor-item">
+      <div class="meta"><span>${escapeHtml(plan.categoryLabel)}</span><span>${escapeHtml(plan.theme)}</span>${plan.region ? `<span>${escapeHtml(plan.region)}</span>` : ""}</div>
+      <h3>${escapeHtml(plan.theme)}のポータル企画</h3>
+      <p>検索意図 ${escapeHtml(String(plan.searchIntents?.length ?? 0))}件 / ページ案 ${escapeHtml(String(pageItems.length))}件 / 未充足項目 ${escapeHtml(String(gaps.length))}件</p>
+      <ul>${pageItems.map((page) => `<li><strong>${escapeHtml(page.title)}</strong><br><span class="muted">${escapeHtml(page.primaryKeyword)} — ${escapeHtml(page.purpose)}</span></li>`).join("")}</ul>
+      <p class="field-note">${proposalCount > 0 ? `コンテンツ下書き ${escapeHtml(String(proposalCount))}件を作成済みです。` : "企画案を適用すると、AIコンテンツ編集へ下書きを作成できます。"}</p>
+      ${proposalCount === 0 ? `<button class="button secondary portal-plan-apply-button" type="button" data-plan-id="${escapeHtml(plan.id)}">企画案を下書きへ適用</button>` : ""}
+    </article>`;
+  elements.portalPlanResult.querySelector(".portal-plan-apply-button")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const body = await api(`/api/v1/portal-plans/${encodeURIComponent(button.dataset.planId ?? "")}/apply`, { method: "POST" });
+      renderPortalPlan(body.item.plan, body.item.proposals);
+      setPortalPlanningMessage(`コンテンツ下書き ${body.item.proposals.length}件を作成しました。AIコンテンツ編集で清書・SEO監査へ進めます。`);
+      await reloadPortalPlanning();
+    } catch (error) {
+      button.disabled = false;
+      setPortalPlanningMessage(error.message);
+    }
+  });
+}
+
+function renderPortalPlanList(plans) {
+  elements.portalPlanList.innerHTML = plans.length
+    ? `<div class="section-kicker">RECENT PLANS</div>${plans.map((plan) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(plan.theme)}</span>${plan.region ? `<span>${escapeHtml(plan.region)}</span>` : ""}<span>${plan.appliedProposalIds?.length ? "適用済み" : "未適用"}</span></div><p>${escapeHtml(plan.pageIdeas?.[0]?.title ?? "ポータル企画")}</p><button class="button ghost portal-plan-load-button" type="button" data-plan-id="${escapeHtml(plan.id)}">この企画を表示</button></article>`).join("")}`
+    : '<p class="empty">作成済みのポータル企画はありません。</p>';
+  elements.portalPlanList.querySelectorAll(".portal-plan-load-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const body = await api(`/api/v1/portal-plans/${encodeURIComponent(button.dataset.planId ?? "")}`);
+        renderPortalPlan(body.item);
+        elements.portalPlanResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } catch (error) {
+        setPortalPlanningMessage(error.message);
+      }
+    });
+  });
+}
+
+async function reloadPortalPlanning() {
+  const visible = Boolean(state.token && state.role === "provider" && state.experience?.allowedActions.includes("portal.plan.create"));
+  elements.portalPlanningPanel.hidden = !visible;
+  if (!visible) {
+    elements.portalPlanResult.hidden = true;
+    elements.portalPlanResult.replaceChildren();
+    elements.portalPlanList.replaceChildren();
+    setPortalPlanningMessage();
+    return;
+  }
+  try {
+    const body = await api("/api/v1/portal-plans?limit=20");
+    renderPortalPlanList(body.items);
+  } catch (error) {
+    setPortalPlanningMessage(error.message);
+  }
+}
+
 function renderMediaAssets(items) {
   state.mediaAssets = items;
   elements.mediaList.innerHTML = items.length
@@ -1138,6 +1216,7 @@ async function reload() {
   const contextBody = await api(`/api/v1/categories/${encodeURIComponent(state.category)}`);
   renderExperience(contextBody.item.experience, contextBody.item.navigation);
   await reloadProviderManagement();
+  await reloadPortalPlanning();
   await reloadMediaManagement();
   await reloadRoleData();
   await reloadProviders();
@@ -1375,6 +1454,30 @@ elements.listingSubmitButton.addEventListener("click", async () => {
     await reload();
   } catch (error) {
     setProviderManagementMessage(error.message);
+  }
+});
+
+elements.portalPlanningForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(elements.portalPlanningForm);
+  try {
+    const region = String(form.get("region") ?? "").trim();
+    const body = await api("/api/v1/portal-plans", {
+      method: "POST",
+      body: JSON.stringify({
+        category: state.category,
+        theme: form.get("theme"),
+        ...(region ? { region } : {}),
+        audience: form.get("audience"),
+        goal: form.get("goal"),
+      }),
+    });
+    renderPortalPlan(body.item);
+    setPortalPlanningMessage("ポータル企画を作成しました。内容を確認して下書きへ適用できます。");
+    await reloadPortalPlanning();
+    elements.portalPlanResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (error) {
+    setPortalPlanningMessage(error.message);
   }
 });
 

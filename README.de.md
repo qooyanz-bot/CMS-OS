@@ -16,7 +16,7 @@ CMS-OS wird derzeit als Open-Source-Software entwickelt.
 - Prüfung, Freigabe, Veröffentlichung, Rücknahme und Versionshistorie von Inhalten
 - Medienverwaltung für Bilder, Videos und PDFs mit Alt-Text, strukturierten Daten, internen Links und SEO-Audits
 - Statische Seitengenerierung über den BuilderOS Adapter und Veröffentlichung auf Cloudflare Pages
-- Portal Planning Agent für Suchintentionen, Inhaltsvorschläge und SEO-Seiten nach Thema, Region und Zielgruppe
+- Portal Planning Agent für Suchintentionen, Inhaltsvorschläge und SEO-Seiten nach Thema, Region und Zielgruppe sowie deren Anwendung als Entwürfe
 - Alle Vorgänge über REST API und MCP; OpenAPI ist die maßgebliche Vertragsspezifikation
 - Signierte Webhooks, verschlüsselte Secrets, Delivery-Outbox und Wiederholungen mit exponentiellem Backoff
 - Asynchrone Jobs zur Inhaltserstellung mit Statusabfrage, Ausführung durch externe Scheduler und Idempotenzschlüsseln

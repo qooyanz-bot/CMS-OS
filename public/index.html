@@ -219,6 +219,22 @@
             <p id="provider-management-message" class="message" role="status"></p>
           </div>
 
+          <div id="portal-planning-panel" class="card action-card" hidden>
+            <div class="section-kicker">PORTAL PLANNING AGENT</div>
+            <h2>ポータル企画を作成</h2>
+            <p class="muted">テーマ・地域・対象者から検索意図を整理し、SEOページとコンテンツ下書きの企画案を作成します。</p>
+            <form id="portal-planning-form">
+              <label>テーマ<input name="theme" required minlength="2" maxlength="120" placeholder="例：企業法務" /></label>
+              <label>地域（任意）<input name="region" maxlength="120" placeholder="例：東京都" /></label>
+              <label>対象者<select name="audience"><option value="customer">顧客・発注者</option><option value="candidate">求職者・リクルーター</option></select></label>
+              <label>目的<select name="goal"><option value="discovery">認知・情報収集</option><option value="conversion">相談・依頼への転換</option><option value="recruiting">採用・応募</option></select></label>
+              <button class="button primary" type="submit">企画案を生成</button>
+            </form>
+            <p id="portal-planning-message" class="message" role="status"></p>
+            <div id="portal-plan-result" class="portal-plan-result" hidden></div>
+            <div id="portal-plan-list" class="role-list" aria-live="polite"></div>
+          </div>
+
           <div id="inquiry-management-panel" class="card action-card" hidden>
             <div class="section-kicker">INQUIRY MANAGEMENT</div>
             <h2>問い合わせを管理</h2>

@@ -34,6 +34,10 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /content-version-list/);
   assert.match(body, /content-review-list/);
   assert.match(body, /provider-management-panel/);
+  assert.match(body, /portal-planning-panel/);
+  assert.match(body, /portal-planning-form/);
+  assert.match(body, /portal-plan-result/);
+  assert.match(body, /portal-plan-list/);
   assert.match(body, /job-management-panel/);
   assert.match(body, /media-management-panel/);
   assert.match(body, /media-management-form/);
@@ -121,6 +125,10 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/categories\/\$\{encodeURIComponent\(state\.category\)\}\/directories/);
   assert.match(scriptBody, /directoryGuideKindLabels/);
   assert.match(scriptBody, /listing-submission/);
+  assert.match(scriptBody, /api\/v1\/portal-plans/);
+  assert.match(scriptBody, /portal\.plan\.create/);
+  assert.match(scriptBody, /portal-plan-apply-button/);
+  assert.match(scriptBody, /reloadPortalPlanning/);
   assert.match(scriptBody, /role-status-button/);
   assert.match(scriptBody, /api\/v1\/media/);
   assert.match(scriptBody, /reloadMediaManagement/);
