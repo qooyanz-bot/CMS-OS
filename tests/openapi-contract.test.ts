@@ -100,6 +100,7 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/jobs": ["search", "employmentType", "location", "status", "sort", "limit", "cursor"],
       "/api/v1/applications": ["search", "jobId", "status", "sort", "limit", "cursor"],
       "/api/v1/portal-plans": ["limit", "cursor"],
+      "/api/v1/content": ["search", "status", "audience", "contentType", "locale", "sort", "limit", "cursor"],
     };
     for (const [path, expectedParameters] of Object.entries(listQueryParameters)) {
       const operation = specification.paths[path]?.get as { parameters?: Array<{ name?: string }> } | undefined;
@@ -116,6 +117,7 @@ describe("CMS-OS OpenAPI契約", () => {
     assert.deepEqual(specification.components.securitySchemes.OperatorKey, { type: "apiKey", in: "header", name: "x-cms-os-operator-key" });
     assert.deepEqual(specification.components.schemas.AsyncOperationType?.enum, ["content.create", "content.create_batch"]);
     assert.ok(specification.components.schemas.AsyncOperationContentCreateBatchRequest);
+    assert.deepEqual(specification.components.schemas.ContentWorkflowStatus?.enum, ["proposed", "drafted", "polished", "seo_reviewed", "review_requested", "changes_requested", "approved", "published", "archived"]);
     assert.deepEqual((specification.paths["/api/v1/publications/schedules/execute"]?.post as { security?: unknown }).security, [{ BearerAuth: [] }, { OperatorKey: [] }]);
     for (const path of [
       "/api/v1/auth/login",

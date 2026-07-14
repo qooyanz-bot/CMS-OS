@@ -17,6 +17,8 @@ import {
   type ContentSeo,
   type ContentType,
   type ContentVersionRecord,
+  contentWorkflowStatuses,
+  type ContentWorkflowStatus,
   type FactCheckResult,
   type WebhookEventType,
   type SeoAuditResult,
@@ -43,6 +45,25 @@ export type ContentCreateInput = {
   locale?: ContentLocale | undefined;
   proposalId?: string | undefined;
   seo?: Partial<ContentSeo> | undefined;
+};
+
+export const contentSortValues = ["updatedAt_desc", "updatedAt_asc", "title_asc", "status"] as const;
+export type ContentSort = (typeof contentSortValues)[number];
+
+export type ContentListQuery = {
+  search?: string | undefined;
+  status?: ContentWorkflowStatus | undefined;
+  audience?: ContentAudience | undefined;
+  contentType?: ContentType | undefined;
+  locale?: ContentLocale | undefined;
+  sort?: ContentSort | undefined;
+  limit?: number | undefined;
+  cursor?: number | undefined;
+};
+
+export type ContentListPage = {
+  items: ContentRecord[];
+  page: { limit: number; nextCursor?: string };
 };
 
 const audienceLabels: Record<ContentAudience, string> = {
@@ -282,6 +303,43 @@ export class ContentService {
   public listContent(principal: AuthenticatedPrincipal | null): ContentRecord[] {
     this.assertProvider(principal, principal?.category);
     return this.store.listContent(principal!.category, principal!.providerId!);
+  }
+
+  public listContentPage(principal: AuthenticatedPrincipal | null, query: ContentListQuery = {}): ContentListPage {
+    this.assertProvider(principal, principal?.category);
+    const limitValue = query.limit ?? 50;
+    const cursorValue = query.cursor ?? 0;
+    if (!Number.isSafeInteger(limitValue) || limitValue < 1 || limitValue > 100) {
+      throw new ContentServiceError(400, "limitは1以上100以下で指定してください。");
+    }
+    if (!Number.isSafeInteger(cursorValue) || cursorValue < 0) {
+      throw new ContentServiceError(400, "cursorは0以上の整数で指定してください。");
+    }
+    const normalizedSearch = query.search?.trim().toLocaleLowerCase();
+    if (normalizedSearch && normalizedSearch.length > 200) {
+      throw new ContentServiceError(400, "searchは200文字以内で指定してください。");
+    }
+
+    const contents = this.store.listContent(principal!.category, principal!.providerId!)
+      .filter((content) => !query.status || content.status === query.status)
+      .filter((content) => !query.audience || content.audience === query.audience)
+      .filter((content) => !query.contentType || content.contentType === query.contentType)
+      .filter((content) => !query.locale || content.locale === query.locale)
+      .filter((content) => {
+        if (!normalizedSearch) return true;
+        const searchable = [content.title, content.slug, content.summary, content.seo.description, ...content.seo.keywords].join(" ").toLocaleLowerCase();
+        return searchable.includes(normalizedSearch);
+      })
+      .sort((left, right) => {
+        const sort = query.sort ?? "updatedAt_desc";
+        if (sort === "title_asc") return left.title.localeCompare(right.title, "ja") || right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id);
+        if (sort === "status") return left.status.localeCompare(right.status) || right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id);
+        const comparison = left.updatedAt.localeCompare(right.updatedAt);
+        return sort === "updatedAt_asc" ? comparison || left.id.localeCompare(right.id) : -comparison || left.id.localeCompare(right.id);
+      });
+    const items = contents.slice(cursorValue, cursorValue + limitValue);
+    const nextCursor = cursorValue + items.length < contents.length ? String(cursorValue + items.length) : undefined;
+    return { items, page: { limit: limitValue, ...(nextCursor ? { nextCursor } : {}) } };
   }
 
   public getContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
@@ -942,6 +1000,10 @@ export function isContentAudience(value: unknown): value is ContentAudience {
 
 export function isContentLocale(value: unknown): value is ContentLocale {
   return typeof value === "string" && contentLocales.includes(value as ContentLocale);
+}
+
+export function isContentWorkflowStatus(value: unknown): value is ContentWorkflowStatus {
+  return typeof value === "string" && contentWorkflowStatuses.includes(value as ContentWorkflowStatus);
 }
 
 export function parseOptionalStringArray(value: unknown, fieldName: string): string[] | undefined {

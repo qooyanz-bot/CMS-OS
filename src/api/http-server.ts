@@ -7,7 +7,9 @@ import { applicationSortValues, jobSortValues, PortalService, PortalServiceError
 import {
   ContentService,
   ContentServiceError,
+  contentSortValues,
   type ContentCreateInput,
+  type ContentListQuery,
   isContentAudience,
   isContentLocale,
   isContentType,
@@ -19,7 +21,7 @@ import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type We
 import { MAX_BATCH_ITEMS, OperationService, OperationServiceError, type ContentCreateBatchInput, type OperationSubmitInput } from "../application/operation-service.js";
 import { PortalPlanningService, PortalPlanningServiceError, type PortalPlanCreateInput } from "../application/portal-planning-service.js";
 import { operationTypes, type OperationType } from "../domain/operation-store.js";
-import { applicationStatuses, categorySlugs, contentAudiences, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
+import { applicationStatuses, categorySlugs, contentAudiences, contentLocales, contentTypes, contentWorkflowStatuses, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -434,6 +436,42 @@ function parsePaginationArguments(argumentsObject: Record<string, unknown>): { l
   const cursor = parsePaginationValue(argumentsObject.cursor, "cursor", 0);
   if (limit < 1 || limit > 100) throw new Error("limitは1以上100以下で指定してください。");
   return { limit, cursor };
+}
+
+function parseContentListQueryFromArguments(argumentsObject: Record<string, unknown>): ContentListQuery {
+  const search = parseOptionalStringValue(argumentsObject.search, "search");
+  const status = parseOptionalEnumValue(argumentsObject.status, "status", contentWorkflowStatuses);
+  const audience = parseOptionalEnumValue(argumentsObject.audience, "audience", contentAudiences);
+  const contentType = parseOptionalEnumValue(argumentsObject.contentType, "contentType", contentTypes);
+  const locale = parseOptionalEnumValue(argumentsObject.locale, "locale", contentLocales);
+  const sort = parseOptionalEnumValue(argumentsObject.sort, "sort", contentSortValues);
+  return {
+    ...parsePaginationArguments(argumentsObject),
+    ...(search ? { search } : {}),
+    ...(status ? { status } : {}),
+    ...(audience ? { audience } : {}),
+    ...(contentType ? { contentType } : {}),
+    ...(locale ? { locale } : {}),
+    ...(sort ? { sort } : {}),
+  };
+}
+
+function parseContentListQueryFromUrl(url: URL): ContentListQuery {
+  const search = parseQueryString(url, "search");
+  const status = parseOptionalEnumValue(url.searchParams.get("status"), "status", contentWorkflowStatuses);
+  const audience = parseOptionalEnumValue(url.searchParams.get("audience"), "audience", contentAudiences);
+  const contentType = parseOptionalEnumValue(url.searchParams.get("contentType"), "contentType", contentTypes);
+  const locale = parseOptionalEnumValue(url.searchParams.get("locale"), "locale", contentLocales);
+  const sort = parseOptionalEnumValue(url.searchParams.get("sort"), "sort", contentSortValues);
+  return {
+    ...parsePaginationQuery(url),
+    ...(search ? { search } : {}),
+    ...(status ? { status } : {}),
+    ...(audience ? { audience } : {}),
+    ...(contentType ? { contentType } : {}),
+    ...(locale ? { locale } : {}),
+    ...(sort ? { sort } : {}),
+  };
 }
 
 function parseOptionalStringValue(value: unknown, fieldName: string): string | undefined {
@@ -1005,8 +1043,20 @@ async function handleMcp(
           },
           {
             name: "content.list",
-            description: "事業者自身の企画案とコンテンツを一覧取得します。",
-            inputSchema: { type: "object", properties: {} },
+            description: "事業者自身の企画案とコンテンツを検索・ページング付きで一覧取得します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                search: { type: "string", maxLength: 200 },
+                status: { type: "string", enum: [...contentWorkflowStatuses] },
+                audience: { type: "string", enum: [...contentAudiences] },
+                contentType: { type: "string", enum: [...contentTypes] },
+                locale: { type: "string", enum: [...contentLocales] },
+                sort: { type: "string", enum: [...contentSortValues] },
+                limit: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+                cursor: { type: "integer", minimum: 0, default: 0 },
+              },
+            },
           },
           {
             name: "content.get",
@@ -1864,7 +1914,10 @@ async function handleMcp(
     }
 
     if (name === "content.list") {
-      const result = { proposals: content.listProposals(principal), items: content.listContent(principal) };
+      const result = {
+        proposals: content.listProposals(principal),
+        ...content.listContentPage(principal, parseContentListQueryFromArguments(argumentsObject)),
+      };
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2871,7 +2924,7 @@ export function createHttpServer(
 
       if (request.method === "GET" && url.pathname === "/api/v1/content") {
         try {
-          writeJson(response, 200, { items: content.listContent(principal) });
+          writeJson(response, 200, content.listContentPage(principal, parseContentListQueryFromUrl(url)));
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを取得できません。" });
         }

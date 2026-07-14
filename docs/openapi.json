@@ -583,6 +583,16 @@
         "tags": ["Content"],
         "operationId": "listContents",
         "summary": "事業者自身のコンテンツ一覧を取得",
+        "parameters": [
+          { "name": "search", "in": "query", "schema": { "type": "string", "maxLength": 200 } },
+          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/ContentWorkflowStatus" } },
+          { "name": "audience", "in": "query", "schema": { "$ref": "#/components/schemas/ContentAudience" } },
+          { "name": "contentType", "in": "query", "schema": { "$ref": "#/components/schemas/ContentType" } },
+          { "name": "locale", "in": "query", "schema": { "$ref": "#/components/schemas/ContentLocale" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["updatedAt_desc", "updatedAt_asc", "title_asc", "status"], "default": "updatedAt_desc" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+          { "name": "cursor", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
         "security": [{ "BearerAuth": [] }],
         "responses": { "200": { "description": "コンテンツ一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
@@ -1069,6 +1079,7 @@
       "ContentType": { "type": "string", "enum": ["company", "blog", "job", "pr", "ir"] },
       "ContentAudience": { "type": "string", "enum": ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] },
       "ContentLocale": { "type": "string", "enum": ["ja", "en", "zh-CN", "es", "ko", "de", "fr"] },
+      "ContentWorkflowStatus": { "type": "string", "enum": ["proposed", "drafted", "polished", "seo_reviewed", "review_requested", "changes_requested", "approved", "published", "archived"] },
       "HealthResponse": { "type": "object", "required": ["ok", "service"], "properties": { "ok": { "type": "boolean" }, "service": { "type": "string" } } },
       "OkResponse": { "type": "object", "required": ["ok"], "properties": { "ok": { "type": "boolean" } } },
       "ErrorResponse": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } } },
@@ -1137,7 +1148,7 @@
       "ContentReviewListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ContentReview" } } } },
       "ContentVersion": { "type": "object", "required": ["id", "contentId", "version", "title", "summary", "body", "seo", "sourceFacts", "status", "reason", "createdAt"], "properties": { "id": { "type": "string" }, "contentId": { "type": "string" }, "version": { "type": "integer", "minimum": 1 }, "title": { "type": "string" }, "summary": { "type": "string" }, "body": { "type": "string" }, "seo": { "$ref": "#/components/schemas/ContentSeo" }, "sourceFacts": { "type": "array", "items": { "type": "string" } }, "status": { "type": "string", "enum": ["proposed", "drafted", "polished", "seo_reviewed", "review_requested", "changes_requested", "approved", "published", "archived"] }, "reason": { "type": "string", "enum": ["created", "updated", "polished", "workflow", "restored", "migrated"] }, "actorId": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
       "ContentResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Content" } } },
-      "ContentListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Content" } } } },
+      "ContentListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Content" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
       "ContentVersionResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/ContentVersion" } } },
       "ContentVersionListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ContentVersion" } } } },
       "SeoAuditIssue": { "type": "object", "required": ["code", "severity", "field", "message", "recommendation"], "properties": { "code": { "type": "string" }, "severity": { "type": "string", "enum": ["error", "warning", "info"] }, "field": { "type": "string" }, "message": { "type": "string" }, "recommendation": { "type": "string" } } },

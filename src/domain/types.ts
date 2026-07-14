@@ -395,7 +395,8 @@ export interface PortalPlan {
 export const contentLocales = ["ja", "en", "zh-CN", "es", "ko", "de", "fr"] as const;
 export type ContentLocale = (typeof contentLocales)[number];
 
-export type ContentWorkflowStatus = "proposed" | "drafted" | "polished" | "seo_reviewed" | "review_requested" | "changes_requested" | "approved" | "published" | "archived";
+export const contentWorkflowStatuses = ["proposed", "drafted", "polished", "seo_reviewed", "review_requested", "changes_requested", "approved", "published", "archived"] as const;
+export type ContentWorkflowStatus = (typeof contentWorkflowStatuses)[number];
 export type ContentJsonLdType = "Organization" | "Article" | "BlogPosting" | "JobPosting" | "NewsArticle" | "FAQPage";
 
 export interface ContentProposal {

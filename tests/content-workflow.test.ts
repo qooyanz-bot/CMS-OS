@@ -349,6 +349,69 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.ok(Array.isArray(versions.body.result.structuredContent.items));
   });
 
+  it("コンテンツ一覧を対象ポジション・言語・状態で検索しページングできる", async () => {
+    const providerLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "beauty@example.com", password: "demo-password", category: "beauty", role: "provider" }),
+    });
+    const headers = { authorization: `Bearer ${providerLogin.body.accessToken}` };
+    for (const [suffix, locale] of [["A", "ja"], ["B", "en"]] as const) {
+      const created = await request("/api/v1/content", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          category: "beauty",
+          contentType: "blog",
+          audience: "candidate",
+          title: `一覧フィルター検証 ${suffix}`,
+          summary: "対象ポジションと翻訳版を検索するための検証コンテンツです。",
+          body: "# 一覧フィルター検証\n\n確認済み情報に基づく本文です。",
+          locale,
+          sourceFacts: ["テスト用に確認済みの情報です。"],
+        }),
+      });
+      assert.equal(created.status, 201);
+    }
+
+    const first = await request(`/api/v1/content?search=${encodeURIComponent("一覧フィルター検証")}&audience=candidate&contentType=blog&status=drafted&sort=title_asc&limit=1`, { headers });
+    assert.equal(first.status, 200);
+    assert.equal(first.body.page.limit, 1);
+    assert.equal(first.body.items.length, 1);
+    assert.equal(first.body.items[0].audience, "candidate");
+    assert.equal(first.body.items[0].status, "drafted");
+    assert.equal(first.body.page.nextCursor, "1");
+
+    const second = await request(`/api/v1/content?search=${encodeURIComponent("一覧フィルター検証")}&audience=candidate&contentType=blog&status=drafted&sort=title_asc&limit=1&cursor=${first.body.page.nextCursor}`, { headers });
+    assert.equal(second.status, 200);
+    assert.equal(second.body.items.length, 1);
+    assert.equal(second.body.page.nextCursor, undefined);
+
+    const localized = await request(`/api/v1/content?search=${encodeURIComponent("一覧フィルター検証")}&locale=en`, { headers });
+    assert.equal(localized.status, 200);
+    assert.equal(localized.body.items.length, 1);
+    assert.equal(localized.body.items[0].locale, "en");
+
+    const mcp = await request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 44,
+        method: "tools/call",
+        params: {
+          name: "content.list",
+          arguments: { search: "一覧フィルター検証", audience: "candidate", contentType: "blog", status: "drafted", limit: 10 },
+        },
+      }),
+    });
+    assert.equal(mcp.status, 200);
+    assert.equal(mcp.body.result.structuredContent.items.length, 2);
+    assert.equal(mcp.body.result.structuredContent.page.limit, 10);
+
+    const invalid = await request("/api/v1/content?status=unknown", { headers });
+    assert.equal(invalid.status, 400);
+  });
+
   it("レビュー依頼、差し戻し、再監査、再承認を履歴付きで実行できる", async () => {
     const providerLogin = await request("/api/v1/auth/login", {
       method: "POST",
