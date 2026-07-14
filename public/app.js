@@ -15,6 +15,7 @@ const state = {
   providerComparison: [],
   directoryGuides: [],
   requests: [],
+  bookings: [],
   applications: [],
   inquiries: [],
   notifications: [],
@@ -143,6 +144,7 @@ const elements = {
   providerProfileFields: document.querySelector("#provider-profile-fields"),
   providerProfileClose: document.querySelector("#provider-profile-close"),
   providerProfileRequest: document.querySelector("#provider-profile-request"),
+  providerProfileBooking: document.querySelector("#provider-profile-booking"),
   providerProfileInquiry: document.querySelector("#provider-profile-inquiry"),
   providerProfileStatus: document.querySelector("#provider-profile-status"),
   providerPagination: document.querySelector("#provider-pagination"),
@@ -161,6 +163,14 @@ const elements = {
   requestPanel: document.querySelector("#request-panel"),
   requestForm: document.querySelector("#request-form"),
   requestProvider: document.querySelector("#request-provider"),
+  bookingPanel: document.querySelector("#booking-panel"),
+  bookingForm: document.querySelector("#booking-form"),
+  bookingProvider: document.querySelector("#booking-provider"),
+  bookingMessage: document.querySelector("#booking-message"),
+  bookingStatusPanel: document.querySelector("#booking-status-panel"),
+  bookingStatusFilter: document.querySelector("#booking-status-filter"),
+  bookingList: document.querySelector("#booking-list"),
+  bookingStatusMessage: document.querySelector("#booking-list-status"),
   inquiryPanel: document.querySelector("#inquiry-panel"),
   inquiryForm: document.querySelector("#inquiry-form"),
   inquiryProvider: document.querySelector("#inquiry-provider"),
@@ -402,6 +412,7 @@ function clearSessionState() {
   state.favorites = [];
   state.compareProviderIds = [];
   state.providerComparison = [];
+  state.bookings = [];
   clearProviderProfile();
   clearProviderComparison();
   renderCategoryOptions();
@@ -411,6 +422,9 @@ function clearSessionState() {
   elements.logout.hidden = true;
   elements.favoritePanel.hidden = true;
   elements.favorites.replaceChildren();
+  elements.bookingList.replaceChildren();
+  elements.bookingStatusPanel.hidden = true;
+  elements.bookingMessage.textContent = "";
 }
 
 function formatValue(value) {
@@ -455,6 +469,12 @@ function renderExperience(experience, navigation = [], themeOptions = []) {
     return option;
   }));
   elements.requestPanel.hidden = !experience.allowedActions.includes("request.create");
+  const canCreateBooking = experience.allowedActions.includes("booking.create");
+  elements.bookingPanel.hidden = !canCreateBooking;
+  if (!canCreateBooking) {
+    elements.bookingForm.reset();
+    elements.bookingMessage.textContent = "";
+  }
   elements.inquiryPanel.hidden = !experience.allowedActions.includes("inquiry.create");
   const canSeeJobs = experience.visibleModules.includes("jobSearch") || experience.visibleModules.includes("jobManagement");
   elements.jobPanel.hidden = !canSeeJobs;
@@ -523,6 +543,7 @@ function renderProviders(items, page = {}, cursor = "") {
       }).join("")
     : '<p class="empty">該当する事業者がありません。</p>';
   elements.requestProvider.innerHTML = items.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
+  elements.bookingProvider.innerHTML = items.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
   elements.inquiryProvider.innerHTML = items.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
   document.querySelectorAll(".inquiry-provider-button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -559,6 +580,8 @@ function clearProviderProfile() {
   elements.providerProfileFields.replaceChildren();
   elements.providerProfileRequest.hidden = true;
   elements.providerProfileRequest.dataset.providerId = "";
+  elements.providerProfileBooking.hidden = true;
+  elements.providerProfileBooking.dataset.providerId = "";
   elements.providerProfileInquiry.hidden = true;
   elements.providerProfileInquiry.dataset.providerId = "";
   setListStatus(elements.providerProfileStatus);
@@ -599,6 +622,9 @@ function renderProviderProfile(provider) {
   const canRequest = Boolean(state.token && state.experience?.allowedActions.includes("request.create"));
   elements.providerProfileRequest.hidden = !canRequest;
   elements.providerProfileRequest.dataset.providerId = canRequest ? provider.id : "";
+  const canBook = Boolean(state.token && state.experience?.allowedActions.includes("booking.create"));
+  elements.providerProfileBooking.hidden = !canBook;
+  elements.providerProfileBooking.dataset.providerId = canBook ? provider.id : "";
   const canInquire = Boolean(state.token && state.experience?.allowedActions.includes("inquiry.create"));
   elements.providerProfileInquiry.hidden = !canInquire;
   elements.providerProfileInquiry.dataset.providerId = provider.id;
@@ -614,6 +640,8 @@ async function openProviderProfile(providerId) {
   elements.providerProfileFields.replaceChildren();
   elements.providerProfileRequest.hidden = true;
   elements.providerProfileRequest.dataset.providerId = "";
+  elements.providerProfileBooking.hidden = true;
+  elements.providerProfileBooking.dataset.providerId = "";
   elements.providerProfileInquiry.hidden = true;
   elements.providerProfileInquiry.dataset.providerId = "";
   setListStatus(elements.providerProfileStatus, "loading", "事業者プロフィールを読み込んでいます。");
@@ -632,6 +660,13 @@ function focusRequestForm(providerId) {
   elements.requestProvider.value = providerId;
   elements.requestForm.scrollIntoView({ behavior: "smooth", block: "center" });
   elements.requestForm.querySelector("input[name=title]")?.focus();
+}
+
+function focusBookingForm(providerId) {
+  if (!providerId) return;
+  elements.bookingProvider.value = providerId;
+  elements.bookingForm.scrollIntoView({ behavior: "smooth", block: "center" });
+  elements.bookingForm.querySelector("input[name=requestedFor]")?.focus();
 }
 
 function comparisonProviders() {
@@ -797,6 +832,7 @@ function renderDirectoryGuides(items) {
 const requestStatusLabels = { submitted: "受付中", accepted: "対応中", closed: "終了" };
 const applicationStatusLabels = { submitted: "受付中", screening: "選考中", closed: "終了" };
 const inquiryStatusLabels = { open: "受付中", responded: "返信済み", closed: "終了" };
+const bookingStatusLabels = { requested: "受付中", confirmed: "確定", cancelled: "取消" };
 
 function roleStatusButtons(actions) {
   return actions.map(([status, label]) => `<button class="button ghost role-status-button" data-status="${escapeHtml(status)}">${escapeHtml(label)}</button>`).join("");
@@ -821,6 +857,32 @@ function renderRequests(items, page = {}, cursor = "") {
     });
   });
   renderListPagination(elements.requestPagination, page, cursor, reloadRequests, "依頼一覧のページ移動");
+}
+
+function renderBookings(items) {
+  state.bookings = items;
+  const isProvider = state.role === "provider";
+  const canProviderUpdate = isProvider && state.experience?.allowedActions.includes("booking.status.update");
+  elements.bookingList.innerHTML = items.length
+    ? items.map((booking) => {
+        const provider = state.providers.find((candidate) => candidate.id === booking.providerId);
+        const actions = [];
+        if (canProviderUpdate) {
+          if (booking.status === "requested") actions.push(["confirmed", "予約を確定"], ["cancelled", "予約を取消"]);
+          else if (booking.status === "confirmed") actions.push(["cancelled", "予約を取消"]);
+        } else if (!isProvider && (booking.status === "requested" || booking.status === "confirmed")) {
+          actions.push(["cancelled", "予約を取消"]);
+        }
+        const requestedFor = String(booking.requestedFor ?? "").slice(0, 16).replace("T", " ");
+        return `<article class="role-item" data-booking-id="${escapeHtml(booking.id)}"><div class="meta"><span>${escapeHtml(bookingStatusLabels[booking.status] ?? booking.status)}</span><span>${escapeHtml(provider?.name ?? booking.providerId)}</span><span>${escapeHtml(requestedFor)}</span></div><h3>${escapeHtml(booking.menu)}</h3><p>${escapeHtml(booking.note || "要望なし")}</p><div class="role-actions">${actions.map(([status, label]) => `<button class="button ghost booking-status-button" data-status="${escapeHtml(status)}">${escapeHtml(label)}</button>`).join("")}</div></article>`;
+      }).join("")
+    : '<p class="empty">予約リクエストはありません。</p>';
+  document.querySelectorAll("[data-booking-id] .booking-status-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const bookingItem = button.closest("[data-booking-id]");
+      if (bookingItem?.dataset.bookingId) void updateBookingStatus(bookingItem.dataset.bookingId, button.dataset.status ?? "");
+    });
+  });
 }
 
 function renderInquiries(items) {
@@ -970,6 +1032,38 @@ async function reloadRequests(cursor = "") {
     }
   } finally {
     finishListRequest("requests", requestVersion, elements.requestList);
+  }
+}
+
+async function reloadBookings() {
+  const canSeeBookings = Boolean(state.token && state.experience?.allowedActions.includes("booking.read"));
+  elements.bookingStatusPanel.hidden = !canSeeBookings;
+  if (!canSeeBookings) {
+    state.bookings = [];
+    elements.bookingList.replaceChildren();
+    setListStatus(elements.bookingStatusMessage);
+    return;
+  }
+  setListStatus(elements.bookingStatusMessage, "loading", "予約リクエストを読み込んでいます。");
+  const query = elements.bookingStatusFilter.value ? `?status=${encodeURIComponent(elements.bookingStatusFilter.value)}` : "";
+  try {
+    const body = await api(`/api/v1/bookings${query}`);
+    renderBookings(body.items);
+    setListStatus(elements.bookingStatusMessage);
+  } catch (error) {
+    setListStatus(elements.bookingStatusMessage, "error", "予約リクエストを読み込めませんでした。再試行してください。", () => void reloadBookings());
+    throw error;
+  }
+}
+
+async function updateBookingStatus(bookingId, status) {
+  if (!bookingId || !status) return;
+  try {
+    await api(`/api/v1/bookings/${encodeURIComponent(bookingId)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    setMessage("予約リクエストの状態を更新しました。");
+    await reloadBookings();
+  } catch (error) {
+    setMessage(error.message);
   }
 }
 
@@ -1629,6 +1723,7 @@ async function reload() {
   await reloadRoleData();
   await reloadFavorites();
   await reloadProviders();
+  await reloadBookings();
   renderDirectoryGuides(contextBody.item.directoryGuides);
   setListStatus(elements.directoryGuideStatus);
   await reloadJobs();
@@ -1771,6 +1866,7 @@ bindListFilters([elements.search, elements.providerTheme, elements.providerLocat
 bindListFilters([elements.requestSearch, elements.requestStatus, elements.requestSort], reloadRequests);
 bindListFilters([elements.applicationSearch, elements.applicationJob, elements.applicationStatus, elements.applicationSort], reloadApplications);
 bindListFilters([elements.jobSearch, elements.jobEmployment, elements.jobLocation, elements.jobStatus, elements.jobSort], reloadJobs);
+bindListFilters([elements.bookingStatusFilter], reloadBookings);
 elements.loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
   void login();
@@ -1803,6 +1899,36 @@ elements.requestForm.addEventListener("submit", async (event) => {
     setMessage("依頼を送信しました。");
   } catch (error) {
     setMessage(error.message);
+  }
+});
+
+elements.bookingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(elements.bookingForm);
+  const localRequestedFor = String(form.get("requestedFor") ?? "");
+  let requestedFor = "";
+  try {
+    requestedFor = new Date(localRequestedFor).toISOString();
+  } catch {
+    elements.bookingMessage.textContent = "希望日時を正しく指定してください。";
+    return;
+  }
+  try {
+    await api("/api/v1/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        category: state.category,
+        providerId: form.get("providerId"),
+        menu: form.get("menu"),
+        requestedFor,
+        note: form.get("note"),
+      }),
+    });
+    elements.bookingForm.reset();
+    elements.bookingMessage.textContent = "予約リクエストを送信しました。店舗の確定をお待ちください。";
+    await reloadBookings();
+  } catch (error) {
+    elements.bookingMessage.textContent = error.message;
   }
 });
 
@@ -1963,6 +2089,7 @@ elements.contentForm.addEventListener("submit", async (event) => {
 
 elements.providerProfileClose.addEventListener("click", () => clearProviderProfile());
 elements.providerProfileRequest.addEventListener("click", () => focusRequestForm(elements.providerProfileRequest.dataset.providerId ?? ""));
+elements.providerProfileBooking.addEventListener("click", () => focusBookingForm(elements.providerProfileBooking.dataset.providerId ?? ""));
 elements.providerProfileInquiry.addEventListener("click", () => {
   const providerId = elements.providerProfileInquiry.dataset.providerId ?? "";
   if (!providerId) return;

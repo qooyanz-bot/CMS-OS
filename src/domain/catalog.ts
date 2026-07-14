@@ -302,7 +302,7 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "bookingHistory",
         ],
         visibleFields: ["publicFields", "ordererFields", "verificationStatus", "lastVerifiedAt"],
-        allowedActions: [...commonActions, "request.create", "booking.create", "request.message", "booking.read", "request.status.update"],
+        allowedActions: [...commonActions, "request.create", "booking.create", "booking.read", "booking.status.update", "request.message", "request.status.update"],
         notices: ["予約・問い合わせの個人情報は、対象店舗とのやり取りにのみ使用します。"],
       },
       provider: {
@@ -322,6 +322,7 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "listing.update",
           "listing.submit",
           "booking.read",
+          "booking.status.update",
           "inquiry.read",
           "inquiry.status.update",
           "notification.read",

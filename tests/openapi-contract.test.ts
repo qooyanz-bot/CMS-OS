@@ -69,6 +69,8 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/publications/{publicationId}/rollback",
       "/api/v1/requests",
       "/api/v1/requests/{requestId}",
+      "/api/v1/bookings",
+      "/api/v1/bookings/{bookingId}",
       "/api/v1/inquiries",
       "/api/v1/inquiries/{inquiryId}",
       "/api/v1/notifications",
@@ -97,11 +99,19 @@ describe("CMS-OS OpenAPI契約", () => {
     const jobPath = specification.paths["/api/v1/jobs/{jobId}"];
     assert.ok(jobPath);
     assert.ok(jobPath.patch);
+    const bookingPath = specification.paths["/api/v1/bookings"];
+    assert.ok(bookingPath);
+    assert.ok(bookingPath.post);
+    assert.ok(bookingPath.get);
+    const bookingDetailPath = specification.paths["/api/v1/bookings/{bookingId}"];
+    assert.ok(bookingDetailPath);
+    assert.ok(bookingDetailPath.patch);
     const listQueryParameters: Record<string, string[]> = {
       "/api/v1/providers": ["search", "theme", "location", "sort", "limit", "cursor"],
       "/api/v1/providers/compare": ["ids"],
       "/api/v1/favorites": ["limit", "cursor"],
       "/api/v1/requests": ["search", "status", "sort", "limit", "cursor"],
+      "/api/v1/bookings": ["status", "limit", "cursor"],
       "/api/v1/jobs": ["search", "employmentType", "location", "status", "sort", "limit", "cursor"],
       "/api/v1/applications": ["search", "jobId", "status", "sort", "limit", "cursor"],
       "/api/v1/portal-plans": ["limit", "cursor"],

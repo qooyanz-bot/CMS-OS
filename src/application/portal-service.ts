@@ -8,6 +8,7 @@ import {
 import { PortalStore } from "../domain/portal-store.js";
 import type {
   AuthenticatedPrincipal,
+  BookingStatus,
   CategorySlug,
   DirectoryGuide,
   InquiryStatus,
@@ -22,10 +23,12 @@ import type {
   ProviderInquiry,
   ProviderListingStatus,
   ProviderRecord,
+  ServiceBooking,
   ServiceRequest,
+  VisibleBooking,
   VisibleProvider,
 } from "../domain/types.js";
-import { applicationStatuses, directoryGuideKinds, isRecruiterRole, jobStatuses, portalRoles, requestStatuses } from "../domain/types.js";
+import { applicationStatuses, bookingStatuses, directoryGuideKinds, isRecruiterRole, jobStatuses, portalRoles, requestStatuses } from "../domain/types.js";
 
 export type ProviderUpdateInput = Partial<Pick<ProviderRecord, "name" | "themes" | "location" | "publicFields">>;
 export type DirectoryGuideCreateInput = Omit<DirectoryGuide, "id">;
@@ -48,6 +51,10 @@ export type RequestListFilters = {
   search?: string | undefined;
   status?: (typeof requestStatuses)[number] | undefined;
   sort?: (typeof requestSortValues)[number] | undefined;
+};
+
+export type BookingListFilters = {
+  status?: BookingStatus | undefined;
 };
 
 export type JobListFilters = {
@@ -76,6 +83,11 @@ function providerListingStatus(provider: ProviderRecord): ProviderListingStatus 
 
 function isPublicProvider(provider: ProviderRecord): boolean {
   return providerListingStatus(provider) === "published";
+}
+
+function projectBooking(booking: ServiceBooking): VisibleBooking {
+  const { ordererId: _ordererId, ...visible } = booking;
+  return visible;
 }
 
 const protectedPublicFieldKeys = new Set([
@@ -620,6 +632,102 @@ export class PortalService {
       resourceId: updated.id,
     });
     return updated;
+  }
+
+  public createBooking(
+    principal: AuthenticatedPrincipal | null,
+    input: { category: CategorySlug; providerId: string; menu: string; requestedFor: string; note?: string | undefined },
+  ): VisibleBooking {
+    this.assertAction(principal, input.category, "booking.create");
+    if (!principal || principal.role !== "orderer") {
+      throw new PortalServiceError(403, "発注者だけが予約リクエストを作成できます。");
+    }
+    if (input.category !== "beauty") {
+      throw new PortalServiceError(403, "予約リクエストは美容カテゴリで利用できます。");
+    }
+    const menu = input.menu.trim();
+    if (menu.length < 2 || menu.length > 200) {
+      throw new PortalServiceError(400, "menuは2文字以上200文字以内で指定してください。");
+    }
+    const requestedAt = Date.parse(input.requestedFor);
+    if (!Number.isFinite(requestedAt) || requestedAt <= Date.now()) {
+      throw new PortalServiceError(400, "requestedForは現在より後の日時で指定してください。");
+    }
+    const note = input.note?.trim() ?? "";
+    if (note.length > 2000) throw new PortalServiceError(400, "noteは2000文字以内で指定してください。");
+    const provider = this.store.listProviders(input.category).find((candidate) => candidate.id === input.providerId);
+    if (!provider || !isPublicProvider(provider)) throw new PortalServiceError(404, "予約可能な事業者が見つかりません。");
+
+    const booking = this.store.createBooking({
+      category: input.category,
+      ordererId: principal.accountId,
+      providerId: provider.id,
+      menu,
+      requestedFor: new Date(requestedAt).toISOString(),
+      note,
+    });
+    this.notify({
+      category: booking.category,
+      recipientType: "provider",
+      recipientId: booking.providerId,
+      type: "booking_received",
+      title: "新しい予約リクエストがあります",
+      message: `${booking.menu} / ${booking.requestedFor}`,
+      resourceType: "booking",
+      resourceId: booking.id,
+    });
+    return projectBooking(booking);
+  }
+
+  public listBookings(principal: AuthenticatedPrincipal | null, filters: BookingListFilters = {}): VisibleBooking[] {
+    if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
+    this.assertAction(principal, principal.category, "booking.read");
+    if (principal.role !== "orderer" && principal.role !== "provider") {
+      throw new PortalServiceError(403, "発注者または事業者だけが予約リクエストを確認できます。");
+    }
+    const status = assertAllowedFilter(filters.status, bookingStatuses, "status");
+    return this.store.listBookings(principal.category)
+      .filter((booking) => principal.role === "orderer" ? booking.ordererId === principal.accountId : booking.providerId === principal.providerId)
+      .filter((booking) => !status || booking.status === status)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .map(projectBooking);
+  }
+
+  public listBookingsPage(
+    principal: AuthenticatedPrincipal | null,
+    pagination: { limit?: number; cursor?: number } = {},
+    filters: BookingListFilters = {},
+  ): PortalPage<VisibleBooking> {
+    return this.paginate(this.listBookings(principal, filters), pagination.limit ?? 50, pagination.cursor ?? 0);
+  }
+
+  public updateBookingStatus(principal: AuthenticatedPrincipal | null, bookingId: string, status: BookingStatus): VisibleBooking {
+    const booking = this.store.getBooking(bookingId);
+    if (!booking) throw new PortalServiceError(404, "予約リクエストが見つかりません。");
+    if (!principal || principal.category !== booking.category) throw new PortalServiceError(404, "予約リクエストが見つかりません。");
+    this.assertAction(principal, booking.category, "booking.status.update");
+    const isOrderer = principal.role === "orderer" && booking.ordererId === principal.accountId;
+    const isProvider = principal.role === "provider" && booking.providerId === principal.providerId;
+    if (!isOrderer && !isProvider) throw new PortalServiceError(404, "予約リクエストが見つかりません。");
+    if (booking.status === status) return projectBooking(booking);
+    if (isOrderer && status !== "cancelled") throw new PortalServiceError(403, "発注者は予約リクエストを取消できます。");
+    if (isProvider && status !== "confirmed" && status !== "cancelled") throw new PortalServiceError(403, "事業者は予約リクエストを確定または取消できます。");
+    const validTransition = (booking.status === "requested" && (status === "confirmed" || status === "cancelled"))
+      || (booking.status === "confirmed" && status === "cancelled");
+    if (!validTransition) throw new PortalServiceError(409, "予約リクエストの状態遷移が不正です。");
+    const updated = this.store.updateBooking(booking.id, status);
+    if (!updated) throw new PortalServiceError(404, "予約リクエストが見つかりません。");
+    this.notify({
+      category: updated.category,
+      recipientType: isProvider ? "account" : "provider",
+      recipientId: isProvider ? updated.ordererId : updated.providerId,
+      type: "booking_status_changed",
+      title: "予約リクエストの状態が更新されました",
+      message: `${updated.menu}が「${updated.status}」になりました。`,
+      resourceType: "booking",
+      resourceId: updated.id,
+    });
+    return projectBooking(updated);
   }
 
   public createInquiry(

@@ -265,6 +265,8 @@ export type ProviderListingStatus = (typeof providerListingStatuses)[number];
 
 export const requestStatuses = ["submitted", "accepted", "closed"] as const;
 export type RequestStatus = (typeof requestStatuses)[number];
+export const bookingStatuses = ["requested", "confirmed", "cancelled"] as const;
+export type BookingStatus = (typeof bookingStatuses)[number];
 export const jobStatuses = ["published", "closed"] as const;
 export type JobStatus = (typeof jobStatuses)[number];
 export const applicationStatuses = ["submitted", "screening", "closed"] as const;
@@ -279,6 +281,33 @@ export interface ServiceRequest {
   description: string;
   status: RequestStatus;
   createdAt: string;
+}
+
+/** 内部保存用の予約リクエストです。ordererIdはAPIレスポンスへ直接返しません。 */
+export interface ServiceBooking {
+  id: string;
+  category: CategorySlug;
+  ordererId: string;
+  providerId: string;
+  menu: string;
+  requestedFor: string;
+  note: string;
+  status: BookingStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** ロール投影後の予約リクエストです。 */
+export interface VisibleBooking {
+  id: string;
+  category: CategorySlug;
+  providerId: string;
+  menu: string;
+  requestedFor: string;
+  note: string;
+  status: BookingStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface JobPosting {
@@ -319,7 +348,7 @@ export interface ProviderInquiry {
 }
 
 export type NotificationRecipientType = "account" | "provider";
-export type NotificationType = "inquiry_received" | "inquiry_status_changed" | "request_received" | "request_status_changed" | "application_received" | "application_status_changed" | "listing_submitted" | "listing_reviewed";
+export type NotificationType = "inquiry_received" | "inquiry_status_changed" | "request_received" | "request_status_changed" | "booking_received" | "booking_status_changed" | "application_received" | "application_status_changed" | "listing_submitted" | "listing_reviewed";
 
 export interface PortalNotification {
   id: string;
@@ -329,7 +358,7 @@ export interface PortalNotification {
   type: NotificationType;
   title: string;
   message: string;
-  resourceType: "inquiry" | "request" | "application" | "provider_listing";
+  resourceType: "inquiry" | "request" | "booking" | "application" | "provider_listing";
   resourceId: string;
   createdAt: string;
   readAt?: string;

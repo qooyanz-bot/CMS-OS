@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { listProviders as listCatalogProviders } from "./catalog.js";
 import { listAllDirectoryGuides } from "./directory-catalog.js";
-import type { CategorySlug, DirectoryGuide, InquiryStatus, JobApplication, JobPosting, PortalNotification, ProviderFavorite, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceRequest } from "./types.js";
+import type { BookingStatus, CategorySlug, DirectoryGuide, InquiryStatus, JobApplication, JobPosting, PortalNotification, ProviderFavorite, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceBooking, ServiceRequest } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 
 const defaultJobs: JobPosting[] = [
@@ -55,6 +55,7 @@ export class PortalStore {
   private readonly providers: ProviderRecord[];
   private readonly directoryGuides: DirectoryGuide[];
   private readonly requests: ServiceRequest[];
+  private readonly bookings: ServiceBooking[];
   private readonly jobs: JobPosting[];
   private readonly applications: JobApplication[];
   private readonly inquiries: ProviderInquiry[];
@@ -77,6 +78,7 @@ export class PortalStore {
     const savedDirectoryGuides = stateStore?.load<DirectoryGuide[]>("portal-directory-guides.json", catalogDirectoryGuides);
     this.directoryGuides = (savedDirectoryGuides ?? catalogDirectoryGuides).map(cloneDirectoryGuide);
     this.requests = stateStore?.load<ServiceRequest[]>("portal-requests.json", []) ?? [];
+    this.bookings = stateStore?.load<ServiceBooking[]>("portal-bookings.json", []) ?? [];
     const savedJobs = stateStore?.load<JobPosting[]>("portal-jobs.json", defaultJobs) ?? defaultJobs;
     this.jobs = savedJobs.map((job) => ({ ...job }));
     this.applications = stateStore?.load<JobApplication[]>("portal-applications.json", []) ?? [];
@@ -210,6 +212,37 @@ export class PortalStore {
     request.status = status;
     this.stateStore?.save("portal-requests.json", this.requests);
     return request;
+  }
+
+  public createBooking(input: Omit<ServiceBooking, "id" | "status" | "createdAt" | "updatedAt">): ServiceBooking {
+    const now = new Date().toISOString();
+    const booking: ServiceBooking = {
+      ...input,
+      id: `booking-${randomUUID()}`,
+      status: "requested",
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.bookings.push(booking);
+    this.stateStore?.save("portal-bookings.json", this.bookings);
+    return booking;
+  }
+
+  public listBookings(category: CategorySlug): ServiceBooking[] {
+    return this.bookings.filter((booking) => booking.category === category);
+  }
+
+  public getBooking(bookingId: string): ServiceBooking | undefined {
+    return this.bookings.find((booking) => booking.id === bookingId);
+  }
+
+  public updateBooking(bookingId: string, status: BookingStatus): ServiceBooking | undefined {
+    const booking = this.getBooking(bookingId);
+    if (!booking) return undefined;
+    booking.status = status;
+    booking.updatedAt = new Date().toISOString();
+    this.stateStore?.save("portal-bookings.json", this.bookings);
+    return booking;
   }
 
   public listJobs(category: CategorySlug): JobPosting[] {

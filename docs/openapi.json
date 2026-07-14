@@ -951,6 +951,39 @@
         "responses": { "200": { "description": "更新済み依頼", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequestResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
       }
     },
+    "/api/v1/bookings": {
+      "post": {
+        "tags": ["Portal"],
+        "operationId": "createBooking",
+        "summary": "美容カテゴリの予約リクエストを作成",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingCreate" } } } },
+        "responses": { "201": { "description": "予約リクエスト", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "get": {
+        "tags": ["Portal"],
+        "operationId": "listBookings",
+        "summary": "予約リクエストを取得",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["requested", "confirmed", "cancelled"] } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+          { "name": "cursor", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "予約リクエスト一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/bookings/{bookingId}": {
+      "patch": {
+        "tags": ["Portal"],
+        "operationId": "updateBookingStatus",
+        "summary": "予約リクエストの状態を更新",
+        "parameters": [{ "name": "bookingId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingStatusUpdate" } } } },
+        "responses": { "200": { "description": "更新済み予約リクエスト", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
     "/api/v1/inquiries": {
       "post": {
         "tags": ["Portal"],
@@ -1241,13 +1274,18 @@
       "ServiceRequest": { "type": "object", "required": ["id", "category", "ordererId", "providerId", "title", "description", "status", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "ordererId": { "type": "string" }, "providerId": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "status": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
       "RequestResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/ServiceRequest" } } },
       "RequestListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ServiceRequest" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
+      "BookingCreate": { "type": "object", "required": ["category", "providerId", "menu", "requestedFor"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "menu": { "type": "string", "minLength": 2, "maxLength": 200 }, "requestedFor": { "type": "string", "format": "date-time" }, "note": { "type": "string", "maxLength": 2000 } }, "additionalProperties": false },
+      "BookingStatusUpdate": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["requested", "confirmed", "cancelled"] } }, "additionalProperties": false },
+      "Booking": { "type": "object", "required": ["id", "category", "providerId", "menu", "requestedFor", "note", "status", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "menu": { "type": "string" }, "requestedFor": { "type": "string", "format": "date-time" }, "note": { "type": "string" }, "status": { "type": "string", "enum": ["requested", "confirmed", "cancelled"] }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "BookingResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Booking" } } },
+      "BookingListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Booking" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
       "InquiryCreate": { "type": "object", "required": ["category", "providerId", "subject", "message"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "subject": { "type": "string", "minLength": 3, "maxLength": 200 }, "message": { "type": "string", "minLength": 10, "maxLength": 5000 } }, "additionalProperties": false },
       "InquiryStatusUpdate": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["open", "responded", "closed"] } }, "additionalProperties": false },
       "Inquiry": { "type": "object", "required": ["id", "category", "providerId", "senderId", "subject", "message", "status", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "senderId": { "type": "string" }, "subject": { "type": "string" }, "message": { "type": "string" }, "status": { "type": "string", "enum": ["open", "responded", "closed"] }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
       "InquiryResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Inquiry" } } },
       "InquiryListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Inquiry" } } } },
       "NotificationReadUpdate": { "type": "object", "required": ["read"], "properties": { "read": { "type": "boolean" } }, "additionalProperties": false },
-      "Notification": { "type": "object", "required": ["id", "category", "recipientType", "recipientId", "type", "title", "message", "resourceType", "resourceId", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "recipientType": { "type": "string", "enum": ["account", "provider"] }, "recipientId": { "type": "string" }, "type": { "type": "string", "enum": ["inquiry_received", "inquiry_status_changed", "request_received", "request_status_changed", "application_received", "application_status_changed", "listing_submitted", "listing_reviewed"] }, "title": { "type": "string" }, "message": { "type": "string" }, "resourceType": { "type": "string", "enum": ["inquiry", "request", "application", "provider_listing"] }, "resourceId": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }, "readAt": { "type": "string", "format": "date-time" } } },
+      "Notification": { "type": "object", "required": ["id", "category", "recipientType", "recipientId", "type", "title", "message", "resourceType", "resourceId", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "recipientType": { "type": "string", "enum": ["account", "provider"] }, "recipientId": { "type": "string" }, "type": { "type": "string", "enum": ["inquiry_received", "inquiry_status_changed", "request_received", "request_status_changed", "booking_received", "booking_status_changed", "application_received", "application_status_changed", "listing_submitted", "listing_reviewed"] }, "title": { "type": "string" }, "message": { "type": "string" }, "resourceType": { "type": "string", "enum": ["inquiry", "request", "booking", "application", "provider_listing"] }, "resourceId": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }, "readAt": { "type": "string", "format": "date-time" } } },
       "NotificationResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Notification" } } },
       "NotificationListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Notification" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
       "Job": { "type": "object", "required": ["id", "category", "providerId", "title", "employmentType", "location", "description", "status"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "title": { "type": "string" }, "employmentType": { "type": "string" }, "location": { "type": "string" }, "description": { "type": "string" }, "status": { "type": "string", "enum": ["published", "closed"] } } },

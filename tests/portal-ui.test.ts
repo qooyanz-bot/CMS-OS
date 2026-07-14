@@ -47,6 +47,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /request-inbox-panel/);
   assert.match(body, /application-panel/);
   assert.match(body, /inquiry-panel/);
+  assert.match(body, /booking-panel/);
+  assert.match(body, /booking-status-panel/);
   assert.match(body, /inquiry-management-panel/);
   assert.match(body, /notification-panel/);
   assert.match(body, /provider-theme-filter/);
@@ -67,6 +69,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /provider-profile-panel/);
   assert.match(body, /provider-profile-fields/);
   assert.match(body, /provider-profile-request/);
+  assert.match(body, /provider-profile-booking/);
   assert.match(body, /provider-section-title/);
   assert.match(body, /directory-guide-title/);
   assert.match(body, /job-panel-title/);
@@ -149,7 +152,10 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /reloadProviders/);
   assert.match(scriptBody, /reloadJobs/);
   assert.match(scriptBody, /reloadRequests/);
+  assert.match(scriptBody, /reloadBookings/);
   assert.match(scriptBody, /reloadApplications/);
+  assert.match(scriptBody, /api\/v1\/bookings/);
+  assert.match(scriptBody, /booking-status-button/);
   assert.match(scriptBody, /renderListPagination/);
   assert.match(scriptBody, /nextCursor/);
   assert.match(scriptBody, /listRequestVersions/);

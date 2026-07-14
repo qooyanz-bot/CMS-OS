@@ -101,6 +101,9 @@ GET  /api/v1/provider-listing-reviews
 POST /api/v1/requests
 GET  /api/v1/requests
 PATCH /api/v1/requests/{requestId}
+POST /api/v1/bookings
+GET  /api/v1/bookings
+PATCH /api/v1/bookings/{bookingId}
 POST /api/v1/inquiries
 GET  /api/v1/inquiries
 PATCH /api/v1/inquiries/{inquiryId}
@@ -151,6 +154,8 @@ POST /mcp
 掲載状態は `draft`（下書き）、`pending_review`（審査中）、`published`（公開中）、`suspended`（停止中）で管理します。事業者本人が `POST /api/v1/providers/{providerId}/listing-submission` またはMCPの `provider.listing_submit` を実行すると審査中になり、公開検索から除外されます。運営審査はログインロールとは分離し、`CMS_OS_OPERATOR_KEY` と `x-cms-os-operator-key` ヘッダーを使う `PATCH /api/v1/providers/{providerId}/listing-review` またはMCPの `provider.listing_review` で行います。
 
 問い合わせは `POST /api/v1/inquiries` またはMCPの `inquiry.create` で作成します。送信者は自分の問い合わせ、事業者は自社宛ての問い合わせだけを取得できます。状態は `open`（受付中）→ `responded`（返信済み）→ `closed`（終了）で、RESTとMCPは同じ状態遷移・所有者検証を利用します。
+
+美容カテゴリでは、発注者が `POST /api/v1/bookings` またはMCPの `booking.create` から希望日時・メニュー・要望を予約リクエストとして送信します。事業者は `confirmed`（確定）または `cancelled`（取消）へ更新でき、発注者は自分の予約を取消できます。予約一覧は発注者自身または担当事業者だけに表示されます。
 
 問い合わせの作成・返信・終了、掲載審査の送信・結果を通知として保存します。`GET /api/v1/notifications` はログイン中の本人または自社事業者の通知だけを返し、`limit` と `cursor` によるページングに対応します。通知は本人の操作で既読・未読を切り替えられます。
 

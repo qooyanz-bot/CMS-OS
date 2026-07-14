@@ -640,6 +640,104 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(!unrelated.body.items.some((item: { providerId: string }) => item.providerId === "provider-legal-demo"));
   });
 
+  it("美容の予約リクエストをRESTとMCPで受付・確定・取消でき、ロール別に分離される", async () => {
+    const beautyOrdererContext = await request("/api/v1/auth/context", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ category: "beauty", role: "orderer" }),
+    });
+    assert.equal(beautyOrdererContext.status, 200);
+    const beautyOrdererToken = legalOrdererToken;
+    const requestedFor = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const created = await request("/api/v1/bookings", {
+      method: "POST",
+      headers: { authorization: `Bearer ${beautyOrdererToken}` },
+      body: JSON.stringify({ category: "beauty", providerId: "provider-beauty-demo", menu: "カット", requestedFor, note: "夕方希望" }),
+    });
+    assert.equal(created.status, 201);
+    const bookingId = created.body.item.id as string;
+    assert.equal(created.body.item.status, "requested");
+    assert.equal(created.body.item.ordererId, undefined);
+
+    const providerBookings = await request("/api/v1/bookings", { headers: { authorization: `Bearer ${beautyProviderToken}` } });
+    assert.equal(providerBookings.status, 200);
+    assert.ok(providerBookings.body.items.some((item: { id: string }) => item.id === bookingId));
+
+    const confirmed = await request(`/api/v1/bookings/${bookingId}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${beautyProviderToken}` },
+      body: JSON.stringify({ status: "confirmed" }),
+    });
+    assert.equal(confirmed.status, 200);
+    assert.equal(confirmed.body.item.status, "confirmed");
+
+    const ordererBookings = await request("/api/v1/bookings?status=confirmed", { headers: { authorization: `Bearer ${beautyOrdererToken}` } });
+    assert.equal(ordererBookings.status, 200);
+    assert.equal(ordererBookings.body.items.some((item: { id: string }) => item.id === bookingId), true);
+
+    const cancelled = await request(`/api/v1/bookings/${bookingId}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${beautyOrdererToken}` },
+      body: JSON.stringify({ status: "cancelled" }),
+    });
+    assert.equal(cancelled.status, 200);
+    assert.equal(cancelled.body.item.status, "cancelled");
+
+    const tools = await request("/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 60, method: "tools/list" }) });
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "booking.create"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "booking.list"));
+    assert.ok(tools.body.result.tools.some((tool: { name: string }) => tool.name === "booking.update_status"));
+    const mcpCreated = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${beautyOrdererToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 61,
+        method: "tools/call",
+        params: { name: "booking.create", arguments: { category: "beauty", providerId: "provider-beauty-demo", menu: "カラー", requestedFor: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() } },
+      }),
+    });
+    assert.equal(mcpCreated.status, 200);
+    assert.equal(mcpCreated.body.result.structuredContent.status, "requested");
+    const mcpList = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${beautyOrdererToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 62, method: "tools/call", params: { name: "booking.list", arguments: { status: "requested" } } }),
+    });
+    assert.equal(mcpList.status, 200);
+    assert.ok(mcpList.body.result.structuredContent.items.some((item: { id: string }) => item.id === mcpCreated.body.result.structuredContent.id));
+
+    const userContext = await request("/api/v1/auth/context", {
+      method: "POST",
+      headers: { authorization: `Bearer ${beautyProviderToken}` },
+      body: JSON.stringify({ category: "beauty", role: "user" }),
+    });
+    assert.equal(userContext.status, 200);
+    const denied = await request("/api/v1/bookings", { headers: { authorization: `Bearer ${beautyProviderToken}` } });
+    assert.equal(denied.status, 403);
+    const restoredProviderContext = await request("/api/v1/auth/context", {
+      method: "POST",
+      headers: { authorization: `Bearer ${beautyProviderToken}` },
+      body: JSON.stringify({ category: "beauty", role: "provider" }),
+    });
+    assert.equal(restoredProviderContext.status, 200);
+    const notifications = await request("/api/v1/notifications?limit=20", { headers: { authorization: `Bearer ${beautyProviderToken}` } });
+    assert.ok(notifications.body.items.some((item: { resourceId: string; type: string }) => item.resourceId === bookingId && item.type === "booking_received"));
+
+    const invalidCategory = await request("/api/v1/bookings", {
+      method: "POST",
+      headers: { authorization: `Bearer ${beautyOrdererToken}` },
+      body: JSON.stringify({ category: "legal", providerId: "provider-beauty-demo", menu: "相談", requestedFor: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString() }),
+    });
+    assert.equal(invalidCategory.status, 403);
+    const restoredOrdererContext = await request("/api/v1/auth/context", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ category: "legal", role: "orderer" }),
+    });
+    assert.equal(restoredOrdererContext.status, 200);
+  });
+
   it("リクルーターは求人に応募でき、応募情報は本人と事業者に限定される", async () => {
     const publicJobs = await request("/api/v1/jobs?category=legal");
     assert.equal(publicJobs.status, 200);

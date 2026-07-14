@@ -124,6 +124,7 @@
             <div id="provider-profile-meta" class="meta"></div>
             <div id="provider-profile-fields" class="directory-guide-list"></div>
             <div class="provider-profile-actions">
+              <button id="provider-profile-booking" class="button primary" type="button" hidden>この店舗を予約</button>
               <button id="provider-profile-request" class="button primary" type="button" hidden>この事業者へ依頼</button>
               <button id="provider-profile-inquiry" class="button secondary" type="button" hidden>この事業者へ問い合わせ</button>
             </div>
@@ -181,6 +182,30 @@
               <label>内容<textarea name="message" required minlength="10" maxlength="5000" placeholder="確認したい内容を入力してください"></textarea></label>
               <button class="button primary" type="submit">問い合わせを送信</button>
             </form>
+          </div>
+
+          <div id="booking-panel" class="card action-card" hidden>
+            <div class="section-kicker">BOOKING REQUEST</div>
+            <h2>予約リクエストを作成</h2>
+            <p class="muted">希望日時を送り、店舗の確定を待ちます。</p>
+            <form id="booking-form">
+              <label>店舗<select name="providerId" id="booking-provider"></select></label>
+              <label>希望日時<input name="requestedFor" type="datetime-local" required /></label>
+              <label>メニュー<input name="menu" required minlength="2" maxlength="200" placeholder="例：カット・カラー" /></label>
+              <label>要望（任意）<textarea name="note" maxlength="2000" placeholder="希望や連絡事項"></textarea></label>
+              <button class="button primary" type="submit">予約リクエストを送信</button>
+            </form>
+            <p id="booking-message" class="message" role="status"></p>
+          </div>
+
+          <div id="booking-status-panel" class="card action-card" hidden>
+            <div class="section-kicker">BOOKING STATUS</div>
+            <h2>予約リクエストの状態</h2>
+            <div class="list-filters">
+              <label>状態<select id="booking-status-filter"><option value="">すべて</option><option value="requested">受付中</option><option value="confirmed">確定</option><option value="cancelled">取消</option></select></label>
+            </div>
+            <div id="booking-list" class="role-list" aria-live="polite" aria-busy="false"></div>
+            <div id="booking-list-status" class="list-state" role="status" aria-live="polite" hidden></div>
           </div>
 
           <div id="inquiry-status-panel" class="card action-card" hidden>

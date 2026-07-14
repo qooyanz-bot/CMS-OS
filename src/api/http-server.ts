@@ -24,7 +24,7 @@ import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type We
 import { MAX_BATCH_ITEMS, OperationService, OperationServiceError, type ContentCreateBatchInput, type ContentDraftBatchInput, type ContentPolishBatchInput, type ContentPrepareBatchInput, type ContentProposeBatchInput, type OperationSubmitInput } from "../application/operation-service.js";
 import { PortalPlanningService, PortalPlanningServiceError, type PortalPlanCreateInput } from "../application/portal-planning-service.js";
 import { operationTypes, type OperationType } from "../domain/operation-store.js";
-import { applicationStatuses, categorySlugs, contentAudiences, contentLocales, contentTypes, contentWorkflowStatuses, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
+import { applicationStatuses, bookingStatuses as bookingStatusValues, categorySlugs, contentAudiences, contentLocales, contentTypes, contentWorkflowStatuses, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type BookingStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -85,6 +85,10 @@ function isCategorySlug(value: unknown): value is CategorySlug {
 
 function isRequestStatus(value: unknown): value is RequestStatus {
   return typeof value === "string" && (requestStatuses as readonly string[]).includes(value);
+}
+
+function isBookingStatus(value: unknown): value is BookingStatus {
+  return typeof value === "string" && (bookingStatusValues as readonly string[]).includes(value);
 }
 
 function isApplicationStatus(value: unknown): value is ApplicationStatus {
@@ -1120,6 +1124,31 @@ async function handleMcp(
             inputSchema: { type: "object", properties: { requestId: { type: "string" }, status: { enum: ["submitted", "accepted", "closed"] } }, required: ["requestId", "status"] },
           },
           {
+            name: "booking.create",
+            description: "美容カテゴリで発注者が予約リクエストを作成します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                category: { enum: categoryEnum },
+                providerId: { type: "string" },
+                menu: { type: "string" },
+                requestedFor: { type: "string", format: "date-time" },
+                note: { type: "string" },
+              },
+              required: ["category", "providerId", "menu", "requestedFor"],
+            },
+          },
+          {
+            name: "booking.list",
+            description: "発注者自身または担当事業者の予約リクエストを取得します。",
+            inputSchema: { type: "object", properties: { status: { enum: [...bookingStatusValues] }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
+          },
+          {
+            name: "booking.update_status",
+            description: "予約リクエストの状態を確定または取消へ更新します。",
+            inputSchema: { type: "object", properties: { bookingId: { type: "string" }, status: { enum: [...bookingStatusValues] } }, required: ["bookingId", "status"] },
+          },
+          {
             name: "inquiry.create",
             description: "ログイン済みのユーザー、発注者、リクルーターが公開事業者へ問い合わせを送信します。",
             inputSchema: {
@@ -1833,6 +1862,38 @@ async function handleMcp(
         throw new Error("requestIdと有効なstatusが必要です。");
       }
       const result = portal.updateRequestStatus(principal, argumentsObject.requestId, argumentsObject.status);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "booking.create") {
+      if (!isCategorySlug(argumentsObject.category) || typeof argumentsObject.providerId !== "string" || typeof argumentsObject.menu !== "string" || typeof argumentsObject.requestedFor !== "string" || (argumentsObject.note !== undefined && typeof argumentsObject.note !== "string")) {
+        throw new Error("category、providerId、menu、requestedFor、noteを正しく指定してください。");
+      }
+      const result = portal.createBooking(principal, {
+        category: argumentsObject.category,
+        providerId: argumentsObject.providerId,
+        menu: argumentsObject.menu,
+        requestedFor: argumentsObject.requestedFor,
+        note: typeof argumentsObject.note === "string" ? argumentsObject.note : undefined,
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "booking.list") {
+      const result = portal.listBookingsPage(principal, parsePaginationArguments(argumentsObject), {
+        status: parseOptionalEnumValue(argumentsObject.status, "status", bookingStatusValues),
+      });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "booking.update_status") {
+      if (typeof argumentsObject.bookingId !== "string" || !isBookingStatus(argumentsObject.status)) {
+        throw new Error("bookingIdと有効なstatusが必要です。");
+      }
+      const result = portal.updateBookingStatus(principal, argumentsObject.bookingId, argumentsObject.status);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -3708,6 +3769,65 @@ export function createHttpServer(
         } catch (error) {
           const statusCode = error instanceof PortalServiceError ? error.statusCode : 400;
           writeJson(response, statusCode, { error: error instanceof Error ? error.message : "依頼の状態を更新できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/v1/bookings") {
+        if (!principal) {
+          writeJson(response, 401, { error: "ログインが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (!isCategorySlug(body.category) || typeof body.providerId !== "string" || typeof body.menu !== "string" || typeof body.requestedFor !== "string" || (body.note !== undefined && typeof body.note !== "string")) {
+          writeJson(response, 400, { error: "category、providerId、menu、requestedFor、noteを正しく指定してください。" });
+          return;
+        }
+        try {
+          writeJson(response, 201, {
+            item: portal.createBooking(principal, {
+              category: body.category,
+              providerId: body.providerId,
+              menu: body.menu,
+              requestedFor: body.requestedFor,
+              note: typeof body.note === "string" ? body.note : undefined,
+            }),
+          });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "予約リクエストを作成できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/bookings") {
+        try {
+          writeJson(response, 200, {
+            ...portal.listBookingsPage(principal, parsePaginationQuery(url), {
+              status: parseOptionalEnumValue(url.searchParams.get("status"), "status", bookingStatusValues),
+            }),
+          });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "予約リクエストを取得できません。" });
+        }
+        return;
+      }
+
+      const bookingMatch = url.pathname.match(/^\/api\/v1\/bookings\/([^/]+)$/);
+      if (request.method === "PATCH" && bookingMatch) {
+        const bookingId = bookingMatch[1];
+        if (!bookingId) {
+          writeJson(response, 400, { error: "bookingIdが必要です。" });
+          return;
+        }
+        const body = await readJson(request);
+        if (!isBookingStatus(body.status)) {
+          writeJson(response, 400, { error: "statusが不正です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: portal.updateBookingStatus(principal, bookingId, body.status) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "予約リクエストの状態を更新できません。" });
         }
         return;
       }

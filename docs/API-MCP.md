@@ -117,6 +117,9 @@ PATCH /api/v1/inquiries/{inquiryId}
 GET  /api/v1/notifications
 PATCH /api/v1/notifications/{notificationId}
 GET  /api/v1/requests?limit=50&cursor=0
+POST /api/v1/bookings
+GET  /api/v1/bookings?status=requested&limit=50&cursor=0
+PATCH /api/v1/bookings/{bookingId}
 GET  /api/v1/jobs?category=legal&limit=50&cursor=0
 GET  /api/v1/applications?limit=50&cursor=0
 POST /api/v1/jobs
@@ -149,6 +152,8 @@ PATCH /api/v1/jobs/{jobId}
 
 問い合わせは `inquiry.create` で公開事業者へ送信し、`inquiry.list` では送信者本人または担当事業者だけが取得できます。状態遷移は `open` → `responded` → `closed` に限定し、RESTとMCPで同じ所有者検証を実行します。
 
+美容カテゴリの予約は、`booking.create` / `POST /api/v1/bookings` で発注者が希望日時・メニュー・要望を送る「予約リクエスト」として受け付けます。事業者または発注者が `booking.update_status` / `PATCH /api/v1/bookings/{bookingId}` を実行し、`requested` → `confirmed` → `cancelled`、または `requested` → `cancelled` の状態遷移を行います。発注者は自分の予約、事業者は自社への予約だけを取得でき、レスポンスから発注者の内部アカウントIDは除外します。
+
 お気に入りは `favorite.add` / `POST /api/v1/favorites`、`favorite.list` / `GET /api/v1/favorites`、`favorite.remove` / `DELETE /api/v1/favorites/{favoriteId}`で操作します。現在のログインアカウントとカテゴリに限定し、公開中の事業者だけを保存できます。同じ事業者の再登録は既存項目を返す冪等操作とし、応答にはアカウント内部IDを含めません。RESTとMCPは同じ `favorite.manage` 権限と所有者検証を共有します。
 
 通知は問い合わせ作成・状態変更・掲載審査送信・審査結果を契機に作成します。`GET /api/v1/notifications` と `notification.list` は `limit`（1〜100）と `cursor` を受け取り、本人または自社事業者の通知だけを返します。通知の既読状態は `PATCH /api/v1/notifications/{notificationId}` または `notification.mark_read` で更新します。
@@ -165,6 +170,7 @@ PATCH /api/v1/jobs/{jobId}
 |---|---|---|
 | `provider.search` / `GET /api/v1/providers` | `search`、`theme`、`location` | `relevance`、`name_asc`、`location_asc` |
 | `request.list` / `GET /api/v1/requests` | `search`、`status` | `createdAt_desc`、`createdAt_asc`、`title_asc` |
+| `booking.list` / `GET /api/v1/bookings` | `status` | — |
 | `job.search` / `GET /api/v1/jobs` | `search`、`employmentType`、`location`、`status` | `title_asc`、`title_desc`、`location_asc` |
 | `application.list` / `GET /api/v1/applications` | `search`、`jobId`、`status` | `createdAt_desc`、`createdAt_asc`、`status` |
 | `content.list` / `GET /api/v1/content` | `search`、`status`、`audience`、`contentType`、`locale` | `updatedAt_desc`、`updatedAt_asc`、`title_asc`、`status` |
@@ -261,6 +267,9 @@ AIエージェントが操作前にカテゴリと表示条件を確認できる
 - `request.create`
 - `request.list`（limit/cursor対応）
 - `request.update_status`
+- `booking.create`
+- `booking.list`
+- `booking.update_status`
 - `inquiry.create`
 - `inquiry.list`
 - `inquiry.update_status`
