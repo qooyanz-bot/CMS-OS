@@ -64,6 +64,7 @@ POST /api/v1/portal-plans                 # 事業者がテーマ・地域・対
 GET  /api/v1/portal-plans?limit=50&cursor=0
 GET  /api/v1/portal-plans/{planId}
 POST /api/v1/portal-plans/{planId}/apply  # ページ案をコンテンツ企画案へ冪等に反映
+POST /api/v1/portal-plans/{planId}/draft  # ページ案を企画案と下書きへ冪等に反映
 外部案内の管理操作は `CMS_OS_OPERATOR_KEY` と `x-cms-os-operator-key` ヘッダーで保護します。通常のログインロールには運営キーを渡しません。
 POST /api/v1/auth/oidc/start
 GET  /api/v1/auth/oidc/callback
@@ -171,6 +172,17 @@ RESTの応答は `{ items, page }`、MCPの`structuredContent`も同じ形式で
 ## MCP方針
 
 MCP Serverは、APIの単なる別実装ではなく、APIと同じドメインサービスを呼び出す薄い操作アダプターとする。
+
+AIエージェントが操作前にカテゴリと表示条件を確認できるよう、MCP Resourceも提供します。
+
+| MCPメソッド | URI | 内容 |
+|---|---|---|
+| `resources/list` | `cms-os://categories` ほか | カテゴリごとのコンテキスト、表示体験、外部案内のリソース一覧 |
+| `resources/read` | `cms-os://categories/{category}/context` | 現在の認証ロールに応じたカテゴリ情報と外部案内 |
+| `resources/read` | `cms-os://categories/{category}/experience` | 表示モジュール、表示フィールド、許可アクション |
+| `resources/read` | `cms-os://categories/{category}/directories` | 現在の認証ロールで表示できる外部案内 |
+
+リソースの読み取りにも現在のBearerトークンを適用します。未ログインの場合は一般ユーザー向けの公開情報だけを返し、事業者向け案内や内部項目を公開しません。
 
 例として、次のツールを提供する。
 

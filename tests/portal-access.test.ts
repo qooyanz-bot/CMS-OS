@@ -189,6 +189,47 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(mcpCategory.body.result.structuredContent.item.experience.role, "orderer");
   });
 
+  it("MCP Resourceからカテゴリ別・ロール別の表示コンテキストを取得できる", async () => {
+    const initialize = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 48, method: "initialize" }),
+    });
+    assert.deepEqual(initialize.body.result.capabilities.resources, {});
+
+    const listed = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 49, method: "resources/list" }),
+    });
+    assert.equal(listed.status, 200);
+    assert.ok(listed.body.result.resources.some((resource: { uri: string }) => resource.uri === "cms-os://categories/beauty/context"));
+
+    const ordererExperience = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 52, method: "resources/read", params: { uri: "cms-os://categories/legal/experience" } }),
+    });
+    const ordererExperienceValue = JSON.parse(ordererExperience.body.result.contents[0].text) as { item: { role: string; allowedActions: string[] } };
+    assert.equal(ordererExperienceValue.item.role, "orderer");
+    assert.equal(ordererExperienceValue.item.allowedActions.includes("request.create"), true);
+
+    const publicDirectories = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 50, method: "resources/read", params: { uri: "cms-os://categories/legal/directories" } }),
+    });
+    const publicDirectoryValue = JSON.parse(publicDirectories.body.result.contents[0].text) as { items: Array<{ kind: string }> };
+    assert.equal(publicDirectories.status, 200);
+    assert.equal(publicDirectoryValue.items.some((item) => item.kind === "provider_resource"), false);
+
+    const providerDirectories = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${beautyProviderToken}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 51, method: "resources/read", params: { uri: "cms-os://categories/beauty/directories" } }),
+    });
+    const providerDirectoryValue = JSON.parse(providerDirectories.body.result.contents[0].text) as { items: Array<{ kind: string }> };
+    assert.equal(providerDirectories.status, 200);
+    assert.equal(providerDirectoryValue.items.some((item) => item.kind === "provider_resource"), true);
+  });
+
   it("運営キーで外部案内をRESTとMCPから管理できる", async () => {
     const denied = await request("/api/v1/directories", {
       method: "POST",

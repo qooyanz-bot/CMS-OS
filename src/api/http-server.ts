@@ -175,6 +175,54 @@ function mcpText(value: unknown): { type: "text"; text: string } {
   return { type: "text", text: JSON.stringify(value) };
 }
 
+type McpResource = {
+  uri: string;
+  name: string;
+  description: string;
+  mimeType: "application/json";
+};
+
+function listMcpResources(portal: PortalService): McpResource[] {
+  return [
+    {
+      uri: "cms-os://categories",
+      name: "CMS-OSカテゴリ一覧",
+      description: "CMS-OSで利用できる業界カテゴリと表示ナビゲーションの一覧です。",
+      mimeType: "application/json",
+    },
+    ...portal.listCategories().flatMap((category) => [
+      {
+        uri: `cms-os://categories/${category.slug}/context`,
+        name: `${category.label}のカテゴリコンテキスト`,
+        description: "現在の認証ロールに応じた表示モジュール、操作権限、外部案内を返します。",
+        mimeType: "application/json" as const,
+      },
+      {
+        uri: `cms-os://categories/${category.slug}/experience`,
+        name: `${category.label}の表示体験`,
+        description: "現在の認証ロールに応じた表示対象と操作可能なアクションを返します。",
+        mimeType: "application/json" as const,
+      },
+      {
+        uri: `cms-os://categories/${category.slug}/directories`,
+        name: `${category.label}の外部案内`,
+        description: "現在の認証ロールで表示できる外部ディレクトリ・予約・事業者向け案内を返します。",
+        mimeType: "application/json" as const,
+      },
+    ]),
+  ];
+}
+
+function readMcpResource(uri: string, portal: PortalService, principal: ReturnType<AuthService["authenticate"]>): unknown {
+  if (uri === "cms-os://categories") return { items: portal.listCategories() };
+  const match = uri.match(/^cms-os:\/\/categories\/([^/]+)\/(context|experience|directories)$/);
+  if (!match || !isCategorySlug(match[1])) throw new Error("指定されたMCPリソースが見つかりません。");
+  const category = match[1];
+  if (match[2] === "context") return { item: portal.getCategoryContext(category, principal) };
+  if (match[2] === "experience") return { item: portal.getExperience(category, principal) };
+  return { items: portal.listDirectoryGuides(category, principal) };
+}
+
 function parseContentSeoPatch(value: unknown): Partial<ContentSeo> | undefined {
   if (value === undefined) return undefined;
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("seoはオブジェクトで指定してください。");
@@ -649,10 +697,35 @@ async function handleMcp(
       id,
       result: {
         protocolVersion: "2025-06-18",
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, resources: {} },
         serverInfo: { name: "cms-os", version: "0.1.0" },
       },
     });
+    return;
+  }
+
+  if (method === "resources/list") {
+    writeJson(response, 200, { jsonrpc: "2.0", id, result: { resources: listMcpResources(portal) } });
+    return;
+  }
+
+  if (method === "resources/read") {
+    const params = (body.params ?? {}) as Record<string, unknown>;
+    if (typeof params.uri !== "string" || !params.uri.trim()) {
+      writeJson(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: "uriが必要です。" } });
+      return;
+    }
+    try {
+      const uri = params.uri.trim();
+      const value = readMcpResource(uri, portal, auth.authenticate(getBearerToken(request)));
+      writeJson(response, 200, {
+        jsonrpc: "2.0",
+        id,
+        result: { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(value) }] },
+      });
+    } catch (error) {
+      writeJson(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: error instanceof Error ? error.message : "MCPリソースを取得できません。" } });
+    }
     return;
   }
 
