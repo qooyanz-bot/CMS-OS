@@ -125,6 +125,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(legal.status, 200);
     assert.equal(beauty.status, 200);
     assert.equal(legal.body.items[0].name, "弁護士ドットコム");
+    assert.ok(legal.body.items.some((item: { id: string; name: string }) => item.id === "directory-legal-sigyo-net" && item.name === "士業ねっと！"));
     assert.equal(beauty.body.items[0].name, "ホットペッパービューティー");
     assert.equal(beauty.body.items.some((item: { kind: string }) => item.kind === "provider_resource"), false);
     const themeCategories = ["ai-business", "labor-shortage", "tourism", "mobility-dx", "gx", "regional-revitalization"];
@@ -152,6 +153,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(mcpGuides.status, 200);
     assert.equal(mcpGuides.body.result.structuredContent.items[0].id, "directory-legal-bengo4");
+    assert.ok(mcpGuides.body.result.structuredContent.items.some((item: { id: string }) => item.id === "directory-legal-sigyo-net"));
   });
 
   it("カテゴリ文脈をRESTとMCPからロール別に取得できる", async () => {

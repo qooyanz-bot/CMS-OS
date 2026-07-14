@@ -12,6 +12,16 @@ const directoryGuides: DirectoryGuide[] = [
     verifiedAt: "2026-07-14",
   },
   {
+    id: "directory-legal-sigyo-net",
+    category: "legal",
+    name: "士業ねっと！",
+    kind: "directory",
+    description: "弁護士、税理士、司法書士、行政書士、社会保険労務士など、分野横断で士業を探す外部案内です。",
+    url: "https://www.sigyo.net/",
+    targetRoles: ["user", "orderer"],
+    verifiedAt: "2026-07-14",
+  },
+  {
     id: "directory-beauty-hotpepper",
     category: "beauty",
     name: "ホットペッパービューティー",
