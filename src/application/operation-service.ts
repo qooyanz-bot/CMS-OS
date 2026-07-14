@@ -14,7 +14,7 @@ export class OperationServiceError extends Error {
 
 export type OperationSubmitInput = {
   operation: OperationType;
-  input: ContentCreateInput | ContentCreateBatchInput | ContentProposeBatchInput | ContentDraftBatchInput | ContentPolishBatchInput;
+  input: ContentCreateInput | ContentCreateBatchInput | ContentProposeBatchInput | ContentDraftBatchInput | ContentPolishBatchInput | ContentPrepareBatchInput;
 };
 
 export type ContentCreateBatchInput = {
@@ -35,6 +35,12 @@ export type ContentDraftBatchInput = {
 export type ContentPolishBatchInput = {
   category: CategorySlug;
   contentIds: string[];
+  instructions?: string;
+};
+
+export type ContentPrepareBatchInput = {
+  category: CategorySlug;
+  items: ContentProposalCreateInput[];
   instructions?: string;
 };
 
@@ -83,12 +89,15 @@ export class OperationService {
   public submit(principal: AuthenticatedPrincipal | null, input: OperationSubmitInput, idempotencyKey?: string): OperationJob {
     this.assertProvider(principal, "operation.submit");
     if (!operationTypes.includes(input.operation)) throw new OperationServiceError(400, "operationが不正です。");
-    if (input.operation === "content.create_batch" || input.operation === "content.propose_batch") {
+    if (input.operation === "content.create_batch" || input.operation === "content.propose_batch" || input.operation === "content.prepare_batch") {
       if (!isItemsBatchInput(input.input) || input.input.items.length < 1 || input.input.items.length > MAX_BATCH_ITEMS) {
         throw new OperationServiceError(400, `${input.operation}は1〜${MAX_BATCH_ITEMS}件のitemsを指定してください。`);
       }
       if (input.input.category !== principal.category || input.input.items.some((item) => item.category !== principal.category)) {
         throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
+      }
+      if (input.operation === "content.prepare_batch" && "instructions" in input.input && input.input.instructions !== undefined && (typeof input.input.instructions !== "string" || input.input.instructions.length > 1000)) {
+        throw new OperationServiceError(400, "content.prepare_batchのinstructionsは1000文字以内で指定してください。");
       }
     } else if (input.operation === "content.draft_batch") {
       if (!isDraftBatchInput(input.input) || input.input.proposalIds.length < 1 || input.input.proposalIds.length > MAX_BATCH_ITEMS) {
@@ -202,6 +211,20 @@ export class OperationService {
           partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.contentIds.length };
         }
         result = { contentIds, itemCount: contentIds.length };
+      } else if (job.operation === "content.prepare_batch") {
+        const batch = running.input as unknown as ContentPrepareBatchInput;
+        const items: Array<{ proposalId: string; contentId: string; status: string; factCheckPassed: boolean; seoScore: number }> = [];
+        partialResult = { items, completedCount: 0, totalCount: batch.items.length };
+        for (const input of batch.items) {
+          const proposal = this.content.createProposal(principal, input);
+          const draft = this.content.createDraft(principal, proposal.id);
+          const polished = this.content.polishContent(principal, draft.id, batch.instructions);
+          const factCheck = this.content.factCheck(principal, polished.id);
+          const seoAudit = this.content.auditSeo(principal, polished.id);
+          items.push({ proposalId: proposal.id, contentId: polished.id, status: seoAudit.issues.some((issue) => issue.severity === "error") ? "polished" : "seo_reviewed", factCheckPassed: factCheck.passed, seoScore: seoAudit.score });
+          partialResult = { items: [...items], completedCount: items.length, totalCount: batch.items.length };
+        }
+        result = { items, itemCount: items.length };
       } else {
         const created = this.content.createContent(principal, running.input as unknown as ContentCreateInput);
         result = { contentId: created.id };

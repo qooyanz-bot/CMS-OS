@@ -71,7 +71,7 @@ POST /api/v1/publications/publish
 
 `content.translate` は原文を上書きせず、原文の `contentId` と `version` を記録した言語別の翻訳下書きを作成します。対応言語は `ja`、`en`、`zh-CN`、`es`、`ko`、`de`、`fr` です。
 
-大量生成では、`operation.submit`に`content.propose_batch`、`content.draft_batch`、`content.polish_batch`を指定できます。前者は同一カテゴリ・最大50件の対象ポジション別企画案を生成し、`content.draft_batch`は企画案IDを最大50件受け取って下書きを生成します。`content.polish_batch`は下書きのcontentIdを最大50件受け取り、任意の清書方針を全対象へ適用します。いずれも承認・事実確認・SEO監査・公開を自動で通過させず、通常のワークフローへ戻します。
+大量生成では、`operation.submit`に`content.propose_batch`、`content.draft_batch`、`content.polish_batch`、`content.prepare_batch`を指定できます。前者は同一カテゴリ・最大50件の対象ポジション別企画案を生成し、`content.draft_batch`は企画案IDを最大50件受け取って下書きを生成します。`content.polish_batch`は下書きのcontentIdを最大50件受け取り、任意の清書方針を全対象へ適用します。`content.prepare_batch`は対象ポジション別の企画入力から企画・下書き・清書・事実確認・SEO監査を一つのジョブで実行し、`seo_reviewed`または監査エラー時の`polished`で停止します。承認・公開は自動実行せず、通常の人間確認ワークフローへ戻します。
 
 - `locale` はコンテンツ単位で保持し、翻訳版は独立したURL・canonical・OG情報・JSON-LD言語属性を持ちます。
 - `translationOf.sourceVersion` に原文の基準版を記録するため、原文更新後も翻訳の根拠を追跡できます。

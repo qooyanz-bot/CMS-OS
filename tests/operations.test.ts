@@ -196,6 +196,36 @@ describe("CMS-OS非同期操作ジョブ", () => {
     assert.equal(polishedContent.body.item.status, "polished");
     assert.match(polishedContent.body.item.body, /清書方針/);
 
+    const prepared = await request("/api/v1/operations", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "content.prepare_batch",
+        input: {
+          category: "legal",
+          items: [{
+            category: "legal",
+            contentType: "blog",
+            audience: "customer",
+            topic: "相続相談の初回準備ガイド",
+            sourceFacts: ["相談前に必要書類を確認できます。"],
+          }],
+          instructions: "相談者が次の行動へ進みやすい順序で整えてください。",
+        },
+      }),
+    });
+    assert.equal(prepared.status, 202);
+    assert.equal(prepared.body.item.operation, "content.prepare_batch");
+    const preparedResult = await request(`/api/v1/operations/${prepared.body.item.id}/execute`, { method: "POST" });
+    assert.equal(preparedResult.status, 200);
+    assert.equal(preparedResult.body.item.status, "succeeded");
+    assert.equal(preparedResult.body.item.result.items.length, 1);
+    assert.equal(preparedResult.body.item.result.items[0].factCheckPassed, true);
+    assert.equal(preparedResult.body.item.result.items[0].status, "seo_reviewed");
+    const preparedContent = await request(`/api/v1/content/${preparedResult.body.item.result.items[0].contentId}`);
+    assert.equal(preparedContent.body.item.status, "seo_reviewed");
+    assert.ok(preparedContent.body.item.lastFactCheck);
+    assert.ok(preparedContent.body.item.lastSeoAudit);
+
     const partial = await request("/api/v1/operations", {
       method: "POST",
       body: JSON.stringify({

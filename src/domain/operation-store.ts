@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 import type { CategorySlug } from "./types.js";
 
-export const operationTypes = ["content.create", "content.create_batch", "content.propose_batch", "content.draft_batch", "content.polish_batch"] as const;
+export const operationTypes = ["content.create", "content.create_batch", "content.propose_batch", "content.draft_batch", "content.polish_batch", "content.prepare_batch"] as const;
 export type OperationType = (typeof operationTypes)[number];
 
 export const operationStatuses = ["queued", "running", "succeeded", "failed"] as const;
