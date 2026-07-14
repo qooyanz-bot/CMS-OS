@@ -39,7 +39,7 @@ POST /api/v1/publications/{publicationId}/rollback
 }
 ```
 
-`contentIds`を省略すると、ログイン中の事業者が管理する承認済みコンテンツをまとめてビルドします。`baseUrl`はcanonical、sitemap、robots.txt、llms.txtの絶対URLに使用します。
+`contentIds`を省略すると、ログイン中の事業者が管理する承認済みコンテンツをまとめてビルドします。`baseUrl`はcanonical、sitemap、robots.txt、llms.txtの絶対URLに使用します。`publication.deploy`と`publication.publish`、予約公開の実行では、サイト全体のSEO監査も実行し、canonical重複、監査証跡の欠落、事実確認未完了、構造化データ不備などの重大エラーが残っている場合はCloudflare Pagesへ送信しません。`publication.build`はプレビュー生成として利用できます。
 
 ## 公開取消
 

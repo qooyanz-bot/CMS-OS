@@ -717,6 +717,7 @@ export class PublicationService {
     requestedBaseUrl?: string,
   ): Promise<{ publication: PublicationBuildResult; deployment: CloudflarePagesDeploymentResult }> {
     const publication = this.build(principal, contentIds, requestedBaseUrl);
+    this.assertSiteSeoReady(principal);
     try {
       const deployment = await this.builderosAdapter.deployToCloudflarePages(publication, this.cloudflareOptionsProvider());
       this.publicationStore.update(publication.publicationId, {
@@ -738,6 +739,7 @@ export class PublicationService {
     requestedBaseUrl?: string,
   ): Promise<{ publication: PublicationBuildResult; deployment: CloudflarePagesDeploymentResult; publishedContentIds: string[] }> {
     const publication = this.build(principal, contentIds, requestedBaseUrl);
+    this.assertSiteSeoReady(principal);
     return this.publishBuilt(principal, publication);
   }
 
@@ -890,7 +892,9 @@ export class PublicationService {
         files: storedPublication.files.map((file) => ({ ...file })),
       };
       try {
-        const deployed = await this.publishBuilt(principalForSchedule(schedule), publication);
+        const schedulePrincipal = principalForSchedule(schedule);
+        this.assertSiteSeoReady(schedulePrincipal);
+        const deployed = await this.publishBuilt(schedulePrincipal, publication);
         if (deployed.deployment.status === "submitted") {
           const executedSchedule = this.publicationStore.updateSchedule(schedule.id, {
             status: "executed",
@@ -908,6 +912,15 @@ export class PublicationService {
       }
     }
     return results;
+  }
+
+  private assertSiteSeoReady(principal: AuthenticatedPrincipal | null): void {
+    const audit = this.content.auditSiteSeo(principal);
+    const errors = audit.issues.filter((issue) => issue.severity === "error");
+    if (errors.length > 0) {
+      const first = errors[0];
+      throw new PublicationServiceError(409, `サイトSEO監査に重大な問題が${errors.length}件あるため公開できません。${first?.message ?? "監査結果を確認してください。"}`);
+    }
   }
 
   private parseScheduleCutoff(before?: string): number {

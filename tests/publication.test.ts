@@ -273,6 +273,49 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(names.includes("publication.rollback"));
   });
 
+  it("サイトSEO監査に重大エラーがある公開を拒否する", async () => {
+    const auth = new InMemoryAuthService();
+    const portal = new PortalService(auth);
+    const content = new ContentService(portal);
+    const publication = new PublicationService(portal, content, new BuilderOSAdapter(), () => ({
+      accountId: "account-seo-gate",
+      projectName: "cms-os-seo-gate",
+      dryRun: true,
+    }));
+    const login = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
+    if (!login || !("accessToken" in login)) throw new Error("SEOゲート用ログインに失敗しました。");
+
+    const createApprovedContent = (title: string) => {
+      const draft = content.createContent(login.principal, {
+        category: "legal",
+        contentType: "blog",
+        audience: "customer",
+        title,
+        summary: "検索意図に沿った相談案内の概要です。",
+        body: `# ${title}\n\n確認済み情報をもとにした本文です。`,
+        sourceFacts: ["事業者が確認した一次情報です。"],
+        seo: {
+          canonicalPath: "/content/seo-canonical-duplicate",
+          title: `${title}の詳しい相談案内`,
+          description: "相談前に確認すべき情報と具体的な次の行動を整理した案内です。",
+        },
+      });
+      content.polishContent(login.principal, draft.id);
+      content.auditSeo(login.principal, draft.id);
+      content.factCheck(login.principal, draft.id);
+      return content.approveContent(login.principal, draft.id);
+    };
+
+    const first = createApprovedContent("SEO重複検証・相続相談");
+    const second = createApprovedContent("SEO重複検証・遺言相談");
+    await assert.rejects(
+      () => publication.publish(login.principal, [first.id, second.id], "https://www.example.com"),
+      (error: unknown) => error instanceof Error && error.message.includes("サイトSEO監査に重大な問題"),
+    );
+    assert.equal(content.getContent(login.principal, first.id).status, "approved");
+    assert.equal(content.getContent(login.principal, second.id).status, "approved");
+  });
+
   it("Cloudflare公開受付が成功したときだけコンテンツを公開状態へ進める", async () => {
     const auth = new InMemoryAuthService();
     const portal = new PortalService(auth);
