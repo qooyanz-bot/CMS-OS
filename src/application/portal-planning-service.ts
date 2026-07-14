@@ -3,6 +3,7 @@ import type {
   AuthenticatedPrincipal,
   CategorySlug,
   ContentAudience,
+  ContentRecord,
   ContentProposal,
   ContentType,
   PortalPlan,
@@ -231,6 +232,7 @@ export class PortalPlanningService {
 
   public apply(principal: AuthenticatedPrincipal | null, planId: string): { plan: PortalPlan; proposals: ContentProposal[] } {
     const plan = this.get(principal, planId);
+    this.assertProvider(principal, plan.category, "portal.plan.apply");
     if (!this.content) throw new PortalPlanningServiceError(503, "コンテンツサービスが接続されていません。");
 
     const existingIds = plan.appliedProposalIds ?? [];
@@ -254,6 +256,26 @@ export class PortalPlanningService {
     });
     if (!updated) throw new PortalPlanningServiceError(404, "指定されたポータル計画が見つかりません。");
     return { plan: updated, proposals };
+  }
+
+  public draft(principal: AuthenticatedPrincipal | null, planId: string): { plan: PortalPlan; proposals: ContentProposal[]; drafts: ContentRecord[] } {
+    const plan = this.get(principal, planId);
+    this.assertProvider(principal, plan.category, "portal.plan.draft");
+    const applied = this.apply(principal, planId);
+    if (!this.content) throw new PortalPlanningServiceError(503, "コンテンツサービスが接続されていません。");
+    if (applied.proposals.length !== (applied.plan.appliedProposalIds?.length ?? 0)) {
+      throw new PortalPlanningServiceError(409, "計画に紐づく企画案をすべて取得できません。再度計画を作成してください。");
+    }
+
+    const existingContents = this.content.listContent(principal);
+    const existingByProposalId = new Map(existingContents.map((content) => [content.proposalId, content]));
+    const drafts = applied.proposals.map((proposal) => existingByProposalId.get(proposal.id) ?? this.content!.createDraft(principal, proposal.id));
+    const updated = this.store.update(applied.plan.id, {
+      draftIds: drafts.map((draft) => draft.id),
+      draftedAt: new Date().toISOString(),
+    });
+    if (!updated) throw new PortalPlanningServiceError(404, "指定されたポータル計画が見つかりません。");
+    return { plan: updated, proposals: applied.proposals, drafts };
   }
 
   public list(principal: AuthenticatedPrincipal | null, pagination: { limit?: number; cursor?: number } = {}): PortalPage<PortalPlan> {
@@ -281,7 +303,7 @@ export class PortalPlanningService {
   private assertProvider(
     principal: AuthenticatedPrincipal | null,
     category: CategorySlug,
-    action: "portal.plan.create" | "portal.plan.read",
+    action: "portal.plan.create" | "portal.plan.read" | "portal.plan.apply" | "portal.plan.draft",
   ): asserts principal is AuthenticatedPrincipal & { role: "provider"; providerId: string } {
     if (!principal) throw new PortalPlanningServiceError(401, "ログインが必要です。");
     if (principal.role !== "provider" || !principal.providerId) throw new PortalPlanningServiceError(403, "ポータル計画は事業者のみ利用できます。");

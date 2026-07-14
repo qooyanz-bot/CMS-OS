@@ -33,12 +33,13 @@ export class PortalPlanStore {
     return clonePlan(plan);
   }
 
-  public update(planId: string, patch: Pick<PortalPlan, "appliedProposalIds" | "appliedAt">): PortalPlan | undefined {
+  public update(planId: string, patch: Pick<PortalPlan, "appliedProposalIds" | "appliedAt" | "draftIds" | "draftedAt">): PortalPlan | undefined {
     const plan = this.plans.find((candidate) => candidate.id === planId);
     if (!plan) return undefined;
     Object.assign(plan, {
       ...patch,
       ...(patch.appliedProposalIds ? { appliedProposalIds: [...patch.appliedProposalIds] } : {}),
+      ...(patch.draftIds ? { draftIds: [...patch.draftIds] } : {}),
     });
     this.persist();
     return clonePlan(plan);

@@ -756,7 +756,7 @@ function setPortalPlanningMessage(message = "") {
   elements.portalPlanningMessage.textContent = message;
 }
 
-function renderPortalPlan(plan, proposals = []) {
+function renderPortalPlan(plan, proposals = [], drafts = []) {
   if (!plan) {
     elements.portalPlanResult.hidden = true;
     elements.portalPlanResult.replaceChildren();
@@ -765,6 +765,7 @@ function renderPortalPlan(plan, proposals = []) {
   const pageItems = Array.isArray(plan.pageIdeas) ? plan.pageIdeas : [];
   const gaps = Array.isArray(plan.gaps) ? plan.gaps : [];
   const proposalCount = proposals.length || plan.appliedProposalIds?.length || 0;
+  const draftCount = drafts.length || plan.draftIds?.length || 0;
   elements.portalPlanResult.hidden = false;
   elements.portalPlanResult.innerHTML = `
     <article class="editor-item">
@@ -772,17 +773,18 @@ function renderPortalPlan(plan, proposals = []) {
       <h3>${escapeHtml(plan.theme)}のポータル企画</h3>
       <p>検索意図 ${escapeHtml(String(plan.searchIntents?.length ?? 0))}件 / ページ案 ${escapeHtml(String(pageItems.length))}件 / テーマ一致コンテンツ ${escapeHtml(String(plan.coverage?.matchingContentCount ?? 0))}件 / 未充足項目 ${escapeHtml(String(gaps.length))}件</p>
       <ul>${pageItems.map((page) => `<li><strong>${escapeHtml(page.title)}</strong><br><span class="muted">${escapeHtml(page.primaryKeyword)} — ${escapeHtml(page.purpose)}</span></li>`).join("")}</ul>
-      <p class="field-note">${proposalCount > 0 ? `コンテンツ下書き ${escapeHtml(String(proposalCount))}件を作成済みです。` : "企画案を適用すると、AIコンテンツ編集へ下書きを作成できます。"}</p>
-      ${proposalCount === 0 ? `<button class="button secondary portal-plan-apply-button" type="button" data-plan-id="${escapeHtml(plan.id)}">企画案を下書きへ適用</button>` : ""}
+      <p class="field-note">${draftCount > 0 ? `コンテンツ下書き ${escapeHtml(String(draftCount))}件を作成済みです。` : proposalCount > 0 ? `コンテンツ企画案 ${escapeHtml(String(proposalCount))}件を作成済みです。下書きへ進められます。` : "企画案から対象ポジション別の下書きを作成できます。"}</p>
+      ${draftCount === 0 ? `<button class="button secondary portal-plan-draft-button" type="button" data-plan-id="${escapeHtml(plan.id)}">${proposalCount > 0 ? "企画案から下書きを作成" : "企画案と下書きを作成"}</button>` : ""}
     </article>`;
-  elements.portalPlanResult.querySelector(".portal-plan-apply-button")?.addEventListener("click", async (event) => {
+  elements.portalPlanResult.querySelector(".portal-plan-draft-button")?.addEventListener("click", async (event) => {
     const button = event.currentTarget;
     button.disabled = true;
     try {
-      const body = await api(`/api/v1/portal-plans/${encodeURIComponent(button.dataset.planId ?? "")}/apply`, { method: "POST" });
-      renderPortalPlan(body.item.plan, body.item.proposals);
-      setPortalPlanningMessage(`コンテンツ下書き ${body.item.proposals.length}件を作成しました。AIコンテンツ編集で清書・SEO監査へ進めます。`);
+      const body = await api(`/api/v1/portal-plans/${encodeURIComponent(button.dataset.planId ?? "")}/draft`, { method: "POST" });
+      renderPortalPlan(body.plan, body.proposals, body.drafts);
+      setPortalPlanningMessage(`コンテンツ下書き ${body.drafts.length}件を作成しました。AIコンテンツ編集で清書・SEO監査へ進めます。`);
       await reloadPortalPlanning();
+      await reloadContent();
     } catch (error) {
       button.disabled = false;
       setPortalPlanningMessage(error.message);
@@ -792,7 +794,7 @@ function renderPortalPlan(plan, proposals = []) {
 
 function renderPortalPlanList(plans) {
   elements.portalPlanList.innerHTML = plans.length
-    ? `<div class="section-kicker">RECENT PLANS</div>${plans.map((plan) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(plan.theme)}</span>${plan.region ? `<span>${escapeHtml(plan.region)}</span>` : ""}<span>${plan.appliedProposalIds?.length ? "適用済み" : "未適用"}</span></div><p>${escapeHtml(plan.pageIdeas?.[0]?.title ?? "ポータル企画")}</p><button class="button ghost portal-plan-load-button" type="button" data-plan-id="${escapeHtml(plan.id)}">この企画を表示</button></article>`).join("")}`
+    ? `<div class="section-kicker">RECENT PLANS</div>${plans.map((plan) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(plan.theme)}</span>${plan.region ? `<span>${escapeHtml(plan.region)}</span>` : ""}<span>${plan.draftIds?.length ? "下書き済み" : plan.appliedProposalIds?.length ? "企画済み" : "未適用"}</span></div><p>${escapeHtml(plan.pageIdeas?.[0]?.title ?? "ポータル企画")}</p><button class="button ghost portal-plan-load-button" type="button" data-plan-id="${escapeHtml(plan.id)}">この企画を表示</button></article>`).join("")}`
     : '<p class="empty">作成済みのポータル企画はありません。</p>';
   elements.portalPlanList.querySelectorAll(".portal-plan-load-button").forEach((button) => {
     button.addEventListener("click", async () => {

@@ -556,6 +556,11 @@ async function handleMcp(
             inputSchema: { type: "object", properties: { planId: { type: "string" } }, required: ["planId"] },
           },
           {
+            name: "portal.plan.draft",
+            description: "ポータル計画の企画案から対象ポジション別のコンテンツ下書きを冪等に作成します。",
+            inputSchema: { type: "object", properties: { planId: { type: "string" } }, required: ["planId"] },
+          },
+          {
             name: "directory.create",
             description: "運営キーでカテゴリ別の外部案内を追加します。x-cms-os-operator-keyヘッダーが必要です。",
             inputSchema: {
@@ -1318,6 +1323,13 @@ async function handleMcp(
     if (name === "portal.plan.apply") {
       if (typeof argumentsObject.planId !== "string") throw new Error("planIdが必要です。");
       const result = portalPlanning.apply(principal, argumentsObject.planId);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "portal.plan.draft") {
+      if (typeof argumentsObject.planId !== "string") throw new Error("planIdが必要です。");
+      const result = portalPlanning.draft(principal, argumentsObject.planId);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2336,6 +2348,7 @@ export function createHttpServer(
 
       const portalPlanMatch = url.pathname.match(/^\/api\/v1\/portal-plans\/([^/]+)$/);
       const portalPlanApplyMatch = url.pathname.match(/^\/api\/v1\/portal-plans\/([^/]+)\/apply$/);
+      const portalPlanDraftMatch = url.pathname.match(/^\/api\/v1\/portal-plans\/([^/]+)\/draft$/);
       if (request.method === "POST" && portalPlanApplyMatch) {
         const planId = portalPlanApplyMatch[1];
         if (!planId) {
@@ -2346,6 +2359,19 @@ export function createHttpServer(
           writeJson(response, 201, portalPlanning.apply(principal, planId));
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "ポータル計画を企画案へ反映できません。" });
+        }
+        return;
+      }
+      if (request.method === "POST" && portalPlanDraftMatch) {
+        const planId = portalPlanDraftMatch[1];
+        if (!planId) {
+          writeJson(response, 400, { error: "planIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 201, portalPlanning.draft(principal, planId));
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "ポータル計画から下書きを作成できません。" });
         }
         return;
       }

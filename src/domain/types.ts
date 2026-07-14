@@ -387,6 +387,8 @@ export interface PortalPlan {
   nextActions: string[];
   appliedProposalIds?: string[];
   appliedAt?: string;
+  draftIds?: string[];
+  draftedAt?: string;
   generatedAt: string;
 }
 

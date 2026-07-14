@@ -103,6 +103,7 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
     "portal.plan.read",
     "portal.plan.create",
     "portal.plan.apply",
+    "portal.plan.draft",
   ];
 
   return {
@@ -258,6 +259,7 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "portal.plan.read",
           "portal.plan.create",
           "portal.plan.apply",
+          "portal.plan.draft",
         ],
         notices: ["資格・登録情報と公開事実を分けて管理します。"],
       },
@@ -359,6 +361,7 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
           "portal.plan.read",
           "portal.plan.create",
           "portal.plan.apply",
+          "portal.plan.draft",
         ],
         notices: ["店舗情報、料金、営業時間は最終確認日とともに公開します。"],
       },

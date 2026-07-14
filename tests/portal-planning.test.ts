@@ -88,6 +88,23 @@ describe("CMS-OS Portal Planning Agent", () => {
     assert.deepEqual(reapplied.body.plan.appliedProposalIds, applied.body.plan.appliedProposalIds);
     assert.deepEqual(reapplied.body.proposals.map((proposal: { id: string }) => proposal.id), applied.body.proposals.map((proposal: { id: string }) => proposal.id));
 
+    const drafted = await request(`/api/v1/portal-plans/${planId}/draft`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({}),
+    });
+    assert.equal(drafted.status, 201);
+    assert.equal(drafted.body.plan.draftIds.length, drafted.body.drafts.length);
+    assert.ok(drafted.body.drafts.every((draft: { status: string }) => draft.status === "drafted"));
+    const redrafted = await request(`/api/v1/portal-plans/${planId}/draft`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({}),
+    });
+    assert.equal(redrafted.status, 201);
+    assert.deepEqual(redrafted.body.plan.draftIds, drafted.body.plan.draftIds);
+    assert.deepEqual(redrafted.body.drafts.map((draft: { id: string }) => draft.id), drafted.body.drafts.map((draft: { id: string }) => draft.id));
+
     const draft = await request("/api/v1/content/drafts", {
       method: "POST",
       headers: { authorization: `Bearer ${providerToken}` },
@@ -100,8 +117,8 @@ describe("CMS-OS Portal Planning Agent", () => {
       body: JSON.stringify({ category: "legal", theme: "企業法務", audience: "customer" }),
     });
     assert.equal(covered.status, 201);
-    assert.equal(covered.body.item.coverage.contentCount, 1);
-    assert.equal(covered.body.item.coverage.matchingContentCount, 1);
+    assert.equal(covered.body.item.coverage.contentCount, drafted.body.drafts.length + 1);
+    assert.equal(covered.body.item.coverage.matchingContentCount, covered.body.item.coverage.contentCount);
     assert.equal(covered.body.item.coverage.publishedContentCount, 0);
     assert.ok(covered.body.item.gaps.some((item: { code: string }) => item.code === "content_theme_not_published"));
     assert.ok(!covered.body.item.gaps.some((item: { code: string }) => item.code === "content_theme_coverage_missing"));
@@ -121,6 +138,7 @@ describe("CMS-OS Portal Planning Agent", () => {
     assert.ok(names.includes("portal.plan.list"));
     assert.ok(names.includes("portal.plan.get"));
     assert.ok(names.includes("portal.plan.apply"));
+    assert.ok(names.includes("portal.plan.draft"));
 
     const result = await request("/mcp", {
       method: "POST",
@@ -142,11 +160,14 @@ describe("CMS-OS Portal Planning Agent", () => {
       const first = new PortalPlanningService(portal, stateStore, undefined, content);
       const created = first.create(provider, { category: "legal", theme: "相続", audience: "customer" });
       const applied = first.apply(provider, created.id);
+      const drafted = first.draft(provider, created.id);
       const second = new PortalPlanningService(portal, stateStore, undefined, content);
       const restored = second.get(provider, created.id);
       assert.equal(restored.theme, "相続");
       assert.deepEqual(restored.appliedProposalIds, applied.proposals.map((proposal) => proposal.id));
+      assert.deepEqual(restored.draftIds, drafted.drafts.map((draft) => draft.id));
       assert.deepEqual(second.apply(provider, created.id).proposals.map((proposal) => proposal.id), applied.proposals.map((proposal) => proposal.id));
+      assert.deepEqual(second.draft(provider, created.id).drafts.map((draft) => draft.id), drafted.drafts.map((draft) => draft.id));
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
