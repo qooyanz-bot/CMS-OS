@@ -67,6 +67,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /listing-submit-button/);
   assert.match(body, /login-form/);
   assert.match(body, /mfa-panel/);
+  assert.match(body, /value="recruiter"/);
 
   const script = await fetch(`${baseUrl}/app.js`);
   assert.equal(script.status, 200);
@@ -74,6 +75,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /category-select/);
   assert.match(scriptBody, /api\/v1\/categories\/\$\{encodeURIComponent\(state\.category\)\}/);
   assert.match(scriptBody, /moduleLabels/);
+  assert.match(scriptBody, /function isRecruiterRole/);
   assert.match(scriptBody, /navigationLabels\.themes/);
   assert.match(scriptBody, /providerSectionTitle/);
   assert.match(scriptBody, /workflowTitle\.textContent = `\$\{primaryLabel\}/);

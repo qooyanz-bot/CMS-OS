@@ -31,7 +31,12 @@ const labels = {
   orderer: "発注者",
   provider: "事業者",
   candidate: "リクルーター",
+  recruiter: "リクルーター",
 };
+
+function isRecruiterRole(role) {
+  return role === "candidate" || role === "recruiter";
+}
 
 const moduleLabels = {
   aiUseCases: "AI活用事例",
@@ -674,7 +679,7 @@ function clearJobView() {
 
 async function reloadRoleData() {
   const canSeeRequests = Boolean(state.token && (state.role === "orderer" || state.role === "provider"));
-  const canSeeApplications = Boolean(state.token && (state.role === "candidate" || state.role === "provider"));
+  const canSeeApplications = Boolean(state.token && (isRecruiterRole(state.role) || state.role === "provider"));
   const canSeeInquiries = Boolean(state.token && state.experience?.allowedActions.includes("inquiry.read"));
   const canSeeNotifications = Boolean(state.token && state.experience?.allowedActions.includes("notification.read"));
   elements.requestInboxPanel.hidden = !canSeeRequests;
