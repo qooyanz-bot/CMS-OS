@@ -89,6 +89,7 @@ PATCH /api/v1/directories/{directoryId}   # 運営キーで外部案内を更新
 DELETE /api/v1/directories/{directoryId}  # 運営キーで外部案内を削除
 外部案内は運営キーを持つAPI/MCP連携だけが追加・更新・削除できます。閲覧時はカテゴリと現在のロールに応じて対象案内を投影します。
 GET  /api/v1/providers?category=beauty&theme=カラー
+GET  /api/v1/providers/compare?category=beauty&ids=provider-beauty-demo,provider-beauty-support-demo
 GET  /api/v1/providers/{providerId}
 GET  /api/v1/favorites?limit=50&cursor=0
 POST /api/v1/favorites
@@ -180,6 +181,7 @@ POST /mcp
 
 - お気に入り一覧：ユーザー、発注者、リクルーターが現在カテゴリの公開事業者を保存・解除
 - 事業者プロフィール詳細：一覧からAPIのロール別投影を取得し、公開項目・発注者向け項目・リクルーター向け項目を権限に応じて表示
+- 事業者比較：2〜3件を選び、現在のカテゴリ・ロールで表示できる項目を比較
 
 事業者ロールでログインすると、APIを正本とした次の管理導線が表示されます。
 

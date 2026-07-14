@@ -61,6 +61,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /directory-guide-list/);
   assert.match(body, /favorite-panel/);
   assert.match(body, /favorite-list/);
+  assert.match(body, /provider-compare-panel/);
+  assert.match(body, /provider-compare-list/);
   assert.match(body, /provider-profile-panel/);
   assert.match(body, /provider-profile-fields/);
   assert.match(body, /provider-section-title/);
@@ -130,6 +132,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/favorites/);
   assert.match(scriptBody, /favorite-provider-button/);
   assert.match(scriptBody, /function reloadFavorites/);
+  assert.match(scriptBody, /provider-compare-button/);
+  assert.match(scriptBody, /api\/v1\/providers\/compare/);
+  assert.match(scriptBody, /function loadProviderComparison/);
   assert.match(scriptBody, /provider-profile-button/);
   assert.match(scriptBody, /async function openProviderProfile/);
   assert.match(scriptBody, /api\(`\/api\/v1\/providers\/\$\{encodeURIComponent\(providerId\)\}`\)/);

@@ -88,6 +88,14 @@ select:focus, input:focus, textarea:focus { border-color: rgba(184, 243, 106, .6
 .provider-profile-field { display: grid; grid-template-columns: minmax(120px, .35fr) 1fr; gap: 12px; align-items: start; background: rgba(255,255,255,.035); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
 .provider-profile-field span { color: var(--muted); font-size: 12px; }
 .provider-profile-field strong { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.provider-compare-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.provider-compare-list { margin-top: 15px; }
+.provider-compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.provider-compare-card { background: rgba(184,243,106,.045); border: 1px solid rgba(184,243,106,.14); border-radius: 14px; padding: 14px; }
+.provider-compare-card h3 { margin: 0 0 8px; font-size: 15px; }
+.provider-compare-card dl { display: grid; gap: 8px; margin: 12px 0 0; }
+.provider-compare-card dt { color: var(--muted); font-size: 11px; }
+.provider-compare-card dd { margin: 2px 0 0; font-size: 12px; overflow-wrap: anywhere; }
 .meta { display: flex; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 12px; }
 .meta span { padding: 5px 8px; background: rgba(255,255,255,.05); border-radius: 7px; }
 .status-tag { color: #d9f8ae; border: 1px solid rgba(184, 243, 106, .2); }

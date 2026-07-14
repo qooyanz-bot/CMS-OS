@@ -271,6 +271,19 @@
         "responses": { "200": { "description": "事業者一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
+    "/api/v1/providers/compare": {
+      "get": {
+        "tags": ["Portal"],
+        "operationId": "compareProviders",
+        "summary": "カテゴリ内の事業者を最大3件比較",
+        "parameters": [
+          { "$ref": "#/components/parameters/CategoryQuery" },
+          { "name": "ids", "in": "query", "required": true, "description": "事業者IDをカンマ区切りで2〜3件指定", "schema": { "type": "string", "minLength": 1 } }
+        ],
+        "security": [{}, { "BearerAuth": [] }],
+        "responses": { "200": { "description": "事業者比較結果", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderCompareResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/api/v1/favorites": {
       "get": {
         "tags": ["Portal"],
@@ -1163,6 +1176,7 @@
       "PortalPlanDraftResponse": { "type": "object", "required": ["plan", "proposals", "drafts"], "properties": { "plan": { "$ref": "#/components/schemas/PortalPlan" }, "proposals": { "type": "array", "items": { "$ref": "#/components/schemas/ContentProposal" } }, "drafts": { "type": "array", "items": { "$ref": "#/components/schemas/Content" } } } },
       "Provider": { "type": "object", "required": ["id", "category", "name", "themes", "location"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string" }, "themes": { "type": "array", "items": { "type": "string" } }, "location": { "type": "string" }, "listingStatus": { "$ref": "#/components/schemas/ProviderListingStatus" }, "listingSubmittedAt": { "type": "string", "format": "date-time" }, "listingReviewedAt": { "type": "string", "format": "date-time" }, "listingReviewNote": { "type": "string" } }, "additionalProperties": true },
       "ProviderListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Provider" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
+      "ProviderCompareResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "minItems": 2, "maxItems": 3, "items": { "$ref": "#/components/schemas/Provider" } } } },
       "ProviderUpdateRequest": { "type": "object", "properties": { "name": { "type": "string", "minLength": 2 }, "themes": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string" } }, "location": { "type": "string", "minLength": 2 }, "publicFields": { "type": "object", "additionalProperties": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] } } }, "additionalProperties": false },
       "ProviderResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/Provider" } } },
       "FavoriteCreateRequest": { "type": "object", "required": ["providerId"], "properties": { "providerId": { "type": "string", "minLength": 1 } }, "additionalProperties": false },

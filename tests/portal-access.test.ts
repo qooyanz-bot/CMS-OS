@@ -376,6 +376,32 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(providerProfile.body.item.contactOptions, undefined);
   });
 
+  it("公開事業者をカテゴリ内で比較し、RESTとMCPで同じ投影結果を返す", async () => {
+    const compared = await request("/api/v1/providers/compare?category=legal&ids=provider-legal-demo,provider-legal-support-demo");
+    assert.equal(compared.status, 200);
+    assert.deepEqual(compared.body.items.map((item: { id: string }) => item.id), ["provider-legal-demo", "provider-legal-support-demo"]);
+    assert.equal(compared.body.items[0].contactOptions, undefined);
+    assert.equal(compared.body.items[0].internalStatus, undefined);
+
+    const ordererCompared = await request("/api/v1/providers/compare?category=legal&ids=provider-legal-demo,provider-legal-support-demo", {
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+    });
+    assert.equal(ordererCompared.status, 200);
+    assert.ok(ordererCompared.body.items.every((item: { contactOptions?: string[]; internalStatus?: string }) => item.contactOptions && item.internalStatus === undefined));
+
+    const invalidCount = await request("/api/v1/providers/compare?category=legal&ids=provider-legal-demo");
+    assert.equal(invalidCount.status, 400);
+    const crossCategory = await request("/api/v1/providers/compare?category=legal&ids=provider-legal-demo,provider-beauty-demo");
+    assert.equal(crossCategory.status, 404);
+
+    const mcp = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 61, method: "tools/call", params: { name: "provider.compare", arguments: { category: "legal", providerIds: ["provider-legal-demo", "provider-legal-support-demo"] } } }),
+    });
+    assert.equal(mcp.status, 200);
+    assert.deepEqual(mcp.body.result.structuredContent.items.map((item: { id: string }) => item.id), ["provider-legal-demo", "provider-legal-support-demo"]);
+  });
+
   it("発注者はカテゴリ別の公開事業者をお気に入りへ保存・解除でき、MCPと同じ所有者境界を使う", async () => {
     const denied = await request("/api/v1/favorites", {
       method: "POST",

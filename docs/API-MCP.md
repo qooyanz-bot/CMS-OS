@@ -102,6 +102,7 @@ POST /api/v1/publications/schedules/execute
 POST /api/v1/publications/schedules/{scheduleId}/cancel
 POST /api/v1/publications/{publicationId}/rollback
 GET  /api/v1/providers?category=legal&limit=50&cursor=0
+GET  /api/v1/providers/compare?category=legal&ids=provider-legal-demo,provider-legal-support-demo
 GET  /api/v1/providers/{providerId}
 GET  /api/v1/favorites?limit=50&cursor=0
 POST /api/v1/favorites
@@ -139,6 +140,7 @@ PATCH /api/v1/jobs/{jobId}
 ## 事業者掲載情報と求人管理
 
 - `GET /api/v1/providers/{providerId}` は、未ログインを含む現在のカテゴリ・ロールに応じて掲載情報を投影します。
+- `GET /api/v1/providers/compare` / `provider.compare` は、同じカテゴリの公開事業者を2〜3件受け取り、現在のロールで表示可能な項目だけを同じ順序で返します。非公開事業者、別カテゴリの事業者、不存在のIDは比較結果へ混ぜません。
 - `PATCH /api/v1/providers/{providerId}` は、対象カテゴリの事業者本人だけが利用できます。名前、テーマ、所在地、公開項目を更新でき、`id`、カテゴリ、ロール別項目、確認状態などの保護項目は更新できません。
 - `POST /api/v1/jobs` と `PATCH /api/v1/jobs/{jobId}` は、事業者本人のカテゴリ・providerIdを検証します。求人状態は `published` または `closed` です。
 - 公開・ユーザー・発注者・リクルーターには公開中求人だけを返し、事業者本人には自社求人の状態を含めて返します。

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { URL } from "node:url";
 import { AuthServiceError, type AuthService } from "../domain/auth.js";
-import { applicationSortValues, jobSortValues, PortalService, PortalServiceError, providerSortValues, requestSortValues } from "../application/portal-service.js";
+import { applicationSortValues, jobSortValues, PortalService, PortalServiceError, providerCompareLimit, providerSortValues, requestSortValues } from "../application/portal-service.js";
 import {
   ContentService,
   ContentServiceError,
@@ -835,6 +835,18 @@ async function handleMcp(
             },
           },
           {
+            name: "provider.compare",
+            description: "現在のカテゴリで表示可能な事業者を最大3件まで比較します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                category: { enum: categoryEnum },
+                providerIds: { type: "array", minItems: 2, maxItems: providerCompareLimit, items: { type: "string" } },
+              },
+              required: ["category", "providerIds"],
+            },
+          },
+          {
             name: "favorite.list",
             description: "ログイン中の本人がカテゴリ内で保存した公開事業者を取得します。",
             inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: [] },
@@ -1648,6 +1660,17 @@ async function handleMcp(
         sort: parseOptionalEnumValue(argumentsObject.sort, "sort", providerSortValues),
       }, parsePaginationArguments(argumentsObject));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "provider.compare") {
+      if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
+      if (!Array.isArray(argumentsObject.providerIds) || argumentsObject.providerIds.some((providerId) => typeof providerId !== "string")) {
+        throw new Error("providerIdsは文字列配列で指定してください。");
+      }
+      const result = portal.compareProviders(argumentsObject.category, principal, argumentsObject.providerIds as string[]);
+      const payload = { items: result };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(payload)], structuredContent: payload } });
       return;
     }
 
@@ -2715,6 +2738,21 @@ export function createHttpServer(
           });
         } catch (error) {
           writeJson(response, 400, { error: error instanceof Error ? error.message : "事業者を取得できません。" });
+        }
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/providers/compare") {
+        const category = url.searchParams.get("category");
+        if (!isCategorySlug(category)) {
+          writeJson(response, 400, { error: "categoryが有効なカテゴリである必要があります。" });
+          return;
+        }
+        const providerIds = (url.searchParams.get("ids") ?? "").split(",").map((providerId) => providerId.trim()).filter(Boolean);
+        try {
+          writeJson(response, 200, { items: portal.compareProviders(category, principal, providerIds) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "事業者を比較できません。" });
         }
         return;
       }

@@ -32,6 +32,7 @@ export type DirectoryGuideCreateInput = Omit<DirectoryGuide, "id">;
 export type DirectoryGuideUpdateInput = Partial<DirectoryGuideCreateInput>;
 
 export const providerSortValues = ["relevance", "name_asc", "location_asc"] as const;
+export const providerCompareLimit = 3;
 export const requestSortValues = ["createdAt_desc", "createdAt_asc", "title_asc"] as const;
 export const jobSortValues = ["title_asc", "title_desc", "location_asc"] as const;
 export const applicationSortValues = ["createdAt_desc", "createdAt_asc", "status"] as const;
@@ -317,6 +318,22 @@ export class PortalService {
     pagination: { limit?: number; cursor?: number } = {},
   ): PortalPage<VisibleProvider> {
     return this.paginate(this.searchProviders(category, principal, filters), pagination.limit ?? 50, pagination.cursor ?? 0);
+  }
+
+  public compareProviders(
+    category: CategorySlug,
+    principal: AuthenticatedPrincipal | null,
+    providerIds: string[],
+  ): VisibleProvider[] {
+    const ids = [...new Set(providerIds.map((providerId) => providerId.trim()).filter(Boolean))];
+    if (ids.length < 2 || ids.length > providerCompareLimit) {
+      throw new PortalServiceError(400, `比較する事業者は2〜${providerCompareLimit}件で指定してください。`);
+    }
+    return ids.map((providerId) => {
+      const provider = this.store.getProvider(providerId);
+      if (!provider || provider.category !== category) throw new PortalServiceError(404, "比較対象の事業者が見つかりません。");
+      return this.getProvider(providerId, principal);
+    });
   }
 
   public listFavorites(

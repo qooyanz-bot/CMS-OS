@@ -11,6 +11,8 @@ const state = {
   providers: [],
   favorites: [],
   providerProfile: null,
+  compareProviderIds: [],
+  providerComparison: [],
   directoryGuides: [],
   requests: [],
   applications: [],
@@ -39,6 +41,7 @@ const labels = {
 };
 
 const defaultRoleOptions = ["user", "orderer", "provider", "recruiter"];
+const providerCompareLimit = 3;
 
 function isRecruiterRole(role) {
   return role === "candidate" || role === "recruiter";
@@ -142,10 +145,15 @@ const elements = {
   providerProfileStatus: document.querySelector("#provider-profile-status"),
   providerPagination: document.querySelector("#provider-pagination"),
       providerStatus: document.querySelector("#provider-list-status"),
-      favoritePanel: document.querySelector("#favorite-panel"),
-      favorites: document.querySelector("#favorite-list"),
-      favoriteStatus: document.querySelector("#favorite-list-status"),
-      directoryGuidePanel: document.querySelector("#directory-guide-panel"),
+  favoritePanel: document.querySelector("#favorite-panel"),
+  favorites: document.querySelector("#favorite-list"),
+  favoriteStatus: document.querySelector("#favorite-list-status"),
+  providerComparePanel: document.querySelector("#provider-compare-panel"),
+  providerCompareRun: document.querySelector("#provider-compare-run"),
+  providerCompareClear: document.querySelector("#provider-compare-clear"),
+  providerCompareList: document.querySelector("#provider-compare-list"),
+  providerCompareStatus: document.querySelector("#provider-compare-status"),
+  directoryGuidePanel: document.querySelector("#directory-guide-panel"),
   directoryGuideList: document.querySelector("#directory-guide-list"),
   directoryGuideStatus: document.querySelector("#directory-guide-status"),
   requestPanel: document.querySelector("#request-panel"),
@@ -390,7 +398,10 @@ function clearSessionState() {
   state.role = "user";
   state.availableContexts = [];
   state.favorites = [];
+  state.compareProviderIds = [];
+  state.providerComparison = [];
   clearProviderProfile();
+  clearProviderComparison();
   renderCategoryOptions();
   renderRoleOptions();
   elements.mfaPanel.hidden = true;
@@ -497,7 +508,11 @@ function renderProviders(items, page = {}, cursor = "") {
         const profileButton = state.experience?.visibleModules.includes("providerProfile")
           ? `<button class="button ghost provider-profile-button" data-provider-id="${escapeHtml(provider.id)}">プロフィールを見る</button>`
           : "";
-        return `<article class="provider-item"><h3>${escapeHtml(provider.name)}</h3><div class="meta"><span>${escapeHtml(provider.location)}</span><span>${formatValue(provider.themes)}</span>${publicFields}</div>${profileButton}${contactButton}${favoriteButton}</article>`;
+        const isCompared = state.compareProviderIds.includes(provider.id);
+        const compareButton = state.experience?.visibleModules.includes("providerProfile")
+          ? `<button class="button ghost provider-compare-button" data-provider-id="${escapeHtml(provider.id)}">${isCompared ? "比較から外す" : "比較に追加"}</button>`
+          : "";
+        return `<article class="provider-item"><h3>${escapeHtml(provider.name)}</h3><div class="meta"><span>${escapeHtml(provider.location)}</span><span>${formatValue(provider.themes)}</span>${publicFields}</div>${profileButton}${compareButton}${contactButton}${favoriteButton}</article>`;
       }).join("")
     : '<p class="empty">該当する事業者がありません。</p>';
   elements.requestProvider.innerHTML = items.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
@@ -513,6 +528,9 @@ function renderProviders(items, page = {}, cursor = "") {
   });
   document.querySelectorAll(".provider-profile-button").forEach((button) => {
     button.addEventListener("click", () => void openProviderProfile(button.dataset.providerId ?? ""));
+  });
+  document.querySelectorAll(".provider-compare-button").forEach((button) => {
+    button.addEventListener("click", () => toggleProviderComparison(button.dataset.providerId ?? ""));
   });
   renderListPagination(elements.providerPagination, page, cursor, reloadProviders, "事業者一覧のページ移動");
 }
@@ -591,6 +609,110 @@ async function openProviderProfile(providerId) {
   } catch (error) {
     setListStatus(elements.providerProfileStatus, "error", "事業者プロフィールを読み込めませんでした。再試行してください。", () => openProviderProfile(providerId));
   }
+}
+
+function comparisonProviders() {
+  if (state.providerComparison.length > 0) return state.providerComparison;
+  return state.compareProviderIds.map((providerId) => state.providers.find((provider) => provider.id === providerId)).filter(Boolean);
+}
+
+function renderProviderComparison() {
+  const selectedCount = state.compareProviderIds.length;
+  elements.providerComparePanel.hidden = selectedCount === 0;
+  elements.providerCompareRun.hidden = selectedCount < 2;
+  const items = comparisonProviders();
+  elements.providerCompareList.replaceChildren();
+  if (items.length > 0) {
+    const grid = document.createElement("div");
+    grid.className = "provider-compare-grid";
+    for (const provider of items) {
+      const card = document.createElement("article");
+      card.className = "provider-compare-card";
+      const title = document.createElement("h3");
+      title.textContent = provider.name;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const location = document.createElement("span");
+      location.textContent = provider.location;
+      const themes = document.createElement("span");
+      themes.textContent = provider.themes.join("・");
+      meta.append(location, themes);
+      card.append(title, meta);
+      const fields = Object.entries(provider).filter(([key]) => !["id", "category", "name", "themes", "location"].includes(key));
+      if (fields.length > 0) {
+        const details = document.createElement("dl");
+        for (const [key, value] of fields) {
+          const label = document.createElement("dt");
+          label.textContent = key;
+          const content = document.createElement("dd");
+          content.textContent = providerFieldText(value);
+          details.append(label, content);
+        }
+        card.append(details);
+      }
+      grid.append(card);
+    }
+    elements.providerCompareList.append(grid);
+  }
+  if (selectedCount > 0 && selectedCount < 2) {
+    setListStatus(elements.providerCompareStatus, "info", "比較する事業者をもう1件選択してください。");
+  } else if (selectedCount >= 2 && state.providerComparison.length === 0) {
+    setListStatus(elements.providerCompareStatus, "info", "比較結果を表示できます。");
+  } else {
+    setListStatus(elements.providerCompareStatus);
+  }
+}
+
+function updateProviderCompareButtons() {
+  document.querySelectorAll(".provider-compare-button").forEach((button) => {
+    const providerId = button.dataset.providerId ?? "";
+    const selected = state.compareProviderIds.includes(providerId);
+    button.textContent = selected ? "比較から外す" : "比較に追加";
+    button.setAttribute("aria-pressed", String(selected));
+  });
+}
+
+function toggleProviderComparison(providerId) {
+  if (!providerId) return;
+  const index = state.compareProviderIds.indexOf(providerId);
+  if (index >= 0) {
+    state.compareProviderIds.splice(index, 1);
+  } else {
+    if (state.compareProviderIds.length >= providerCompareLimit) {
+      setMessage(`比較できる事業者は最大${providerCompareLimit}件です。`);
+      return;
+    }
+    state.compareProviderIds.push(providerId);
+  }
+  state.providerComparison = [];
+  renderProviderComparison();
+  updateProviderCompareButtons();
+}
+
+async function loadProviderComparison() {
+  if (state.compareProviderIds.length < 2) {
+    renderProviderComparison();
+    return;
+  }
+  setListStatus(elements.providerCompareStatus, "loading", "事業者の比較結果を読み込んでいます。");
+  try {
+    const ids = state.compareProviderIds.map((providerId) => encodeURIComponent(providerId)).join(",");
+    const body = await api(`/api/v1/providers/compare?category=${encodeURIComponent(state.category)}&ids=${ids}`);
+    state.providerComparison = body.items;
+    renderProviderComparison();
+  } catch (error) {
+    setListStatus(elements.providerCompareStatus, "error", "事業者を比較できませんでした。再試行してください。", () => loadProviderComparison());
+  }
+}
+
+function clearProviderComparison() {
+  state.compareProviderIds = [];
+  state.providerComparison = [];
+  elements.providerComparePanel.hidden = true;
+  elements.providerCompareRun.hidden = true;
+  elements.providerCompareList.replaceChildren();
+  setListStatus(elements.providerCompareStatus);
+  updateProviderCompareButtons();
 }
 
 function renderFavorites(items) {
@@ -1475,6 +1597,7 @@ async function handleContentAction(action, contentId) {
 
 async function reload() {
   clearProviderProfile();
+  clearProviderComparison();
   const contextBody = await api(`/api/v1/categories/${encodeURIComponent(state.category)}`);
   renderExperience(contextBody.item.experience, contextBody.item.navigation);
   await reloadProviderManagement();
@@ -1822,6 +1945,8 @@ elements.providerProfileInquiry.addEventListener("click", () => {
   elements.inquiryProvider.value = providerId;
   elements.inquiryForm.scrollIntoView({ behavior: "smooth", block: "center" });
 });
+elements.providerCompareRun.addEventListener("click", () => void loadProviderComparison());
+elements.providerCompareClear.addEventListener("click", () => clearProviderComparison());
 
 async function initialize() {
   try {

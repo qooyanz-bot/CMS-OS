@@ -433,6 +433,31 @@ const providers: ProviderRecord[] = [
     },
   },
   {
+    id: "provider-legal-support-demo",
+    category: "legal",
+    name: "CMS-OS法務サポート事務所（比較用サンプル）",
+    themes: ["企業法務", "契約書"],
+    location: "大阪府",
+    publicFields: {
+      practiceAreas: ["企業法務", "契約書"],
+      consultationMethods: ["オンライン", "電話"],
+      verificationStatus: "verified",
+      lastVerifiedAt: "2026-07-01",
+    },
+    ordererFields: {
+      contactOptions: ["見積もり相談", "初回相談"],
+      responsePolicy: "営業日以内に返信するサンプル情報です。",
+    },
+    providerFields: {
+      internalStatus: "掲載情報を管理できます。",
+      inquiryCount: "非公開の管理指標サンプルです。",
+    },
+    candidateFields: {
+      openPositions: ["法務スタッフ"],
+      culture: "チームで企業支援に取り組むサンプル情報です。",
+    },
+  },
+  {
     id: "provider-beauty-demo",
     category: "beauty",
     name: "CMS-OS美容室（サンプル）",
@@ -456,6 +481,32 @@ const providers: ProviderRecord[] = [
     candidateFields: {
       openPositions: ["スタイリスト", "アシスタント"],
       culture: "技術研修と長期的なキャリア形成を重視",
+    },
+  },
+  {
+    id: "provider-beauty-support-demo",
+    category: "beauty",
+    name: "CMS-OS美容室（比較用サンプル）",
+    themes: ["カラー", "ヘアケア"],
+    location: "東京都",
+    publicFields: {
+      menu: ["カラー", "ヘアケア"],
+      priceRange: "8,000円〜",
+      openingHours: "11:00〜20:00",
+      verificationStatus: "verified",
+      lastVerifiedAt: "2026-07-01",
+    },
+    ordererFields: {
+      contactOptions: ["予約相談", "メニュー相談"],
+      responsePolicy: "営業時間内に返信するサンプル情報です。",
+    },
+    providerFields: {
+      internalStatus: "掲載情報を管理できます。",
+      bookingCount: "非公開の管理指標サンプルです。",
+    },
+    candidateFields: {
+      openPositions: ["スタイリスト"],
+      culture: "技術研修とチームワークを重視するサンプル情報です。",
     },
   },
   ...genericProviders,
