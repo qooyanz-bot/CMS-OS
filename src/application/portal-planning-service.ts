@@ -12,8 +12,9 @@ import type {
   PortalPlanPageIdea,
   PortalPlanSearchIntent,
 } from "../domain/types.js";
-import { contentAudiences, portalPlanGoals } from "../domain/types.js";
+import { contentAudiences, portalPlanGoals, portalPlanIntentKinds, portalPlanPageTypes } from "../domain/types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
+import type { ContentAgentAdapter, ContentAgentPortalPlanOutput } from "../integrations/content-agent-adapter.js";
 import { ContentService } from "./content-service.js";
 import { PortalService, PortalServiceError, type PortalPage } from "./portal-service.js";
 
@@ -64,6 +65,76 @@ function contentTypeForPage(pageType: PortalPlanPageIdea["pageType"]): ContentTy
   return "blog";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function agentText(value: unknown, fieldName: string, maxLength: number): string {
+  if (typeof value !== "string" || !value.trim() || value.length > maxLength) throw new PortalPlanningServiceError(502, `AIエージェントの${fieldName}が不正です。`);
+  return value.trim();
+}
+
+function agentStringArray(value: unknown, fieldName: string, maxItems: number): string[] {
+  if (!Array.isArray(value) || value.length > maxItems || value.some((item) => typeof item !== "string" || !item.trim())) {
+    throw new PortalPlanningServiceError(502, `AIエージェントの${fieldName}が不正です。`);
+  }
+  return [...new Set(value.map((item) => (item as string).trim()))];
+}
+
+function normalizeAgentPlan(value: unknown): ContentAgentPortalPlanOutput {
+  if (!isRecord(value) || !Array.isArray(value.searchIntents) || !Array.isArray(value.pageIdeas) || !Array.isArray(value.gaps)) {
+    throw new PortalPlanningServiceError(502, "AIエージェントのポータル計画形式が不正です。");
+  }
+  if (value.searchIntents.length > 50 || value.pageIdeas.length > 50 || value.gaps.length > 50) {
+    throw new PortalPlanningServiceError(502, "AIエージェントのポータル計画件数が上限を超えています。");
+  }
+  const searchIntents = value.searchIntents.map((item, index) => {
+    if (!isRecord(item) || typeof item.kind !== "string" || !portalPlanIntentKinds.includes(item.kind as PortalPlanSearchIntent["kind"])) {
+      throw new PortalPlanningServiceError(502, `AIエージェントのsearchIntents[${index}]が不正です。`);
+    }
+    return {
+      kind: item.kind as PortalPlanSearchIntent["kind"],
+      label: agentText(item.label, `searchIntents[${index}].label`, 100),
+      query: agentText(item.query, `searchIntents[${index}].query`, 200),
+      readerNeed: agentText(item.readerNeed, `searchIntents[${index}].readerNeed`, 500),
+      recommendedPageId: agentText(item.recommendedPageId, `searchIntents[${index}].recommendedPageId`, 100),
+    };
+  });
+  const pageIdeas = value.pageIdeas.map((item, index) => {
+    if (!isRecord(item) || typeof item.pageType !== "string" || !portalPlanPageTypes.includes(item.pageType as PortalPlanPageIdea["pageType"])) {
+      throw new PortalPlanningServiceError(502, `AIエージェントのpageIdeas[${index}]が不正です。`);
+    }
+    const path = agentText(item.path, `pageIdeas[${index}].path`, 500);
+    if (!path.startsWith("/") || path.includes("..")) throw new PortalPlanningServiceError(502, `AIエージェントのpageIdeas[${index}].pathが不正です。`);
+    return {
+      id: agentText(item.id, `pageIdeas[${index}].id`, 100),
+      pageType: item.pageType as PortalPlanPageIdea["pageType"],
+      path,
+      title: agentText(item.title, `pageIdeas[${index}].title`, 160),
+      purpose: agentText(item.purpose, `pageIdeas[${index}].purpose`, 500),
+      primaryKeyword: agentText(item.primaryKeyword, `pageIdeas[${index}].primaryKeyword`, 160),
+      internalLinks: agentStringArray(item.internalLinks, `pageIdeas[${index}].internalLinks`, 30),
+    };
+  });
+  const gaps = value.gaps.map((item, index) => {
+    if (!isRecord(item) || typeof item.severity !== "string" || !["high", "medium", "low"].includes(item.severity)) {
+      throw new PortalPlanningServiceError(502, `AIエージェントのgaps[${index}]が不正です。`);
+    }
+    return {
+      code: agentText(item.code, `gaps[${index}].code`, 100),
+      severity: item.severity as PortalPlanGap["severity"],
+      message: agentText(item.message, `gaps[${index}].message`, 500),
+      recommendation: agentText(item.recommendation, `gaps[${index}].recommendation`, 500),
+    };
+  });
+  return {
+    searchIntents,
+    pageIdeas,
+    gaps,
+    nextActions: agentStringArray(value.nextActions, "nextActions", 50),
+  };
+}
+
 export class PortalPlanningService {
   private readonly store: PortalPlanStore;
 
@@ -72,11 +143,12 @@ export class PortalPlanningService {
     stateStore?: StateStore,
     store?: PortalPlanStore,
     private readonly content?: ContentService,
+    private readonly agent?: ContentAgentAdapter,
   ) {
     this.store = store ?? new PortalPlanStore(stateStore);
   }
 
-  public create(principal: AuthenticatedPrincipal | null, input: PortalPlanCreateInput): PortalPlan {
+  public async create(principal: AuthenticatedPrincipal | null, input: PortalPlanCreateInput): Promise<PortalPlan> {
     validateInput(input);
     this.assertProvider(principal, input.category, "portal.plan.create");
     const category = this.portal.listCategories().find((item) => item.slug === input.category);
@@ -206,6 +278,32 @@ export class PortalPlanningService {
       ...(this.content && matchingContents.length === 0 ? ["content.propose: 指定テーマの対象ポジション別企画を作成する"] : []),
     ];
 
+    const baseline: ContentAgentPortalPlanOutput = { searchIntents, pageIdeas: pages, gaps, nextActions };
+    let planned = baseline;
+    if (this.agent?.planPortal) {
+      try {
+        planned = normalizeAgentPlan(await this.agent.planPortal({
+          category: input.category,
+          categoryLabel: category.label,
+          theme,
+          ...(region ? { region } : {}),
+          audience: input.audience,
+          goal,
+          availableModules: [...experience.visibleModules],
+          providerCount: providers.length,
+          externalGuideCount: guides.length,
+          jobCount: jobs.length,
+          contentCount: contents.length,
+          matchingContentCount: matchingContents.length,
+          baseline,
+        }));
+      } catch (error) {
+        if (error instanceof PortalPlanningServiceError) throw error;
+        const detail = error instanceof Error ? ` ${error.message}` : "";
+        throw new PortalPlanningServiceError(502, `AIエージェントのポータル計画生成に失敗しました。${detail}`.trim());
+      }
+    }
+
     return this.store.create({
       category: input.category,
       providerId: principal.providerId,
@@ -223,10 +321,10 @@ export class PortalPlanningService {
         matchingContentCount: matchingContents.length,
         availableModules: [...experience.visibleModules],
       },
-      searchIntents,
-      pageIdeas: pages,
-      gaps,
-      nextActions,
+      searchIntents: planned.searchIntents,
+      pageIdeas: planned.pageIdeas,
+      gaps: planned.gaps,
+      nextActions: planned.nextActions,
     });
   }
 

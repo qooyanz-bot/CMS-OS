@@ -9,6 +9,7 @@ import { ContentService } from "../src/application/content-service.js";
 import { PortalPlanningService } from "../src/application/portal-planning-service.js";
 import { createHttpServer } from "../src/api/http-server.js";
 import { JsonStateStore } from "../src/infrastructure/json-state-store.js";
+import { DeterministicContentAgentAdapter, type ContentAgentAdapter } from "../src/integrations/content-agent-adapter.js";
 
 let server: Server;
 let baseUrl: string;
@@ -151,6 +152,31 @@ describe("CMS-OS Portal Planning Agent", () => {
     assert.ok(result.body.result.structuredContent.pageIdeas.some((item: { id: string }) => item.id === "jobs"));
   });
 
+  it("外部AIアダプターでポータル計画の下書きを差し替えられる", async () => {
+    const provider = auth.authenticate(providerToken);
+    if (!provider) throw new Error("テスト用事業者セッションを取得できません。");
+    const deterministic = new DeterministicContentAgentAdapter();
+    let called = false;
+    const adapter: ContentAgentAdapter = {
+      id: "portal-plan-test-agent",
+      propose: (input) => deterministic.propose(input),
+      draft: (input) => deterministic.draft(input),
+      polish: (input) => deterministic.polish(input),
+      translate: (input) => deterministic.translate(input),
+      planPortal(input) {
+        called = true;
+        return {
+          ...input.baseline,
+          nextActions: ["外部AIが提案した次のアクション"],
+        };
+      },
+    };
+    const planning = new PortalPlanningService(portal, undefined, undefined, new ContentService(portal), adapter);
+    const created = await planning.create(provider, { category: "legal", theme: "AI計画接続", audience: "customer" });
+    assert.equal(called, true);
+    assert.deepEqual(created.nextActions, ["外部AIが提案した次のアクション"]);
+  });
+
   it("PortalPlanStoreはStateStoreから計画を復元できる", async () => {
     const directory = await mkdtemp(`${tmpdir()}\\cms-os-portal-plan-`);
     try {
@@ -158,7 +184,7 @@ describe("CMS-OS Portal Planning Agent", () => {
       const provider = auth.authenticate(providerToken);
       const content = new ContentService(portal);
       const first = new PortalPlanningService(portal, stateStore, undefined, content);
-      const created = first.create(provider, { category: "legal", theme: "相続", audience: "customer" });
+      const created = await first.create(provider, { category: "legal", theme: "相続", audience: "customer" });
       const applied = await first.apply(provider, created.id);
       const drafted = await first.draft(provider, created.id);
       const second = new PortalPlanningService(portal, stateStore, undefined, content);

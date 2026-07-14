@@ -1492,7 +1492,7 @@ async function handleMcp(
     }
 
     if (name === "portal.plan") {
-      const result = portalPlanning.create(principal, parsePortalPlanCreateInput(argumentsObject));
+      const result = await portalPlanning.create(principal, parsePortalPlanCreateInput(argumentsObject));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2531,7 +2531,7 @@ export function createHttpServer(
       if (request.method === "POST" && url.pathname === "/api/v1/portal-plans") {
         try {
           const body = await readJson(request);
-          writeJson(response, 201, { item: portalPlanning.create(principal, parsePortalPlanCreateInput(body)) });
+          writeJson(response, 201, { item: await portalPlanning.create(principal, parsePortalPlanCreateInput(body)) });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "ポータル計画を作成できません。" });
         }

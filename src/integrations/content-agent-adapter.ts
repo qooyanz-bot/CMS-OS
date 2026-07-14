@@ -7,6 +7,10 @@ import type {
   ContentRecord,
   ContentSeo,
   ContentType,
+  PortalPlanGap,
+  PortalPlanGoal,
+  PortalPlanPageIdea,
+  PortalPlanSearchIntent,
 } from "../domain/types.js";
 
 /**
@@ -79,6 +83,35 @@ export type ContentAgentTranslateOutput = {
   seo?: Partial<ContentSeo>;
 };
 
+/** ポータル計画をAIへ委譲するときの入力です。基準案も一緒に渡して監査可能性を保ちます。 */
+export type ContentAgentPortalPlanInput = {
+  category: CategorySlug;
+  categoryLabel: string;
+  theme: string;
+  region?: string;
+  audience: ContentAudience;
+  goal: PortalPlanGoal;
+  availableModules: string[];
+  providerCount: number;
+  externalGuideCount: number;
+  jobCount: number;
+  contentCount: number;
+  matchingContentCount: number;
+  baseline: {
+    searchIntents: PortalPlanSearchIntent[];
+    pageIdeas: PortalPlanPageIdea[];
+    gaps: PortalPlanGap[];
+    nextActions: string[];
+  };
+};
+
+export type ContentAgentPortalPlanOutput = {
+  searchIntents: PortalPlanSearchIntent[];
+  pageIdeas: PortalPlanPageIdea[];
+  gaps: PortalPlanGap[];
+  nextActions: string[];
+};
+
 /** 同期アダプターとHTTP・キュー型アダプターを同じ契約で扱うための型です。 */
 export type ContentAgentResult<T> = T | PromiseLike<T>;
 
@@ -95,6 +128,7 @@ export interface ContentAgentAdapter {
   draft(input: ContentAgentDraftInput): ContentAgentResult<ContentAgentDraftOutput>;
   polish(input: ContentAgentPolishInput): ContentAgentResult<ContentAgentPolishOutput>;
   translate(input: ContentAgentTranslateInput): ContentAgentResult<ContentAgentTranslateOutput>;
+  planPortal?(input: ContentAgentPortalPlanInput): ContentAgentResult<ContentAgentPortalPlanOutput>;
 }
 
 export type HttpContentAgentAdapterOptions = {
@@ -236,6 +270,10 @@ export class HttpContentAgentAdapter implements ContentAgentAdapter {
 
   public translate(input: ContentAgentTranslateInput): Promise<ContentAgentTranslateOutput> {
     return this.request("translate", input);
+  }
+
+  public planPortal(input: ContentAgentPortalPlanInput): Promise<ContentAgentPortalPlanOutput> {
+    return this.request("portal_plan", input);
   }
 
   private async request<T>(operation: string, input: unknown): Promise<T> {
