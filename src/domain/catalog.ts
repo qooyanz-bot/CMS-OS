@@ -529,6 +529,66 @@ export function listProviders(category: CategorySlug): ProviderRecord[] {
   return providers.filter((provider) => provider.category === category);
 }
 
+const providerNavigationLabels: Record<string, string> = {
+  providerDashboard: "事業者ダッシュボード",
+  listingManagement: "掲載情報管理",
+  inquiryManagement: "問い合わせ管理",
+  menuManagement: "メニュー管理",
+  bookingManagement: "予約管理",
+  styleManagement: "スタイル管理",
+  jobManagement: "求人管理",
+  contentAssistant: "AIコンテンツ編集",
+  seoAssistant: "SEOアシスタント",
+};
+
+function resolveRoleNavigation(
+  policy: CategoryPolicy,
+  role: PortalRole,
+  visibleModules: string[],
+  allowedActions: string[],
+): CategoryModule[] {
+  const baseNavigation = new Map(policy.navigation.map((module) => [module.id, module]));
+  const navigation: CategoryModule[] = [];
+  const addBase = (ids: string[]): void => {
+    for (const id of ids) {
+      const module = baseNavigation.get(id);
+      if (module && !navigation.some((item) => item.id === id)) navigation.push({ ...module });
+    }
+  };
+  const add = (id: string, label: string): void => {
+    if (!navigation.some((item) => item.id === id)) navigation.push({ id, label });
+  };
+
+  if (role === "provider") {
+    for (const module of policy.navigation) {
+      if (visibleModules.includes(module.id)) add(module.id, module.label);
+    }
+    for (const moduleId of [
+      "providerDashboard",
+      "listingManagement",
+      "inquiryManagement",
+      "menuManagement",
+      "bookingManagement",
+      "styleManagement",
+      "jobManagement",
+      "contentAssistant",
+      "seoAssistant",
+    ]) {
+      if (visibleModules.includes(moduleId)) add(moduleId, providerNavigationLabels[moduleId] ?? moduleId);
+    }
+  } else if (isRecruiterRole(role)) {
+    addBase(["jobs", "providers", "guides", "styles"]);
+    if (visibleModules.includes("application") || visibleModules.includes("applicationStatus")) add("applications", "応募");
+  } else {
+    addBase(["themes", "menus", "providers", "guides", "styles"]);
+    if (allowedActions.includes("request.create")) add("requests", "依頼");
+    if (allowedActions.includes("booking.create")) add("bookings", "予約");
+    if (visibleModules.includes("jobSearch")) addBase(["jobs"]);
+  }
+
+  return navigation.length > 0 ? navigation : policy.navigation.map((module) => ({ ...module }));
+}
+
 export function resolveExperience(
   category: CategorySlug,
   role: PortalRole,
@@ -544,7 +604,7 @@ export function resolveExperience(
     categoryLabel: policy.label,
     role: normalizedRole,
     authenticated,
-    navigation: policy.navigation,
+    navigation: resolveRoleNavigation(policy, normalizedRole, rolePolicy.visibleModules, rolePolicy.allowedActions),
     visibleModules: rolePolicy.visibleModules,
     visibleFields: rolePolicy.visibleFields,
     allowedActions: authenticated ? rolePolicy.allowedActions : ["profile.read", "provider.search"],

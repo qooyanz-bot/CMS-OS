@@ -225,12 +225,13 @@ export class PortalService {
 
   public getCategoryContext(category: CategorySlug, principal: AuthenticatedPrincipal | null): PortalCategoryContext {
     const policy = getCategoryPolicy(category);
+    const experience = this.getExperience(category, principal);
     return {
       slug: policy.slug,
       label: policy.label,
-      navigation: policy.navigation.map((module) => ({ ...module })),
+      navigation: experience.navigation.map((module) => ({ ...module })),
       themeOptions: this.listThemeOptions(category, principal),
-      experience: this.getExperience(category, principal),
+      experience,
       directoryGuides: this.listDirectoryGuides(category, principal),
     };
   }

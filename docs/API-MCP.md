@@ -138,7 +138,7 @@ PATCH /api/v1/jobs/{jobId}
 
 レビュー依頼は`seo_reviewed`かつ最新版のファクトチェック・SEO監査が有効なコンテンツだけが実行できます。レビュー中は編集を禁止し、`request-changes`で理由を付けて`changes_requested`へ戻します。再編集後は監査をやり直し、再度レビューを依頼します。レビュー履歴は`workflow.reviews`または`GET /api/v1/content/{contentId}/reviews`で取得できます。
 
-管理画面や外部クライアントは、カテゴリごとの表示を決める際に`GET /api/v1/categories/{category}`を利用します。応答の`experience.visibleModules`、`experience.allowedActions`、`navigation`、`themeOptions`、`directoryGuides`を同じカテゴリ文脈として扱い、UIだけで表示制御を再実装しません。`themeOptions`は公開事業者のテーマとカテゴリの標準テーマを統合した検索候補です。
+管理画面や外部クライアントは、カテゴリごとの表示を決める際に`GET /api/v1/categories/{category}`を利用します。応答の`experience.visibleModules`、`experience.allowedActions`、ロール別に投影された`navigation`、`themeOptions`、`directoryGuides`を同じカテゴリ文脈として扱い、UIだけで表示制御を再実装しません。`themeOptions`は公開事業者のテーマとカテゴリの標準テーマを統合した検索候補です。
 
 ## 事業者掲載情報と求人管理
 

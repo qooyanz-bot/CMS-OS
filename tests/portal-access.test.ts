@@ -11,6 +11,8 @@ let baseUrl: string;
 let legalProviderToken: string;
 let legalOrdererToken: string;
 let beautyProviderToken: string;
+let beautyOrdererToken: string;
+let recruiterToken: string;
 let genericProviderTokens: Array<[string, string]>;
 const previousOperatorKey = process.env.CMS_OS_OPERATOR_KEY;
 
@@ -20,10 +22,14 @@ before(async () => {
   const providerLogin = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
   const ordererLogin = auth.login("orderer@example.com", "demo-password", "legal", "orderer");
   const beautyProviderLogin = auth.login("beauty@example.com", "demo-password", "beauty", "provider");
-  if (!providerLogin || !ordererLogin || !beautyProviderLogin || !("accessToken" in providerLogin) || !("accessToken" in ordererLogin) || !("accessToken" in beautyProviderLogin)) throw new Error("テスト用の事業者トークンを作成できません。");
+  const beautyOrdererLogin = auth.login("orderer@example.com", "demo-password", "beauty", "orderer");
+  const recruiterLogin = auth.login("candidate@example.com", "demo-password", "labor-shortage", "recruiter");
+  if (!providerLogin || !ordererLogin || !beautyProviderLogin || !beautyOrdererLogin || !recruiterLogin || !("accessToken" in providerLogin) || !("accessToken" in ordererLogin) || !("accessToken" in beautyProviderLogin) || !("accessToken" in beautyOrdererLogin) || !("accessToken" in recruiterLogin)) throw new Error("テスト用の事業者トークンを作成できません。");
   legalProviderToken = providerLogin.accessToken;
   legalOrdererToken = ordererLogin.accessToken;
   beautyProviderToken = beautyProviderLogin.accessToken;
+  beautyOrdererToken = beautyOrdererLogin.accessToken;
+  recruiterToken = recruiterLogin.accessToken;
   genericProviderTokens = [];
   const genericProviderDemos: Array<[CategorySlug, string]> = [
     ["ai-business", "ai-business@example.com"],
@@ -118,6 +124,39 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(!legal.body.experience.visibleModules.includes("booking"));
     assert.ok(beauty.body.experience.visibleModules.includes("styleGallery"));
     assert.ok(!beauty.body.experience.visibleModules.includes("legalDisclaimer"));
+  });
+
+  it("カテゴリ文脈のナビゲーションをロール別に投影しRESTとMCPで一致させる", async () => {
+    const guestExperience = await request("/api/v1/categories/legal/experience");
+    const ordererContext = await request("/api/v1/categories/beauty", {
+      headers: { authorization: `Bearer ${beautyOrdererToken}` },
+    });
+    const providerContext = await request("/api/v1/categories/legal", {
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+    });
+    const recruiterContext = await request("/api/v1/categories/labor-shortage", {
+      headers: { authorization: `Bearer ${recruiterToken}` },
+    });
+    const ids = (context: { body: { item?: { navigation?: Array<{ id: string }> }; experience?: { navigation?: Array<{ id: string }> } } }) =>
+      context.body.item?.navigation?.map((item) => item.id) ?? context.body.experience?.navigation?.map((item) => item.id) ?? [];
+
+    assert.deepEqual(ids(guestExperience), ["themes", "providers", "guides"]);
+    assert.deepEqual(ids(ordererContext), ["menus", "providers", "styles", "requests", "bookings"]);
+    assert.deepEqual(ids(providerContext), ["providerDashboard", "listingManagement", "inquiryManagement", "jobManagement", "contentAssistant", "seoAssistant"]);
+    assert.deepEqual(ids(recruiterContext), ["jobs", "providers", "guides", "applications"]);
+
+    const mcpContext = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${recruiterToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 54,
+        method: "tools/call",
+        params: { name: "category.get", arguments: { category: "labor-shortage" } },
+      }),
+    });
+    assert.equal(mcpContext.status, 200);
+    assert.deepEqual(mcpContext.body.result.structuredContent.item.navigation.map((item: { id: string }) => item.id), ids(recruiterContext));
   });
 
   it("カテゴリ別外部案内をRESTとMCPでロール別に返す", async () => {

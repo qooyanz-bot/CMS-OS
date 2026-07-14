@@ -80,7 +80,7 @@ POST /api/v1/auth/mfa/enroll
 POST /api/v1/auth/mfa/confirm
 POST /api/v1/auth/mfa/complete
 GET  /api/v1/categories                     # カテゴリ別テーマ候補とナビゲーションを取得
-カテゴリ文脈の`visibleModules`はカテゴリごとに異なります。`ai-business`はAI活用、`labor-shortage`は採用支援、`tourism`は観光体験、`mobility-dx`はフリート、`gx`は脱炭素、`regional-revitalization`は地域プロジェクトの専用モジュールを、ユーザー・発注者・事業者・リクルーターのロール別に投影します。`GET /api/v1/categories`とカテゴリ文脈の`themeOptions`には、そのカテゴリの標準テーマと公開事業者が実際に掲載しているテーマを統合して返します。
+カテゴリ文脈の`visibleModules`と`navigation`はカテゴリ・ロールごとに異なります。`ai-business`はAI活用、`labor-shortage`は採用支援、`tourism`は観光体験、`mobility-dx`はフリート、`gx`は脱炭素、`regional-revitalization`は地域プロジェクトの専用モジュールを、ユーザー・発注者・事業者・リクルーターのロール別に投影します。ユーザーには公開導線、発注者には依頼・予約導線、事業者には管理導線、リクルーターには求人・応募導線だけを返します。`GET /api/v1/categories`とカテゴリ文脈の`themeOptions`には、そのカテゴリの標準テーマと公開事業者が実際に掲載しているテーマを統合して返します。
 GET  /api/v1/categories/{category}
 GET  /api/v1/categories/{category}/experience
 GET  /api/v1/categories/{category}/directories
