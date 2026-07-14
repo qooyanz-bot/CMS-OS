@@ -104,7 +104,8 @@
           </div>
           <div class="list-filters provider-filters">
             <label>キーワード<input id="provider-search" placeholder="事業者名・テーマ・地域" /></label>
-            <label>テーマ<input id="provider-theme-filter" placeholder="テーマを指定" /></label>
+            <label>テーマ<input id="provider-theme-filter" list="provider-theme-options" placeholder="テーマを指定" /></label>
+            <datalist id="provider-theme-options"></datalist>
             <label>地域<input id="provider-location-filter" placeholder="地域を指定" /></label>
             <label>並び順<select id="provider-sort"><option value="relevance">関連度順</option><option value="name_asc">事業者名順</option><option value="location_asc">地域順</option></select></label>
           </div>

@@ -132,6 +132,7 @@ const elements = {
   jobPanelTitle: document.querySelector("#job-panel-title"),
   search: document.querySelector("#provider-search"),
   providerTheme: document.querySelector("#provider-theme-filter"),
+  providerThemeOptions: document.querySelector("#provider-theme-options"),
   providerLocation: document.querySelector("#provider-location-filter"),
   providerSort: document.querySelector("#provider-sort"),
   providers: document.querySelector("#provider-list"),
@@ -416,7 +417,7 @@ function formatValue(value) {
   return escapeHtml(value);
 }
 
-function renderExperience(experience, navigation = []) {
+function renderExperience(experience, navigation = [], themeOptions = []) {
   state.experience = experience;
   elements.title.textContent = experience.categoryLabel;
   elements.badge.textContent = labels[experience.role];
@@ -447,6 +448,11 @@ function renderExperience(experience, navigation = []) {
   elements.jobPanelTitle.textContent = `カテゴリの${jobLabel}`;
   elements.search.placeholder = `${providerLabel}名・${primaryLabel}・地域`;
   elements.providerTheme.placeholder = `${primaryLabel}を指定`;
+  elements.providerThemeOptions.replaceChildren(...(Array.isArray(themeOptions) ? themeOptions : []).map((theme) => {
+    const option = document.createElement("option");
+    option.value = theme;
+    return option;
+  }));
   elements.requestPanel.hidden = !experience.allowedActions.includes("request.create");
   elements.inquiryPanel.hidden = !experience.allowedActions.includes("inquiry.create");
   const canSeeJobs = experience.visibleModules.includes("jobSearch") || experience.visibleModules.includes("jobManagement");
@@ -1599,7 +1605,7 @@ async function reload() {
   clearProviderProfile();
   clearProviderComparison();
   const contextBody = await api(`/api/v1/categories/${encodeURIComponent(state.category)}`);
-  renderExperience(contextBody.item.experience, contextBody.item.navigation);
+  renderExperience(contextBody.item.experience, contextBody.item.navigation, contextBody.item.themeOptions);
   await reloadProviderManagement();
   await reloadPortalPlanning();
   await reloadMediaManagement();

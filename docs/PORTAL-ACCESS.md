@@ -79,8 +79,8 @@ GET  /api/v1/auth/oidc/callback
 POST /api/v1/auth/mfa/enroll
 POST /api/v1/auth/mfa/confirm
 POST /api/v1/auth/mfa/complete
-GET  /api/v1/categories
-カテゴリ文脈の`visibleModules`はカテゴリごとに異なります。`ai-business`はAI活用、`labor-shortage`は採用支援、`tourism`は観光体験、`mobility-dx`はフリート、`gx`は脱炭素、`regional-revitalization`は地域プロジェクトの専用モジュールを、ユーザー・発注者・事業者・リクルーターのロール別に投影します。
+GET  /api/v1/categories                     # カテゴリ別テーマ候補とナビゲーションを取得
+カテゴリ文脈の`visibleModules`はカテゴリごとに異なります。`ai-business`はAI活用、`labor-shortage`は採用支援、`tourism`は観光体験、`mobility-dx`はフリート、`gx`は脱炭素、`regional-revitalization`は地域プロジェクトの専用モジュールを、ユーザー・発注者・事業者・リクルーターのロール別に投影します。`GET /api/v1/categories`とカテゴリ文脈の`themeOptions`には、そのカテゴリの標準テーマと公開事業者が実際に掲載しているテーマを統合して返します。
 GET  /api/v1/categories/{category}
 GET  /api/v1/categories/{category}/experience
 GET  /api/v1/categories/{category}/directories
@@ -200,7 +200,7 @@ POST /mcp
 - 一覧フィルター：事業者、求人、依頼、応募をAPIの検索・状態・地域・雇用形態・並び順で再取得
 - 一般ユーザー、発注者、リクルーターには事業者管理フォームを表示しない
 
-APIを操作する最小のブラウザUIを同梱しています。起動時に`GET /api/v1/categories`からカテゴリ一覧を取得して選択肢を生成するため、カテゴリ定義を追加してもUIへ自動反映されます。カテゴリを選択すると、そのカテゴリの表示モジュール、事業者、求人が切り替わります。複数カテゴリに割り当てられたユーザー・発注者・リクルーターは、ログイン状態を保持したまま`POST /api/v1/auth/context`でカテゴリまたはロールを切り替えます。カテゴリ割り当てのない事業者は切り替えを拒否し、対象カテゴリへ再ログインします。
+APIを操作する最小のブラウザUIを同梱しています。起動時に`GET /api/v1/categories`からカテゴリ一覧を取得して選択肢を生成するため、カテゴリ定義を追加してもUIへ自動反映されます。カテゴリを選択すると、そのカテゴリの表示モジュール、テーマ候補、事業者、求人が切り替わります。複数カテゴリに割り当てられたユーザー・発注者・リクルーターは、ログイン状態を保持したまま`POST /api/v1/auth/context`でカテゴリまたはロールを切り替えます。カテゴリ割り当てのない事業者は切り替えを拒否し、対象カテゴリへ再ログインします。
 
 ```bash
 npm run dev

@@ -192,12 +192,23 @@ export class PortalService {
     return { items: pageItems, page: { limit: safeLimit, ...(nextCursor ? { nextCursor } : {}) } };
   }
 
-  public listCategories(): Array<{ slug: CategorySlug; label: string; navigation: Array<{ id: string; label: string }> }> {
+  public listCategories(): Array<{ slug: CategorySlug; label: string; themes: string[]; navigation: Array<{ id: string; label: string }> }> {
     return listCategoryPolicies().map((policy) => ({
       slug: policy.slug,
       label: policy.label,
+      themes: [...policy.themes],
       navigation: policy.navigation,
     }));
+  }
+
+  private listThemeOptions(category: CategorySlug, principal: AuthenticatedPrincipal | null): string[] {
+    const policy = getCategoryPolicy(category);
+    const ownProviderId = principal?.category === category && principal.role === "provider" ? principal.providerId : undefined;
+    const providerThemes = this.store.listProviders(category)
+      .filter((provider) => isPublicProvider(provider) || provider.id === ownProviderId)
+      .flatMap((provider) => provider.themes);
+    return [...new Set([...policy.themes, ...providerThemes].map((theme) => theme.trim()).filter(Boolean))]
+      .sort(compareText);
   }
 
   public getCategoryContext(category: CategorySlug, principal: AuthenticatedPrincipal | null): PortalCategoryContext {
@@ -206,6 +217,7 @@ export class PortalService {
       slug: policy.slug,
       label: policy.label,
       navigation: policy.navigation.map((module) => ({ ...module })),
+      themeOptions: this.listThemeOptions(category, principal),
       experience: this.getExperience(category, principal),
       directoryGuides: this.listDirectoryGuides(category, principal),
     };

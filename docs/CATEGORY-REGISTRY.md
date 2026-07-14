@@ -26,7 +26,7 @@ CMS-OSのポータルカテゴリは、REST API、MCP、認証コンテキスト
 
 ## APIとMCP
 
-カテゴリは次のAPIで取得・利用できます。
+カテゴリとカテゴリ別テーマ候補は次のAPIで取得・利用できます。
 
 ```text
 GET  /api/v1/categories
@@ -38,6 +38,8 @@ POST /mcp  category.resolve_experience
 POST /mcp  category.get
 POST /mcp  provider.search
 ```
+
+`GET /api/v1/categories`の各項目には`themes`が含まれます。`GET /api/v1/categories/{category}`（MCPの`category.get`およびカテゴリContext Resource）の`themeOptions`は、標準テーマと公開事業者の掲載テーマを統合した検索候補です。事業者本人が取得する場合は、自社の公開前テーマも候補に含めます。
 
 MCPの`tools/list`は、実装中の`categorySlugs`からカテゴリ列挙を生成します。RESTとMCPで異なるカテゴリを受け付けないよう、サーバー側の入力検証も同じレジストリを参照します。
 

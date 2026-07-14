@@ -69,6 +69,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(slugs.includes("ai-business"));
     assert.ok(slugs.includes("tourism"));
     assert.ok(slugs.includes("gx"));
+    assert.ok(categories.body.items.find((item: { slug: string; themes: string[] }) => item.slug === "legal")?.themes.includes("相続"));
 
     const experience = await request("/api/v1/categories/ai-business/experience");
     const tourism = await request("/api/v1/categories/tourism/experience");
@@ -168,6 +169,8 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.ok(legal.body.item.experience.visibleModules.includes("legalDisclaimer"));
     assert.ok(beauty.body.item.experience.visibleModules.includes("styleGallery"));
     assert.ok(legal.body.item.directoryGuides.length > 0);
+    assert.ok(legal.body.item.themeOptions.includes("相続"));
+    assert.ok(beauty.body.item.themeOptions.includes("カラー"));
 
     const orderer = await request("/api/v1/categories/legal", { headers: { authorization: `Bearer ${legalOrdererToken}` } });
     assert.equal(orderer.body.item.experience.role, "orderer");
@@ -181,7 +184,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 45, method: "tools/call", params: { name: "category.list", arguments: {} } }),
     });
     assert.equal(mcpCategories.status, 200);
-    assert.ok(mcpCategories.body.result.structuredContent.items.some((item: { slug: string }) => item.slug === "legal"));
+    assert.ok(mcpCategories.body.result.structuredContent.items.some((item: { slug: string; themes: string[] }) => item.slug === "legal" && item.themes.includes("相続")));
     const mcpCategory = await request("/mcp", {
       method: "POST",
       headers: { authorization: `Bearer ${legalOrdererToken}` },
@@ -189,6 +192,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(mcpCategory.status, 200);
     assert.equal(mcpCategory.body.result.structuredContent.item.experience.role, "orderer");
+    assert.ok(mcpCategory.body.result.structuredContent.item.themeOptions.includes("契約書"));
   });
 
   it("MCP Resourceからカテゴリ別・ロール別の表示コンテキストを取得できる", async () => {

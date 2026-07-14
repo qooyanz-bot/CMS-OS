@@ -90,6 +90,7 @@ export interface PortalCategoryContext {
   slug: CategorySlug;
   label: string;
   navigation: CategoryModule[];
+  themeOptions: string[];
   experience: CategoryExperience;
   directoryGuides: DirectoryGuide[];
 }

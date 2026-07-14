@@ -50,6 +50,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /inquiry-management-panel/);
   assert.match(body, /notification-panel/);
   assert.match(body, /provider-theme-filter/);
+  assert.match(body, /provider-theme-options/);
   assert.match(body, /provider-sort/);
   assert.match(body, /request-status-filter/);
   assert.match(body, /application-job-filter/);
@@ -95,6 +96,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /moduleLabels/);
   assert.match(scriptBody, /function isRecruiterRole/);
   assert.match(scriptBody, /navigationLabels\.themes/);
+  assert.match(scriptBody, /providerThemeOptions/);
+  assert.match(scriptBody, /themeOptions/);
   assert.match(scriptBody, /providerSectionTitle/);
   assert.match(scriptBody, /workflowTitle\.textContent = `\$\{primaryLabel\}/);
   assert.match(scriptBody, /visibleModules\.includes\("jobSearch"\)/);

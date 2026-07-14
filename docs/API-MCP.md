@@ -55,7 +55,7 @@ GET  /api/v1/auth/config
 ログインロールは`user`、`orderer`、`provider`、`recruiter`を正式な公開名とし、既存クライアント互換のため`candidate`もリクルーターと同じ権限で受け付けます。
 
 ログイン成功、`auth.me`、`auth.switch_context`の主体情報には`availableContexts`を含めます。これはログイン中のアカウントが利用できるカテゴリごとの正規ロール一覧であり、管理画面やAIエージェントはこの一覧にないカテゴリ・ロールを表示・提案しません。`candidate`互換入力を利用した場合も、一覧では正規名`recruiter`として返します。
-GET  /api/v1/categories
+GET  /api/v1/categories                     # カテゴリ別テーマ候補とナビゲーションを取得
 GET  /api/v1/categories/{category}
 GET  /api/v1/categories/{category}/experience
 GET  /api/v1/categories/{category}/directories
@@ -135,7 +135,7 @@ PATCH /api/v1/jobs/{jobId}
 
 レビュー依頼は`seo_reviewed`かつ最新版のファクトチェック・SEO監査が有効なコンテンツだけが実行できます。レビュー中は編集を禁止し、`request-changes`で理由を付けて`changes_requested`へ戻します。再編集後は監査をやり直し、再度レビューを依頼します。レビュー履歴は`workflow.reviews`または`GET /api/v1/content/{contentId}/reviews`で取得できます。
 
-管理画面や外部クライアントは、カテゴリごとの表示を決める際に`GET /api/v1/categories/{category}`を利用します。応答の`experience.visibleModules`、`experience.allowedActions`、`navigation`、`directoryGuides`を同じカテゴリ文脈として扱い、UIだけで表示制御を再実装しません。
+管理画面や外部クライアントは、カテゴリごとの表示を決める際に`GET /api/v1/categories/{category}`を利用します。応答の`experience.visibleModules`、`experience.allowedActions`、`navigation`、`themeOptions`、`directoryGuides`を同じカテゴリ文脈として扱い、UIだけで表示制御を再実装しません。`themeOptions`は公開事業者のテーマとカテゴリの標準テーマを統合した検索候補です。
 
 ## 事業者掲載情報と求人管理
 

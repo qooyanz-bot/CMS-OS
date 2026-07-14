@@ -12,6 +12,7 @@ interface CategoryPolicy {
   slug: CategorySlug;
   label: string;
   navigation: CategoryModule[];
+  themes: string[];
   roles: Record<Exclude<PortalRole, "recruiter">, Omit<CategoryExperience, "category" | "categoryLabel" | "role" | "authenticated" | "navigation">>;
 }
 
@@ -109,6 +110,7 @@ function createGenericCategoryPolicy(definition: GenericCategoryDefinition): Cat
   return {
     slug: definition.slug,
     label: definition.label,
+    themes: definition.themes,
     navigation: [
       { id: "themes", label: definition.themeLabel },
       { id: "providers", label: "事業者を探す" },
@@ -171,6 +173,7 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
   legal: {
     slug: "legal",
     label: "士業・弁護士",
+    themes: ["相続", "企業法務", "契約書", "遺言", "交通事故"],
     navigation: [
       { id: "themes", label: "相談テーマ" },
       { id: "providers", label: "事業者を探す" },
@@ -274,6 +277,7 @@ const categoryPolicies: Record<CategorySlug, CategoryPolicy> = {
   beauty: {
     slug: "beauty",
     label: "美容",
+    themes: ["カット", "カラー", "縮毛矯正", "ヘアケア"],
     navigation: [
       { id: "menus", label: "メニュー" },
       { id: "providers", label: "店舗を探す" },
