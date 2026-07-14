@@ -111,6 +111,22 @@
           <div id="provider-list" class="provider-list" aria-live="polite" aria-busy="false"></div>
           <div id="provider-list-status" class="list-state" role="status" aria-live="polite" hidden></div>
           <div id="provider-pagination" class="list-pagination" aria-live="polite"></div>
+          <section id="provider-profile-panel" class="directory-guide-panel" hidden aria-live="polite">
+            <div class="section-kicker">PROVIDER PROFILE</div>
+            <div class="section-heading">
+              <div>
+                <h2 id="provider-profile-name">事業者プロフィール</h2>
+                <p id="provider-profile-summary" class="muted">一覧から事業者を選ぶと、現在のロールで表示できる詳細を確認できます。</p>
+              </div>
+              <button id="provider-profile-close" class="button ghost" type="button">閉じる</button>
+            </div>
+            <div id="provider-profile-meta" class="meta"></div>
+            <div id="provider-profile-fields" class="directory-guide-list"></div>
+            <div class="provider-profile-actions">
+              <button id="provider-profile-inquiry" class="button secondary" type="button" hidden>この事業者へ問い合わせ</button>
+            </div>
+            <div id="provider-profile-status" class="list-state" role="status" aria-live="polite" hidden></div>
+          </section>
           <section id="favorite-panel" class="directory-guide-panel" hidden>
             <div class="section-kicker">SAVED PROVIDERS</div>
             <h2>保存した事業者</h2>

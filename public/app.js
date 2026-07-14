@@ -10,6 +10,7 @@ const state = {
   experience: null,
   providers: [],
   favorites: [],
+  providerProfile: null,
   directoryGuides: [],
   requests: [],
   applications: [],
@@ -131,7 +132,15 @@ const elements = {
   providerLocation: document.querySelector("#provider-location-filter"),
   providerSort: document.querySelector("#provider-sort"),
   providers: document.querySelector("#provider-list"),
-      providerPagination: document.querySelector("#provider-pagination"),
+  providerProfilePanel: document.querySelector("#provider-profile-panel"),
+  providerProfileName: document.querySelector("#provider-profile-name"),
+  providerProfileSummary: document.querySelector("#provider-profile-summary"),
+  providerProfileMeta: document.querySelector("#provider-profile-meta"),
+  providerProfileFields: document.querySelector("#provider-profile-fields"),
+  providerProfileClose: document.querySelector("#provider-profile-close"),
+  providerProfileInquiry: document.querySelector("#provider-profile-inquiry"),
+  providerProfileStatus: document.querySelector("#provider-profile-status"),
+  providerPagination: document.querySelector("#provider-pagination"),
       providerStatus: document.querySelector("#provider-list-status"),
       favoritePanel: document.querySelector("#favorite-panel"),
       favorites: document.querySelector("#favorite-list"),
@@ -381,6 +390,7 @@ function clearSessionState() {
   state.role = "user";
   state.availableContexts = [];
   state.favorites = [];
+  clearProviderProfile();
   renderCategoryOptions();
   renderRoleOptions();
   elements.mfaPanel.hidden = true;
@@ -484,7 +494,10 @@ function renderProviders(items, page = {}, cursor = "") {
         const favoriteButton = canFavorite
           ? `<button class="button ghost favorite-provider-button" data-provider-id="${escapeHtml(provider.id)}" data-favorite-id="${escapeHtml(existingFavorite?.id ?? "")}">${existingFavorite ? "お気に入りを解除" : "お気に入りに保存"}</button>`
           : "";
-        return `<article class="provider-item"><h3>${escapeHtml(provider.name)}</h3><div class="meta"><span>${escapeHtml(provider.location)}</span><span>${formatValue(provider.themes)}</span>${publicFields}</div>${contactButton}${favoriteButton}</article>`;
+        const profileButton = state.experience?.visibleModules.includes("providerProfile")
+          ? `<button class="button ghost provider-profile-button" data-provider-id="${escapeHtml(provider.id)}">プロフィールを見る</button>`
+          : "";
+        return `<article class="provider-item"><h3>${escapeHtml(provider.name)}</h3><div class="meta"><span>${escapeHtml(provider.location)}</span><span>${formatValue(provider.themes)}</span>${publicFields}</div>${profileButton}${contactButton}${favoriteButton}</article>`;
       }).join("")
     : '<p class="empty">該当する事業者がありません。</p>';
   elements.requestProvider.innerHTML = items.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
@@ -498,10 +511,87 @@ function renderProviders(items, page = {}, cursor = "") {
   document.querySelectorAll(".favorite-provider-button").forEach((button) => {
     button.addEventListener("click", () => void toggleFavorite(button.dataset.providerId ?? "", button.dataset.favoriteId ?? ""));
   });
+  document.querySelectorAll(".provider-profile-button").forEach((button) => {
+    button.addEventListener("click", () => void openProviderProfile(button.dataset.providerId ?? ""));
+  });
   renderListPagination(elements.providerPagination, page, cursor, reloadProviders, "事業者一覧のページ移動");
 }
 
 const directoryGuideKindLabels = { directory: "検索・相談", booking: "検索・予約", provider_resource: "事業者向け" };
+
+function providerFieldText(value) {
+  if (Array.isArray(value)) return value.join(" / ");
+  if (value && typeof value === "object") return JSON.stringify(value);
+  return String(value ?? "");
+}
+
+function clearProviderProfile() {
+  state.providerProfile = null;
+  elements.providerProfilePanel.hidden = true;
+  elements.providerProfileName.textContent = "事業者プロフィール";
+  elements.providerProfileSummary.textContent = "一覧から事業者を選ぶと、現在のロールで表示できる詳細を確認できます。";
+  elements.providerProfileMeta.replaceChildren();
+  elements.providerProfileFields.replaceChildren();
+  elements.providerProfileInquiry.hidden = true;
+  elements.providerProfileInquiry.dataset.providerId = "";
+  setListStatus(elements.providerProfileStatus);
+}
+
+function renderProviderProfile(provider) {
+  state.providerProfile = provider;
+  elements.providerProfilePanel.hidden = false;
+  elements.providerProfileName.textContent = provider.name;
+  elements.providerProfileSummary.textContent = `${provider.location} · ${provider.themes.join("・")}`;
+  elements.providerProfileMeta.replaceChildren();
+  for (const [label, value] of [["カテゴリ", provider.category], ["事業者ID", provider.id]]) {
+    const item = document.createElement("span");
+    item.textContent = `${label}: ${providerFieldText(value)}`;
+    elements.providerProfileMeta.append(item);
+  }
+
+  const profileFields = Object.entries(provider).filter(([key]) => !["id", "category", "name", "themes", "location"].includes(key));
+  elements.providerProfileFields.replaceChildren();
+  if (!profileFields.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "追加の公開情報はありません。";
+    elements.providerProfileFields.append(empty);
+  } else {
+    for (const [key, value] of profileFields) {
+      const field = document.createElement("div");
+      field.className = "provider-profile-field";
+      const label = document.createElement("span");
+      label.textContent = key;
+      const content = document.createElement("strong");
+      content.textContent = providerFieldText(value);
+      field.append(label, content);
+      elements.providerProfileFields.append(field);
+    }
+  }
+
+  const canInquire = Boolean(state.token && state.experience?.allowedActions.includes("inquiry.create"));
+  elements.providerProfileInquiry.hidden = !canInquire;
+  elements.providerProfileInquiry.dataset.providerId = provider.id;
+}
+
+async function openProviderProfile(providerId) {
+  if (!providerId) return;
+  const listedProvider = state.providers.find((provider) => provider.id === providerId);
+  elements.providerProfilePanel.hidden = false;
+  elements.providerProfileName.textContent = listedProvider?.name ?? "事業者プロフィール";
+  elements.providerProfileSummary.textContent = "現在のロールで表示できる詳細情報を読み込んでいます。";
+  elements.providerProfileMeta.replaceChildren();
+  elements.providerProfileFields.replaceChildren();
+  setListStatus(elements.providerProfileStatus, "loading", "事業者プロフィールを読み込んでいます。");
+  elements.providerProfilePanel.scrollIntoView({ behavior: "smooth", block: "center" });
+  try {
+    const body = await api(`/api/v1/providers/${encodeURIComponent(providerId)}`);
+    renderProviderProfile(body.item);
+    setListStatus(elements.providerProfileStatus);
+  } catch (error) {
+    setListStatus(elements.providerProfileStatus, "error", "事業者プロフィールを読み込めませんでした。再試行してください。", () => openProviderProfile(providerId));
+  }
+}
 
 function renderFavorites(items) {
   state.favorites = items;
@@ -1384,6 +1474,7 @@ async function handleContentAction(action, contentId) {
 }
 
 async function reload() {
+  clearProviderProfile();
   const contextBody = await api(`/api/v1/categories/${encodeURIComponent(state.category)}`);
   renderExperience(contextBody.item.experience, contextBody.item.navigation);
   await reloadProviderManagement();
@@ -1722,6 +1813,14 @@ elements.contentForm.addEventListener("submit", async (event) => {
   } catch (error) {
     setContentMessage(error.message);
   }
+});
+
+elements.providerProfileClose.addEventListener("click", () => clearProviderProfile());
+elements.providerProfileInquiry.addEventListener("click", () => {
+  const providerId = elements.providerProfileInquiry.dataset.providerId ?? "";
+  if (!providerId) return;
+  elements.inquiryProvider.value = providerId;
+  elements.inquiryForm.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
 async function initialize() {

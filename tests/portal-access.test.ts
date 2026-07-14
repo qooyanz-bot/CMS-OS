@@ -352,6 +352,28 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(response.status, 403);
   });
 
+  it("事業者プロフィール詳細はカテゴリとログインロールに応じて投影される", async () => {
+    const publicProfile = await request("/api/v1/providers/provider-legal-demo");
+    assert.equal(publicProfile.status, 200);
+    assert.ok(publicProfile.body.item.practiceAreas);
+    assert.equal(publicProfile.body.item.contactOptions, undefined);
+    assert.equal(publicProfile.body.item.internalStatus, undefined);
+
+    const ordererProfile = await request("/api/v1/providers/provider-legal-demo", {
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+    });
+    assert.equal(ordererProfile.status, 200);
+    assert.ok(ordererProfile.body.item.contactOptions);
+    assert.equal(ordererProfile.body.item.internalStatus, undefined);
+
+    const providerProfile = await request("/api/v1/providers/provider-legal-demo", {
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+    });
+    assert.equal(providerProfile.status, 200);
+    assert.ok(providerProfile.body.item.internalStatus);
+    assert.equal(providerProfile.body.item.contactOptions, undefined);
+  });
+
   it("発注者はカテゴリ別の公開事業者をお気に入りへ保存・解除でき、MCPと同じ所有者境界を使う", async () => {
     const denied = await request("/api/v1/favorites", {
       method: "POST",
