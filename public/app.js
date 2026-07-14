@@ -770,7 +770,7 @@ function renderPortalPlan(plan, proposals = []) {
     <article class="editor-item">
       <div class="meta"><span>${escapeHtml(plan.categoryLabel)}</span><span>${escapeHtml(plan.theme)}</span>${plan.region ? `<span>${escapeHtml(plan.region)}</span>` : ""}</div>
       <h3>${escapeHtml(plan.theme)}のポータル企画</h3>
-      <p>検索意図 ${escapeHtml(String(plan.searchIntents?.length ?? 0))}件 / ページ案 ${escapeHtml(String(pageItems.length))}件 / 未充足項目 ${escapeHtml(String(gaps.length))}件</p>
+      <p>検索意図 ${escapeHtml(String(plan.searchIntents?.length ?? 0))}件 / ページ案 ${escapeHtml(String(pageItems.length))}件 / テーマ一致コンテンツ ${escapeHtml(String(plan.coverage?.matchingContentCount ?? 0))}件 / 未充足項目 ${escapeHtml(String(gaps.length))}件</p>
       <ul>${pageItems.map((page) => `<li><strong>${escapeHtml(page.title)}</strong><br><span class="muted">${escapeHtml(page.primaryKeyword)} — ${escapeHtml(page.purpose)}</span></li>`).join("")}</ul>
       <p class="field-note">${proposalCount > 0 ? `コンテンツ下書き ${escapeHtml(String(proposalCount))}件を作成済みです。` : "企画案を適用すると、AIコンテンツ編集へ下書きを作成できます。"}</p>
       ${proposalCount === 0 ? `<button class="button secondary portal-plan-apply-button" type="button" data-plan-id="${escapeHtml(plan.id)}">企画案を下書きへ適用</button>` : ""}

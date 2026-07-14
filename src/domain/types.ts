@@ -365,6 +365,9 @@ export interface PortalPlanCoverage {
   providerCount: number;
   externalGuideCount: number;
   jobCount: number;
+  contentCount: number;
+  publishedContentCount: number;
+  matchingContentCount: number;
   availableModules: string[];
 }
 

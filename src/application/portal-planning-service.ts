@@ -88,6 +88,14 @@ export class PortalPlanningService {
     const providers = this.portal.searchProviders(input.category, principal, { sort: "name_asc" });
     const guides = this.portal.listDirectoryGuides(input.category, principal);
     const jobs = this.portal.listJobs(input.category, principal, { status: "published" });
+    const contents = this.content?.listContent(principal).filter((content) => content.status !== "archived") ?? [];
+    const normalizedTheme = theme.toLocaleLowerCase("ja-JP");
+    const normalizedRegion = region?.toLocaleLowerCase("ja-JP");
+    const matchingContents = contents.filter((content) => {
+      const searchable = [content.title, content.summary, content.seo.title, ...content.seo.keywords].join("\n").toLocaleLowerCase("ja-JP");
+      return searchable.includes(normalizedTheme) && (!normalizedRegion || searchable.includes(normalizedRegion));
+    });
+    const publishedMatchingContents = matchingContents.filter((content) => content.status === "published");
     const categoryPath = `/categories/${input.category}`;
     const themePath = `${categoryPath}/themes/${encoded(theme)}`;
     const regionPath = region ? `${categoryPath}/regions/${encoded(region)}` : undefined;
@@ -181,6 +189,8 @@ export class PortalPlanningService {
     if (guides.length === 0) gaps.push({ code: "external_guidance_missing", severity: "medium", message: "カテゴリに紐づく外部案内がありません。", recommendation: "公式団体や業界ポータルなど、一次確認済みの外部案内を登録してください。" });
     if ((input.audience === "candidate" || goal === "recruiting") && jobs.length === 0) gaps.push({ code: "job_inventory_missing", severity: "medium", message: "公開求人がありません。", recommendation: "事業者ごとの求人情報を登録し、応募導線を確認してください。" });
     if ((goal === "regional" || Boolean(region)) && !region) gaps.push({ code: "region_not_selected", severity: "medium", message: "地域テーマなのに対象地域が未指定です。", recommendation: "都道府県、市区町村、商圏などの対象地域を指定してください。" });
+    if (this.content && matchingContents.length === 0) gaps.push({ code: "content_theme_coverage_missing", severity: "high", message: "指定テーマに一致するコンテンツがありません。", recommendation: "対象ポジション向けの企画案を作成し、下書き・事実確認・SEO監査へ進めてください。" });
+    else if (this.content && publishedMatchingContents.length === 0) gaps.push({ code: "content_theme_not_published", severity: "medium", message: "指定テーマに一致する公開済みコンテンツがありません。", recommendation: "一致するコンテンツを監査・承認し、BuilderOS Adapter経由で静的公開してください。" });
     gaps.push({ code: "source_fact_review", severity: "low", message: "公開ページの根拠情報と最終確認日を個別に確認する必要があります。", recommendation: "content.fact_checkとseo.auditを実行し、確認済み事実だけを公開してください。" });
 
     const nextActions = [
@@ -192,6 +202,7 @@ export class PortalPlanningService {
       ...(providers.length === 0 ? ["provider.search: 掲載可能な事業者情報を確認する"] : []),
       ...(guides.length === 0 ? ["directory.list: 外部案内の登録候補を確認する"] : []),
       ...((input.audience === "candidate" || goal === "recruiting") && jobs.length === 0 ? ["job.create: 公開求人を登録する"] : []),
+      ...(this.content && matchingContents.length === 0 ? ["content.propose: 指定テーマの対象ポジション別企画を作成する"] : []),
     ];
 
     return this.store.create({
@@ -206,6 +217,9 @@ export class PortalPlanningService {
         providerCount: providers.length,
         externalGuideCount: guides.length,
         jobCount: jobs.length,
+        contentCount: contents.length,
+        publishedContentCount: contents.filter((content) => content.status === "published").length,
+        matchingContentCount: matchingContents.length,
         availableModules: [...experience.visibleModules],
       },
       searchIntents,

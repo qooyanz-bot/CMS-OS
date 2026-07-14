@@ -16,7 +16,7 @@ CMS-OS 目前作为开源项目开发中。
 - 内容审核、审批、发布、撤回和版本历史
 - 图片、视频、PDF 等媒体管理，包括 alt 文本、结构化数据、内部链接和 SEO 审计
 - 通过 BuilderOS Adapter 生成静态网站，并支持发布到 Cloudflare Pages
-- 通过 Portal Planning Agent 按主题、地区和目标人群生成搜索意图、内容企划和 SEO 页面，并将企划应用为内容草稿
+- 通过 Portal Planning Agent 按主题、地区和目标人群生成搜索意图、检测现有内容覆盖缺口、生成 SEO 页面，并将企划应用为内容草稿
 - 所有操作均通过 REST API 和 MCP 提供，OpenAPI 作为契约正本
 - 支持签名 Webhook、加密 secret、投递 outbox 和指数退避重试
 - 支持异步内容创建任务、任务状态查询、外部调度器批量执行和幂等键

@@ -58,6 +58,10 @@ describe("CMS-OS Portal Planning Agent", () => {
     assert.ok(created.body.item.pageIdeas.some((item: { id: string }) => item.id === "region-guide"));
     assert.ok(created.body.item.pageIdeas.some((item: { id: string }) => item.id === "request"));
     assert.ok(created.body.item.gaps.some((item: { code: string }) => item.code === "source_fact_review"));
+    assert.equal(created.body.item.coverage.contentCount, 0);
+    assert.equal(created.body.item.coverage.publishedContentCount, 0);
+    assert.equal(created.body.item.coverage.matchingContentCount, 0);
+    assert.ok(created.body.item.gaps.some((item: { code: string }) => item.code === "content_theme_coverage_missing"));
 
     const listed = await request("/api/v1/portal-plans?limit=10", { headers: { authorization: `Bearer ${providerToken}` } });
     assert.equal(listed.status, 200);
@@ -83,6 +87,24 @@ describe("CMS-OS Portal Planning Agent", () => {
     assert.equal(reapplied.status, 201);
     assert.deepEqual(reapplied.body.plan.appliedProposalIds, applied.body.plan.appliedProposalIds);
     assert.deepEqual(reapplied.body.proposals.map((proposal: { id: string }) => proposal.id), applied.body.proposals.map((proposal: { id: string }) => proposal.id));
+
+    const draft = await request("/api/v1/content/drafts", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({ proposalId: applied.body.proposals[1].id }),
+    });
+    assert.equal(draft.status, 201);
+    const covered = await request("/api/v1/portal-plans", {
+      method: "POST",
+      headers: { authorization: `Bearer ${providerToken}` },
+      body: JSON.stringify({ category: "legal", theme: "企業法務", audience: "customer" }),
+    });
+    assert.equal(covered.status, 201);
+    assert.equal(covered.body.item.coverage.contentCount, 1);
+    assert.equal(covered.body.item.coverage.matchingContentCount, 1);
+    assert.equal(covered.body.item.coverage.publishedContentCount, 0);
+    assert.ok(covered.body.item.gaps.some((item: { code: string }) => item.code === "content_theme_not_published"));
+    assert.ok(!covered.body.item.gaps.some((item: { code: string }) => item.code === "content_theme_coverage_missing"));
 
     const orderer = await request("/api/v1/portal-plans", {
       method: "POST",
