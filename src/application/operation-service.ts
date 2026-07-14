@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { ContentService, type ContentCreateInput } from "./content-service.js";
+import { ContentService, type ContentCreateInput, type ContentProposalCreateInput } from "./content-service.js";
 import type { PortalService, PortalPage } from "./portal-service.js";
 import { operationTypes, OperationStore, type OperationJob, type OperationJobRecord, type OperationType } from "../domain/operation-store.js";
 import type { AuthenticatedPrincipal, CategorySlug } from "../domain/types.js";
@@ -14,12 +14,22 @@ export class OperationServiceError extends Error {
 
 export type OperationSubmitInput = {
   operation: OperationType;
-  input: ContentCreateInput | ContentCreateBatchInput;
+  input: ContentCreateInput | ContentCreateBatchInput | ContentProposeBatchInput | ContentDraftBatchInput;
 };
 
 export type ContentCreateBatchInput = {
   category: CategorySlug;
   items: ContentCreateInput[];
+};
+
+export type ContentProposeBatchInput = {
+  category: CategorySlug;
+  items: ContentProposalCreateInput[];
+};
+
+export type ContentDraftBatchInput = {
+  category: CategorySlug;
+  proposalIds: string[];
 };
 
 export const MAX_BATCH_ITEMS = 50;
@@ -40,8 +50,12 @@ function cloneInput(input: OperationSubmitInput["input"]): Record<string, unknow
   return JSON.parse(JSON.stringify(input)) as Record<string, unknown>;
 }
 
-function isBatchInput(input: OperationSubmitInput["input"]): input is ContentCreateBatchInput {
+function isItemsBatchInput(input: OperationSubmitInput["input"]): input is ContentCreateBatchInput | ContentProposeBatchInput {
   return "items" in input && Array.isArray(input.items);
+}
+
+function isDraftBatchInput(input: OperationSubmitInput["input"]): input is ContentDraftBatchInput {
+  return "proposalIds" in input && Array.isArray(input.proposalIds);
 }
 
 export class OperationService {
@@ -59,14 +73,21 @@ export class OperationService {
   public submit(principal: AuthenticatedPrincipal | null, input: OperationSubmitInput, idempotencyKey?: string): OperationJob {
     this.assertProvider(principal, "operation.submit");
     if (!operationTypes.includes(input.operation)) throw new OperationServiceError(400, "operationが不正です。");
-    if (input.operation === "content.create_batch") {
-      if (!isBatchInput(input.input) || input.input.items.length < 1 || input.input.items.length > MAX_BATCH_ITEMS) {
-        throw new OperationServiceError(400, `content.create_batchは1〜${MAX_BATCH_ITEMS}件のitemsを指定してください。`);
+    if (input.operation === "content.create_batch" || input.operation === "content.propose_batch") {
+      if (!isItemsBatchInput(input.input) || input.input.items.length < 1 || input.input.items.length > MAX_BATCH_ITEMS) {
+        throw new OperationServiceError(400, `${input.operation}は1〜${MAX_BATCH_ITEMS}件のitemsを指定してください。`);
       }
       if (input.input.category !== principal.category || input.input.items.some((item) => item.category !== principal.category)) {
         throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
       }
-    } else if (isBatchInput(input.input) || input.input.category !== principal.category) {
+    } else if (input.operation === "content.draft_batch") {
+      if (!isDraftBatchInput(input.input) || input.input.proposalIds.length < 1 || input.input.proposalIds.length > MAX_BATCH_ITEMS) {
+        throw new OperationServiceError(400, `content.draft_batchは1〜${MAX_BATCH_ITEMS}件のproposalIdsを指定してください。`);
+      }
+      if (input.input.category !== principal.category || input.input.proposalIds.some((proposalId) => typeof proposalId !== "string" || proposalId.length === 0)) {
+        throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
+      }
+    } else if (isItemsBatchInput(input.input) || isDraftBatchInput(input.input) || input.input.category !== principal.category) {
       throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
     }
     const normalizedKey = idempotencyKey?.trim();
@@ -129,6 +150,26 @@ export class OperationService {
           const created = this.content.createContent(principal, item);
           contentIds.push(created.id);
           partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.items.length };
+        }
+        result = { contentIds, itemCount: contentIds.length };
+      } else if (job.operation === "content.propose_batch") {
+        const batch = running.input as unknown as ContentProposeBatchInput;
+        const proposalIds: string[] = [];
+        partialResult = { proposalIds, completedCount: 0, totalCount: batch.items.length };
+        for (const item of batch.items) {
+          const created = this.content.createProposal(principal, item);
+          proposalIds.push(created.id);
+          partialResult = { proposalIds: [...proposalIds], completedCount: proposalIds.length, totalCount: batch.items.length };
+        }
+        result = { proposalIds, itemCount: proposalIds.length };
+      } else if (job.operation === "content.draft_batch") {
+        const batch = running.input as unknown as ContentDraftBatchInput;
+        const contentIds: string[] = [];
+        partialResult = { contentIds, completedCount: 0, totalCount: batch.proposalIds.length };
+        for (const proposalId of batch.proposalIds) {
+          const created = this.content.createDraft(principal, proposalId);
+          contentIds.push(created.id);
+          partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.proposalIds.length };
         }
         result = { contentIds, itemCount: contentIds.length };
       } else {

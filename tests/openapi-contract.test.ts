@@ -115,8 +115,10 @@ describe("CMS-OS OpenAPI契約", () => {
     }
     assert.deepEqual(specification.components.securitySchemes.BearerAuth, { type: "http", scheme: "bearer", bearerFormat: "opaque-session-token" });
     assert.deepEqual(specification.components.securitySchemes.OperatorKey, { type: "apiKey", in: "header", name: "x-cms-os-operator-key" });
-    assert.deepEqual(specification.components.schemas.AsyncOperationType?.enum, ["content.create", "content.create_batch"]);
+    assert.deepEqual(specification.components.schemas.AsyncOperationType?.enum, ["content.create", "content.create_batch", "content.propose_batch", "content.draft_batch"]);
     assert.ok(specification.components.schemas.AsyncOperationContentCreateBatchRequest);
+    assert.ok(specification.components.schemas.AsyncOperationContentProposeBatchRequest);
+    assert.ok(specification.components.schemas.AsyncOperationContentDraftBatchRequest);
     assert.deepEqual(specification.components.schemas.ContentWorkflowStatus?.enum, ["proposed", "drafted", "polished", "seo_reviewed", "review_requested", "changes_requested", "approved", "published", "archived"]);
     assert.deepEqual((specification.paths["/api/v1/publications/schedules/execute"]?.post as { security?: unknown }).security, [{ BearerAuth: [] }, { OperatorKey: [] }]);
     for (const path of [

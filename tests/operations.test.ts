@@ -132,6 +132,73 @@ describe("CMS-OS非同期操作ジョブ", () => {
     assert.equal(oversized.status, 400);
   });
 
+  it("対象ポジション別の企画案と下書きを非同期で一括生成できる", async () => {
+    const proposed = await request("/api/v1/operations", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "content.propose_batch",
+        input: {
+          category: "legal",
+          items: [
+            { category: "legal", contentType: "blog", audience: "customer", topic: "相談前の準備" },
+            { category: "legal", contentType: "blog", audience: "candidate", topic: "法律事務所の働き方" },
+          ],
+        },
+      }),
+    });
+    assert.equal(proposed.status, 202);
+    assert.equal(proposed.body.item.operation, "content.propose_batch");
+
+    const proposedResult = await request(`/api/v1/operations/${proposed.body.item.id}/execute`, { method: "POST" });
+    assert.equal(proposedResult.status, 200);
+    assert.equal(proposedResult.body.item.status, "succeeded");
+    assert.equal(proposedResult.body.item.result.proposalIds.length, 2);
+
+    const drafted = await request("/api/v1/operations", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "content.draft_batch",
+        input: { category: "legal", proposalIds: proposedResult.body.item.result.proposalIds },
+      }),
+    });
+    assert.equal(drafted.status, 202);
+    const draftedResult = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "operation.execute", arguments: { operationId: drafted.body.item.id } } }),
+    });
+    assert.equal(draftedResult.status, 200);
+    assert.equal(draftedResult.body.result.structuredContent.status, "succeeded");
+    assert.equal(draftedResult.body.result.structuredContent.result.contentIds.length, 2);
+
+    const partial = await request("/api/v1/operations", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "content.draft_batch",
+        input: { category: "legal", proposalIds: [proposedResult.body.item.result.proposalIds[0], "proposal-does-not-exist"] },
+      }),
+    });
+    const partialResult = await request(`/api/v1/operations/${partial.body.item.id}/execute`, { method: "POST" });
+    assert.equal(partialResult.status, 200);
+    assert.equal(partialResult.body.item.status, "failed");
+    assert.equal(partialResult.body.item.result.completedCount, 1);
+    assert.equal(partialResult.body.item.result.contentIds.length, 1);
+
+    const oversized = await request("/api/v1/operations", {
+      method: "POST",
+      body: JSON.stringify({ operation: "content.propose_batch", input: { category: "legal", items: Array.from({ length: 51 }, () => ({ category: "legal", contentType: "blog", audience: "customer", topic: "大量企画" })) } }),
+    });
+    assert.equal(oversized.status, 400);
+
+    const mixedCategory = await request("/api/v1/operations", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "content.propose_batch",
+        input: { category: "legal", items: [{ category: "beauty", contentType: "blog", audience: "customer", topic: "カテゴリ境界" }] },
+      }),
+    });
+    assert.equal(mixedCategory.status, 400);
+  });
+
   it("MCPでジョブ一覧とキュー処理を実行し、別ロールからの取得を拒否する", async () => {
     const submitted = await request("/api/v1/operations", {
       method: "POST",

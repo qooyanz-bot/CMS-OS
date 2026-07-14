@@ -68,6 +68,8 @@ POST /api/v1/publications/publish
 
 `content.translate` は原文を上書きせず、原文の `contentId` と `version` を記録した言語別の翻訳下書きを作成します。対応言語は `ja`、`en`、`zh-CN`、`es`、`ko`、`de`、`fr` です。
 
+大量生成では、`operation.submit`に`content.propose_batch`または`content.draft_batch`を指定できます。前者は同一カテゴリ・最大50件の対象ポジション別企画案を生成し、後者は企画案IDを最大50件受け取って下書きを生成します。いずれも承認・事実確認・SEO監査・公開を自動で通過させず、通常のワークフローへ戻します。
+
 - `locale` はコンテンツ単位で保持し、翻訳版は独立したURL・canonical・OG情報・JSON-LD言語属性を持ちます。
 - `translationOf.sourceVersion` に原文の基準版を記録するため、原文更新後も翻訳の根拠を追跡できます。
 - 翻訳下書きは自動公開されません。AIエージェントは `content.translate` の入力に翻訳済みの `title`、`summary`、`body`、`seo` を渡すか、作成後に `content.update` で補完します。

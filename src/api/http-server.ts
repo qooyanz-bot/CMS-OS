@@ -10,6 +10,7 @@ import {
   contentSortValues,
   type ContentCreateInput,
   type ContentListQuery,
+  type ContentProposalCreateInput,
   isContentAudience,
   isContentLocale,
   isContentType,
@@ -18,7 +19,7 @@ import {
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
 import { MediaService, MediaServiceError, mediaSortValues, type MediaRegisterInput, type MediaUpdateInput } from "../application/media-service.js";
 import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type WebhookSubscriptionCreateInput, type WebhookSubscriptionUpdateInput } from "../application/webhook-service.js";
-import { MAX_BATCH_ITEMS, OperationService, OperationServiceError, type ContentCreateBatchInput, type OperationSubmitInput } from "../application/operation-service.js";
+import { MAX_BATCH_ITEMS, OperationService, OperationServiceError, type ContentCreateBatchInput, type ContentDraftBatchInput, type ContentProposeBatchInput, type OperationSubmitInput } from "../application/operation-service.js";
 import { PortalPlanningService, PortalPlanningServiceError, type PortalPlanCreateInput } from "../application/portal-planning-service.js";
 import { operationTypes, type OperationType } from "../domain/operation-store.js";
 import { applicationStatuses, categorySlugs, contentAudiences, contentLocales, contentTypes, contentWorkflowStatuses, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
@@ -381,6 +382,24 @@ function parseContentCreateInput(input: Record<string, unknown>): ContentCreateI
   };
 }
 
+function parseContentProposalInput(input: Record<string, unknown>): ContentProposalCreateInput {
+  if (!isCategorySlug(input.category) || !isContentType(input.contentType) || !isContentAudience(input.audience) || typeof input.topic !== "string") {
+    throw new Error("category、contentType、audience、topicが必要です。");
+  }
+  if (input.primaryKeyword !== undefined && typeof input.primaryKeyword !== "string") throw new Error("primaryKeywordは文字列で指定してください。");
+  const relatedKeywords = parseOptionalStringArray(input.relatedKeywords, "relatedKeywords");
+  const sourceFacts = parseOptionalStringArray(input.sourceFacts, "sourceFacts");
+  return {
+    category: input.category,
+    contentType: input.contentType,
+    audience: input.audience,
+    topic: input.topic,
+    ...(typeof input.primaryKeyword === "string" ? { primaryKeyword: input.primaryKeyword } : {}),
+    ...(relatedKeywords ? { relatedKeywords } : {}),
+    ...(sourceFacts ? { sourceFacts } : {}),
+  };
+}
+
 function parseOperationSubmitInput(input: Record<string, unknown>): OperationSubmitInput {
   if (typeof input.operation !== "string" || !operationTypes.includes(input.operation as OperationType)) throw new Error("operationは有効な非同期操作を指定してください。");
   if (!input.input || typeof input.input !== "object" || Array.isArray(input.input)) throw new Error("inputはオブジェクトで指定してください。");
@@ -395,6 +414,25 @@ function parseOperationSubmitInput(input: Record<string, unknown>): OperationSub
     });
     if (items.some((item) => item.category !== operationInput.category)) throw new Error("content.create_batchの全itemsは同じcategoryを指定してください。");
     const batch: ContentCreateBatchInput = { category: operationInput.category, items };
+    return { operation: input.operation as OperationType, input: batch };
+  }
+  if (input.operation === "content.propose_batch") {
+    if (!isCategorySlug(operationInput.category) || !Array.isArray(operationInput.items) || operationInput.items.length < 1 || operationInput.items.length > MAX_BATCH_ITEMS) {
+      throw new Error(`content.propose_batchはcategoryと1〜${MAX_BATCH_ITEMS}件のitemsが必要です。`);
+    }
+    const items = operationInput.items.map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`items[${index}]はオブジェクトで指定してください。`);
+      return parseContentProposalInput(item as Record<string, unknown>);
+    });
+    if (items.some((item) => item.category !== operationInput.category)) throw new Error("content.propose_batchの全itemsは同じcategoryを指定してください。");
+    const batch: ContentProposeBatchInput = { category: operationInput.category, items };
+    return { operation: input.operation as OperationType, input: batch };
+  }
+  if (input.operation === "content.draft_batch") {
+    if (!isCategorySlug(operationInput.category) || !Array.isArray(operationInput.proposalIds) || operationInput.proposalIds.length < 1 || operationInput.proposalIds.length > MAX_BATCH_ITEMS || operationInput.proposalIds.some((proposalId) => typeof proposalId !== "string" || proposalId.trim().length === 0)) {
+      throw new Error(`content.draft_batchはcategoryと1〜${MAX_BATCH_ITEMS}件のproposalIdsが必要です。`);
+    }
+    const batch: ContentDraftBatchInput = { category: operationInput.category, proposalIds: (operationInput.proposalIds as string[]).map((proposalId) => proposalId.trim()) };
     return { operation: input.operation as OperationType, input: batch };
   }
   return { operation: input.operation as OperationType, input: parseContentCreateInput(operationInput) };
@@ -789,14 +827,14 @@ async function handleMcp(
           },
           {
             name: "operation.submit",
-            description: "単一または最大50件の非同期コンテンツ作成ジョブを投入します。Idempotency-Keyで重複投入を防止できます。",
+            description: "単一登録、検証済み本文の一括登録、対象ポジション別の企画案・下書き一括生成を非同期ジョブとして投入します。Idempotency-Keyで重複投入を防止できます。",
             inputSchema: {
               type: "object",
               properties: {
                 operation: { enum: [...operationTypes] },
                 input: {
                   type: "object",
-                  description: "content.createは単一入力、content.create_batchはcategoryと1〜50件のitemsを指定します。",
+                  description: "content.createは単一入力、各batch操作はcategoryと同一カテゴリの1〜50件を指定します。content.propose_batchはitems、content.draft_batchはproposalIdsを指定します。",
                 },
                 idempotencyKey: { type: "string", maxLength: 200 },
               },

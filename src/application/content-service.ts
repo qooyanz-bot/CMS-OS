@@ -47,6 +47,16 @@ export type ContentCreateInput = {
   seo?: Partial<ContentSeo> | undefined;
 };
 
+export type ContentProposalCreateInput = {
+  category: CategorySlug;
+  contentType: ContentType;
+  audience: ContentAudience;
+  topic: string;
+  primaryKeyword?: string | undefined;
+  relatedKeywords?: string[] | undefined;
+  sourceFacts?: string[] | undefined;
+};
+
 export const contentSortValues = ["updatedAt_desc", "updatedAt_asc", "title_asc", "status"] as const;
 export type ContentSort = (typeof contentSortValues)[number];
 
@@ -167,15 +177,7 @@ export class ContentService {
 
   public createProposal(
     principal: AuthenticatedPrincipal | null,
-    input: {
-      category: CategorySlug;
-      contentType: ContentType;
-      audience: ContentAudience;
-      topic: string;
-      primaryKeyword?: string | undefined;
-      relatedKeywords?: string[] | undefined;
-      sourceFacts?: string[] | undefined;
-    },
+    input: ContentProposalCreateInput,
   ): ContentProposal {
     this.portal.assertAction(principal, input.category, "content.propose");
     this.assertProvider(principal, input.category);
