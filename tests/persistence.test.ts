@@ -22,7 +22,7 @@ after(async () => {
 });
 
 describe("CMS-OSファイル永続化", () => {
-  it("セッション、依頼、企画案を再起動後に復元できる", () => {
+  it("セッション、依頼、企画案を再起動後に復元できる", async () => {
     const state1 = new JsonStateStore(directory);
     const auth1 = new InMemoryAuthService(state1);
     const portal1 = new PortalService(auth1, new PortalStore(state1));
@@ -57,7 +57,7 @@ describe("CMS-OSファイル永続化", () => {
 
     const providerLogin = auth1.login("lawyer@example.com", "demo-password", "legal", "provider");
     if (!providerLogin || !("accessToken" in providerLogin)) throw new Error("事業者ログインにMFAチャレンジが返されました。");
-    const proposal = content1.createProposal(providerLogin.principal, {
+    const proposal = await content1.createProposal(providerLogin.principal, {
       category: "legal",
       contentType: "blog",
       audience: "candidate",
@@ -65,9 +65,9 @@ describe("CMS-OSファイル永続化", () => {
       sourceFacts: ["確認済みのテスト情報です。"],
     });
     assert.ok(proposal.id);
-    const draft = content1.createDraft(providerLogin.principal, proposal.id);
+    const draft = await content1.createDraft(providerLogin.principal, proposal.id);
     assert.ok(draft.id);
-    content1.polishContent(providerLogin.principal, draft.id);
+    await content1.polishContent(providerLogin.principal, draft.id);
     content1.auditSeo(providerLogin.principal, draft.id);
     content1.factCheck(providerLogin.principal, draft.id);
     const review = content1.requestReview(providerLogin.principal, draft.id);

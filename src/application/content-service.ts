@@ -25,7 +25,7 @@ import {
   type SeoSiteAuditResult,
 } from "../domain/types.js";
 import type { WebhookService } from "./webhook-service.js";
-import { DeterministicContentAgentAdapter, type ContentAgentAdapter } from "../integrations/content-agent-adapter.js";
+import { DeterministicContentAgentAdapter, type ContentAgentAdapter, type ContentAgentResult } from "../integrations/content-agent-adapter.js";
 
 export class ContentServiceError extends Error {
   public constructor(public readonly statusCode: number, message: string) {
@@ -184,10 +184,10 @@ export class ContentService {
     private readonly agent: ContentAgentAdapter = new DeterministicContentAgentAdapter(),
   ) {}
 
-  public createProposal(
+  public async createProposal(
     principal: AuthenticatedPrincipal | null,
     input: ContentProposalCreateInput,
-  ): ContentProposal {
+  ): Promise<ContentProposal> {
     this.portal.assertAction(principal, input.category, "content.propose");
     this.assertProvider(principal, input.category);
     if (!principal || !principal.providerId) throw new ContentServiceError(403, "事業者情報が見つかりません。");
@@ -210,17 +210,17 @@ export class ContentService {
       sourceFacts,
       rationale: `${contentTypeLabels[input.contentType]}として、${audienceLabels[input.audience]}に向けて「${topic}」を伝える企画です。${audienceIntents[input.audience]}。`,
     };
-    const generated = this.agent.propose({
+    const generated = await this.callAgent("企画", () => this.agent.propose({
       ...proposalSeed,
       audienceLabel: audienceLabels[input.audience],
       contentTypeLabel: contentTypeLabels[input.contentType],
-    });
-    const outline = trimList(generated.outline);
+    }));
+    const outline = this.normalizeAgentList(generated.outline, "outline");
     if (outline.length === 0) throw new ContentServiceError(502, "AIエージェントが有効な企画構成を返しませんでした。");
     const proposal: Omit<ContentProposal, "id" | "createdAt"> = {
       ...proposalSeed,
       searchIntent: this.normalizeAgentText(generated.searchIntent, "searchIntent", 500),
-      relatedKeywords: trimList(generated.relatedKeywords),
+      relatedKeywords: this.normalizeAgentList(generated.relatedKeywords, "relatedKeywords"),
       outline,
       rationale: this.normalizeAgentText(generated.rationale, "rationale", 2_000),
     };
@@ -320,17 +320,17 @@ export class ContentService {
     return created;
   }
 
-  public createDraft(principal: AuthenticatedPrincipal | null, proposalId: string): ContentRecord {
+  public async createDraft(principal: AuthenticatedPrincipal | null, proposalId: string): Promise<ContentRecord> {
     const proposal = this.getOwnedProposal(principal, proposalId);
     this.portal.assertAction(principal, proposal.category, "content.draft");
 
-    const generated = this.agent.draft({
+    const generated = await this.callAgent("下書き", () => this.agent.draft({
       proposal,
       audienceLabel: audienceLabels[proposal.audience],
       audienceIntent: audienceIntents[proposal.audience],
       contentTypeLabel: contentTypeLabels[proposal.contentType],
       jsonLdType: jsonLdTypes[proposal.contentType],
-    });
+    }));
     const title = this.normalizeAgentText(generated.title, "title", 160);
     const summary = this.normalizeAgentText(generated.summary, "summary", 320);
     const body = this.normalizeAgentText(generated.body, "body", 200_000);
@@ -404,7 +404,7 @@ export class ContentService {
     return content;
   }
 
-  public translateContent(
+  public async translateContent(
     principal: AuthenticatedPrincipal | null,
     contentId: string,
     input: {
@@ -415,7 +415,7 @@ export class ContentService {
       seo?: Partial<ContentSeo>;
       instructions?: string;
     },
-  ): ContentRecord {
+  ): Promise<ContentRecord> {
     const source = this.getContent(principal, contentId);
     this.portal.assertAction(principal, source.category, "content.translate");
     if (source.status === "archived") throw new ContentServiceError(409, "アーカイブ済みコンテンツは翻訳できません。先に復元してください。");
@@ -433,12 +433,12 @@ export class ContentService {
     const normalizedInstructions = input.instructions?.trim()
       ? this.normalizeEditableText(input.instructions, "instructions", 1000)
       : undefined;
-    const generated = this.agent.translate({
+    const generated = await this.callAgent("翻訳", () => this.agent.translate({
       source,
       targetLocale: input.targetLocale,
       targetLabel,
       ...(normalizedInstructions !== undefined ? { instructions: normalizedInstructions } : {}),
-    });
+    }));
     const title = input.title !== undefined
       ? this.normalizeEditableText(input.title, "title", 160)
       : this.normalizeAgentText(generated.title, "title", 160);
@@ -689,11 +689,11 @@ export class ContentService {
     return published;
   }
 
-  public polishContent(principal: AuthenticatedPrincipal | null, contentId: string, instructions?: string): ContentRecord {
+  public async polishContent(principal: AuthenticatedPrincipal | null, contentId: string, instructions?: string): Promise<ContentRecord> {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "content.polish");
     if (content.status === "review_requested") throw new ContentServiceError(409, "レビュー中のコンテンツは清書できません。差し戻しを待ってください。");
-    const generated = this.agent.polish({ content, ...(instructions !== undefined ? { instructions } : {}) });
+    const generated = await this.callAgent("清書", () => this.agent.polish({ content, ...(instructions !== undefined ? { instructions } : {}) }));
     const title = generated.title !== undefined ? this.normalizeAgentText(generated.title, "title", 160) : content.title;
     const summary = generated.summary !== undefined ? this.normalizeAgentText(generated.summary, "summary", 320) : content.summary;
     const body = this.normalizeAgentText(generated.body, "body", 200_000);
@@ -997,10 +997,28 @@ export class ContentService {
     return limit(normalized, maxLength);
   }
 
-  private normalizeAgentText(value: string, fieldName: string, maxLength: number): string {
+  private normalizeAgentText(value: unknown, fieldName: string, maxLength: number): string {
+    if (typeof value !== "string") throw new ContentServiceError(502, `AIエージェントの${fieldName}が文字列ではありません。`);
     const normalized = value.trim();
     if (!normalized) throw new ContentServiceError(502, `AIエージェントが${fieldName}を返しませんでした。`);
     return limit(normalized, maxLength);
+  }
+
+  private normalizeAgentList(value: unknown, fieldName: string): string[] {
+    if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+      throw new ContentServiceError(502, `AIエージェントの${fieldName}が文字列配列ではありません。`);
+    }
+    return trimList(value);
+  }
+
+  private async callAgent<T>(stage: string, callback: () => ContentAgentResult<T>): Promise<T> {
+    try {
+      return await callback();
+    } catch (error) {
+      if (error instanceof ContentServiceError) throw error;
+      const detail = error instanceof Error ? ` ${error.message}` : "";
+      throw new ContentServiceError(502, `AIエージェントの${stage}に失敗しました。${detail}`.trim());
+    }
   }
 
   private normalizeSlug(value: string): string {

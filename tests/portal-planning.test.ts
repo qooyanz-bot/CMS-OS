@@ -159,15 +159,15 @@ describe("CMS-OS Portal Planning Agent", () => {
       const content = new ContentService(portal);
       const first = new PortalPlanningService(portal, stateStore, undefined, content);
       const created = first.create(provider, { category: "legal", theme: "相続", audience: "customer" });
-      const applied = first.apply(provider, created.id);
-      const drafted = first.draft(provider, created.id);
+      const applied = await first.apply(provider, created.id);
+      const drafted = await first.draft(provider, created.id);
       const second = new PortalPlanningService(portal, stateStore, undefined, content);
       const restored = second.get(provider, created.id);
       assert.equal(restored.theme, "相続");
       assert.deepEqual(restored.appliedProposalIds, applied.proposals.map((proposal) => proposal.id));
       assert.deepEqual(restored.draftIds, drafted.drafts.map((draft) => draft.id));
-      assert.deepEqual(second.apply(provider, created.id).proposals.map((proposal) => proposal.id), applied.proposals.map((proposal) => proposal.id));
-      assert.deepEqual(second.draft(provider, created.id).drafts.map((draft) => draft.id), drafted.drafts.map((draft) => draft.id));
+      assert.deepEqual((await second.apply(provider, created.id)).proposals.map((proposal) => proposal.id), applied.proposals.map((proposal) => proposal.id));
+      assert.deepEqual((await second.draft(provider, created.id)).drafts.map((draft) => draft.id), drafted.drafts.map((draft) => draft.id));
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

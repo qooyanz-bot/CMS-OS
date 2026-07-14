@@ -13,6 +13,7 @@ import { PublicationStore } from "./domain/publication-store.js";
 import { MediaStore } from "./domain/media-store.js";
 import { JsonStateStore, type StateStore } from "./infrastructure/json-state-store.js";
 import { PostgresStateStore } from "./infrastructure/postgres-state-store.js";
+import { contentAgentAdapterFromEnvironment } from "./integrations/content-agent-adapter.js";
 
 async function createStateStore(): Promise<StateStore | undefined> {
   const storageMode = process.env.CMS_OS_STORAGE ?? "memory";
@@ -32,7 +33,7 @@ async function main(): Promise<void> {
   const auth = new InMemoryAuthService(stateStore, authOptionsFromEnvironment());
   const portal = new PortalService(auth, new PortalStore(stateStore));
   const webhook = new WebhookService(portal, undefined, stateStore);
-  const content = new ContentService(portal, new ContentStore(stateStore), webhook);
+  const content = new ContentService(portal, new ContentStore(stateStore), webhook, contentAgentAdapterFromEnvironment());
   const publication = new PublicationService(portal, content, undefined, undefined, new PublicationStore(stateStore), webhook);
   const media = new MediaService(portal, new MediaStore(stateStore), webhook);
   const operation = new OperationService(portal, content, stateStore);

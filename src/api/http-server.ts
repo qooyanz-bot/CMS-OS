@@ -1512,14 +1512,14 @@ async function handleMcp(
 
     if (name === "portal.plan.apply") {
       if (typeof argumentsObject.planId !== "string") throw new Error("planIdが必要です。");
-      const result = portalPlanning.apply(principal, argumentsObject.planId);
+      const result = await portalPlanning.apply(principal, argumentsObject.planId);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
 
     if (name === "portal.plan.draft") {
       if (typeof argumentsObject.planId !== "string") throw new Error("planIdが必要です。");
-      const result = portalPlanning.draft(principal, argumentsObject.planId);
+      const result = await portalPlanning.draft(principal, argumentsObject.planId);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -1990,7 +1990,7 @@ async function handleMcp(
       if (!isCategorySlug(argumentsObject.category) || !isContentType(argumentsObject.contentType) || !isContentAudience(argumentsObject.audience) || typeof argumentsObject.topic !== "string") {
         throw new Error("category、contentType、audience、topicが必要です。");
       }
-      const result = content.createProposal(principal, {
+      const result = await content.createProposal(principal, {
         category: argumentsObject.category,
         contentType: argumentsObject.contentType,
         audience: argumentsObject.audience,
@@ -2074,7 +2074,7 @@ async function handleMcp(
 
     if (name === "content.draft") {
       if (typeof argumentsObject.proposalId !== "string") throw new Error("proposalIdが必要です。");
-      const result = content.createDraft(principal, argumentsObject.proposalId);
+      const result = await content.createDraft(principal, argumentsObject.proposalId);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2099,7 +2099,7 @@ async function handleMcp(
         throw new Error("contentIdとtargetLocaleを正しく指定してください。");
       }
       const seo = parseContentSeoPatch(argumentsObject.seo);
-      const result = content.translateContent(principal, argumentsObject.contentId, {
+      const result = await content.translateContent(principal, argumentsObject.contentId, {
         targetLocale: argumentsObject.targetLocale,
         ...(typeof argumentsObject.title === "string" ? { title: argumentsObject.title } : {}),
         ...(typeof argumentsObject.summary === "string" ? { summary: argumentsObject.summary } : {}),
@@ -2134,7 +2134,7 @@ async function handleMcp(
 
     if (name === "content.polish") {
       if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
-      const result = content.polishContent(principal, argumentsObject.contentId, typeof argumentsObject.instructions === "string" ? argumentsObject.instructions : undefined);
+      const result = await content.polishContent(principal, argumentsObject.contentId, typeof argumentsObject.instructions === "string" ? argumentsObject.instructions : undefined);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2557,7 +2557,7 @@ export function createHttpServer(
           return;
         }
         try {
-          writeJson(response, 201, portalPlanning.apply(principal, planId));
+          writeJson(response, 201, await portalPlanning.apply(principal, planId));
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "ポータル計画を企画案へ反映できません。" });
         }
@@ -2570,7 +2570,7 @@ export function createHttpServer(
           return;
         }
         try {
-          writeJson(response, 201, portalPlanning.draft(principal, planId));
+          writeJson(response, 201, await portalPlanning.draft(principal, planId));
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "ポータル計画から下書きを作成できません。" });
         }
@@ -2964,7 +2964,7 @@ export function createHttpServer(
           return;
         }
         try {
-          const item = content.createProposal(principal, {
+          const item = await content.createProposal(principal, {
             category: body.category,
             contentType: body.contentType,
             audience: body.audience,
@@ -2996,7 +2996,7 @@ export function createHttpServer(
           return;
         }
         try {
-          writeJson(response, 201, { item: content.createDraft(principal, body.proposalId) });
+          writeJson(response, 201, { item: await content.createDraft(principal, body.proposalId) });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "下書きを作成できません。" });
         }
@@ -3113,7 +3113,7 @@ export function createHttpServer(
             }
             const seo = parseContentSeoPatch(body.seo);
             writeJson(response, 201, {
-              item: content.translateContent(principal, contentId, {
+              item: await content.translateContent(principal, contentId, {
                 targetLocale: body.targetLocale,
                 ...(typeof body.title === "string" ? { title: body.title } : {}),
                 ...(typeof body.summary === "string" ? { summary: body.summary } : {}),
@@ -3128,7 +3128,7 @@ export function createHttpServer(
               writeJson(response, 400, { error: "instructionsは文字列で指定してください。" });
               return;
             }
-            writeJson(response, 200, { item: content.polishContent(principal, contentId, typeof body.instructions === "string" ? body.instructions : undefined) });
+            writeJson(response, 200, { item: await content.polishContent(principal, contentId, typeof body.instructions === "string" ? body.instructions : undefined) });
           } else if (action === "seo-audit") {
             writeJson(response, 200, { item: content.auditSeo(principal, contentId) });
           } else if (action === "fact-check") {

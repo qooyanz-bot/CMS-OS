@@ -44,6 +44,15 @@ export type ContentPrepareBatchInput = {
   instructions?: string;
 };
 
+type ContentPrepareBatchItemResult = {
+  inputIndex: number;
+  proposalId?: string;
+  contentId?: string;
+  status?: string;
+  factCheckPassed?: boolean;
+  seoScore?: number;
+};
+
 export const MAX_BATCH_ITEMS = 50;
 
 function canonicalize(value: unknown): unknown {
@@ -199,7 +208,7 @@ export class OperationService {
         const proposalIds = [...resumedIds];
         partialResult = { proposalIds: [...proposalIds], completedCount: proposalIds.length, totalCount: batch.items.length };
         for (const item of batch.items.slice(proposalIds.length)) {
-          const created = this.content.createProposal(principal, item);
+          const created = await this.content.createProposal(principal, item);
           proposalIds.push(created.id);
           partialResult = { proposalIds: [...proposalIds], completedCount: proposalIds.length, totalCount: batch.items.length };
         }
@@ -212,7 +221,7 @@ export class OperationService {
         const contentIds = [...resumedIds];
         partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.proposalIds.length };
         for (const proposalId of batch.proposalIds.slice(contentIds.length)) {
-          const created = this.content.createDraft(principal, proposalId);
+          const created = await this.content.createDraft(principal, proposalId);
           contentIds.push(created.id);
           partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.proposalIds.length };
         }
@@ -225,26 +234,72 @@ export class OperationService {
         const contentIds = [...resumedIds];
         partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.contentIds.length };
         for (const contentId of batch.contentIds.slice(contentIds.length)) {
-          const polished = this.content.polishContent(principal, contentId, batch.instructions);
+          const polished = await this.content.polishContent(principal, contentId, batch.instructions);
           contentIds.push(polished.id);
           partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.contentIds.length };
         }
         result = { contentIds, itemCount: contentIds.length };
       } else if (job.operation === "content.prepare_batch") {
         const batch = running.input as unknown as ContentPrepareBatchInput;
-        const items: Array<{ proposalId: string; contentId: string; status: string; factCheckPassed: boolean; seoScore: number }> = [];
-        const resumedItems = Array.isArray(previousResult?.items) ? previousResult.items : [];
-        const resumedCount = Math.min(resumedItems.length, batch.items.length);
-        items.push(...resumedItems.slice(0, resumedCount) as typeof items);
-        partialResult = { items: [...items], completedCount: items.length, totalCount: batch.items.length };
-        for (const input of batch.items.slice(items.length)) {
-          const proposal = this.content.createProposal(principal, input);
-          const draft = this.content.createDraft(principal, proposal.id);
-          const polished = this.content.polishContent(principal, draft.id, batch.instructions);
-          const factCheck = this.content.factCheck(principal, polished.id);
-          const seoAudit = this.content.auditSeo(principal, polished.id);
-          items.push({ proposalId: proposal.id, contentId: polished.id, status: seoAudit.issues.some((issue) => issue.severity === "error") ? "polished" : "seo_reviewed", factCheckPassed: factCheck.passed, seoScore: seoAudit.score });
-          partialResult = { items: [...items], completedCount: items.length, totalCount: batch.items.length };
+        const resumedItems: ContentPrepareBatchItemResult[] = Array.isArray(previousResult?.items)
+          ? previousResult.items.slice(0, batch.items.length).map((value, inputIndex) => {
+            if (!value || typeof value !== "object" || Array.isArray(value)) return { inputIndex };
+            const item = value as Record<string, unknown>;
+            return {
+              inputIndex: typeof item.inputIndex === "number" ? item.inputIndex : inputIndex,
+              ...(typeof item.proposalId === "string" ? { proposalId: item.proposalId } : {}),
+              ...(typeof item.contentId === "string" ? { contentId: item.contentId } : {}),
+              ...(typeof item.status === "string" ? { status: item.status } : {}),
+              ...(typeof item.factCheckPassed === "boolean" ? { factCheckPassed: item.factCheckPassed } : {}),
+              ...(typeof item.seoScore === "number" ? { seoScore: item.seoScore } : {}),
+            };
+          })
+          : [];
+        const items: ContentPrepareBatchItemResult[] = resumedItems;
+        const savePrepareProgress = (): void => {
+          partialResult = {
+            items: items.map((item) => ({ ...item })),
+            completedCount: items.filter((item) => item.status === "seo_reviewed").length,
+            totalCount: batch.items.length,
+          };
+          if (!this.store.update(job.id, { result: partialResult })) throw new OperationServiceError(404, "ジョブが見つかりません。");
+        };
+        savePrepareProgress();
+        for (let inputIndex = items.length; inputIndex < batch.items.length; inputIndex += 1) {
+          items.push({ inputIndex });
+        }
+        for (const [inputIndex, item] of items.entries()) {
+          if (item.status === "seo_reviewed") continue;
+          if (!item.proposalId) {
+            const proposal = await this.content.createProposal(principal, batch.items[inputIndex]!);
+            item.proposalId = proposal.id;
+            item.status = "proposed";
+            savePrepareProgress();
+          }
+          if (!item.contentId) {
+            const draft = await this.content.createDraft(principal, item.proposalId);
+            item.contentId = draft.id;
+            item.status = "drafted";
+            savePrepareProgress();
+          }
+          if (item.status !== "polished") {
+            const polished = await this.content.polishContent(principal, item.contentId, batch.instructions);
+            item.contentId = polished.id;
+            item.status = "polished";
+            savePrepareProgress();
+          }
+          if (item.factCheckPassed === undefined) {
+            const factCheck = this.content.factCheck(principal, item.contentId);
+            item.factCheckPassed = factCheck.passed;
+            savePrepareProgress();
+          }
+          if (item.status !== "seo_reviewed") {
+            const seoAudit = this.content.auditSeo(principal, item.contentId);
+            item.seoScore = seoAudit.score;
+            const hasSeoErrors = seoAudit.issues.some((issue) => issue.severity === "error");
+            item.status = item.factCheckPassed && !hasSeoErrors ? "seo_reviewed" : "polished";
+            savePrepareProgress();
+          }
         }
         result = { items, itemCount: items.length };
       } else {

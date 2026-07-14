@@ -79,6 +79,9 @@ export type ContentAgentTranslateOutput = {
   seo?: Partial<ContentSeo>;
 };
 
+/** 同期アダプターとHTTP・キュー型アダプターを同じ契約で扱うための型です。 */
+export type ContentAgentResult<T> = T | PromiseLike<T>;
+
 /**
  * CMS-OSのAI編集機能とモデルプロバイダーの境界です。
  *
@@ -88,11 +91,19 @@ export type ContentAgentTranslateOutput = {
  */
 export interface ContentAgentAdapter {
   readonly id: string;
-  propose(input: ContentAgentProposalInput): ContentAgentProposalOutput;
-  draft(input: ContentAgentDraftInput): ContentAgentDraftOutput;
-  polish(input: ContentAgentPolishInput): ContentAgentPolishOutput;
-  translate(input: ContentAgentTranslateInput): ContentAgentTranslateOutput;
+  propose(input: ContentAgentProposalInput): ContentAgentResult<ContentAgentProposalOutput>;
+  draft(input: ContentAgentDraftInput): ContentAgentResult<ContentAgentDraftOutput>;
+  polish(input: ContentAgentPolishInput): ContentAgentResult<ContentAgentPolishOutput>;
+  translate(input: ContentAgentTranslateInput): ContentAgentResult<ContentAgentTranslateOutput>;
 }
+
+export type HttpContentAgentAdapterOptions = {
+  endpoint: string;
+  apiKey?: string;
+  model?: string;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+};
 
 function createDeterministicBody(title: string, proposal: ContentProposal, audienceIntent: string): string {
   const sections = proposal.outline
@@ -184,4 +195,98 @@ export class DeterministicContentAgentAdapter implements ContentAgentAdapter {
       },
     };
   }
+}
+
+/**
+ * CMS-OS Content Agent Protocol v1に接続する汎用HTTPアダプターです。
+ * 特定のAIベンダーに依存せず、BuilderOSやCMS-OS本体から分離した推論サービスを接続します。
+ */
+export class HttpContentAgentAdapter implements ContentAgentAdapter {
+  public readonly id = "http-content-agent";
+  private readonly endpoint: string;
+  private readonly apiKey: string | undefined;
+  private readonly model: string | undefined;
+  private readonly timeoutMs: number;
+  private readonly fetchImpl: typeof fetch;
+
+  public constructor(options: HttpContentAgentAdapterOptions) {
+    const endpoint = options.endpoint.trim();
+    const parsed = new URL(endpoint);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("CMS_OS_CONTENT_AGENT_ENDPOINTはhttpまたはhttpsで指定してください。");
+    }
+    this.endpoint = endpoint;
+    this.apiKey = options.apiKey?.trim() || undefined;
+    this.model = options.model?.trim() || undefined;
+    this.timeoutMs = Number.isSafeInteger(options.timeoutMs) && (options.timeoutMs ?? 0) >= 1 ? options.timeoutMs! : 30_000;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  public propose(input: ContentAgentProposalInput): Promise<ContentAgentProposalOutput> {
+    return this.request("propose", input);
+  }
+
+  public draft(input: ContentAgentDraftInput): Promise<ContentAgentDraftOutput> {
+    return this.request("draft", input);
+  }
+
+  public polish(input: ContentAgentPolishInput): Promise<ContentAgentPolishOutput> {
+    return this.request("polish", input);
+  }
+
+  public translate(input: ContentAgentTranslateInput): Promise<ContentAgentTranslateOutput> {
+    return this.request("translate", input);
+  }
+
+  private async request<T>(operation: string, input: unknown): Promise<T> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json" };
+      if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
+      const response = await this.fetchImpl(this.endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          protocol: "cms-os-content-agent/v1",
+          operation,
+          ...(this.model ? { model: this.model } : {}),
+          input,
+        }),
+        signal: controller.signal,
+      });
+      const responseText = await response.text();
+      let payload: unknown;
+      try {
+        payload = JSON.parse(responseText) as unknown;
+      } catch {
+        throw new Error("AIプロバイダーがJSON形式の応答を返しませんでした。");
+      }
+      if (!response.ok) throw new Error(`AIプロバイダーの呼び出しに失敗しました（HTTP ${response.status}）。`);
+      if (!payload || typeof payload !== "object" || !("output" in payload)) {
+        throw new Error("AIプロバイダーの応答にoutputがありません。");
+      }
+      return (payload as { output: T }).output;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error(`AIプロバイダーが${this.timeoutMs}ms以内に応答しませんでした。`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+/** 環境変数が未設定なら無料・ローカル利用可能な決定的アダプターを返します。 */
+export function contentAgentAdapterFromEnvironment(env: NodeJS.ProcessEnv = process.env): ContentAgentAdapter {
+  const endpoint = env.CMS_OS_CONTENT_AGENT_ENDPOINT?.trim();
+  if (!endpoint) return new DeterministicContentAgentAdapter();
+  const timeoutValue = Number(env.CMS_OS_CONTENT_AGENT_TIMEOUT_MS ?? "30000");
+  return new HttpContentAgentAdapter({
+    endpoint,
+    ...(env.CMS_OS_CONTENT_AGENT_API_KEY?.trim() ? { apiKey: env.CMS_OS_CONTENT_AGENT_API_KEY.trim() } : {}),
+    ...(env.CMS_OS_CONTENT_AGENT_MODEL?.trim() ? { model: env.CMS_OS_CONTENT_AGENT_MODEL.trim() } : {}),
+    ...(Number.isSafeInteger(timeoutValue) && timeoutValue >= 1 ? { timeoutMs: timeoutValue } : {}),
+  });
 }

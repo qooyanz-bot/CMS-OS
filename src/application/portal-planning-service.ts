@@ -230,7 +230,7 @@ export class PortalPlanningService {
     });
   }
 
-  public apply(principal: AuthenticatedPrincipal | null, planId: string): { plan: PortalPlan; proposals: ContentProposal[] } {
+  public async apply(principal: AuthenticatedPrincipal | null, planId: string): Promise<{ plan: PortalPlan; proposals: ContentProposal[] }> {
     const plan = this.get(principal, planId);
     this.assertProvider(principal, plan.category, "portal.plan.apply");
     if (!this.content) throw new PortalPlanningServiceError(503, "コンテンツサービスが接続されていません。");
@@ -241,15 +241,18 @@ export class PortalPlanningService {
       return { plan, proposals: existing };
     }
 
-    const proposals = plan.pageIdeas.map((page) => this.content!.createProposal(principal, {
-      category: plan.category,
-      contentType: contentTypeForPage(page.pageType),
-      audience: page.pageType === "jobs" ? "candidate" : plan.audience,
-      topic: page.title,
-      primaryKeyword: page.primaryKeyword,
-      relatedKeywords: [plan.theme, ...(plan.region ? [plan.region] : []), page.pageType],
-      sourceFacts: [],
-    }));
+    const proposals = [] as ContentProposal[];
+    for (const page of plan.pageIdeas) {
+      proposals.push(await this.content.createProposal(principal, {
+        category: plan.category,
+        contentType: contentTypeForPage(page.pageType),
+        audience: page.pageType === "jobs" ? "candidate" : plan.audience,
+        topic: page.title,
+        primaryKeyword: page.primaryKeyword,
+        relatedKeywords: [plan.theme, ...(plan.region ? [plan.region] : []), page.pageType],
+        sourceFacts: [],
+      }));
+    }
     const updated = this.store.update(plan.id, {
       appliedProposalIds: proposals.map((proposal) => proposal.id),
       appliedAt: new Date().toISOString(),
@@ -258,10 +261,10 @@ export class PortalPlanningService {
     return { plan: updated, proposals };
   }
 
-  public draft(principal: AuthenticatedPrincipal | null, planId: string): { plan: PortalPlan; proposals: ContentProposal[]; drafts: ContentRecord[] } {
+  public async draft(principal: AuthenticatedPrincipal | null, planId: string): Promise<{ plan: PortalPlan; proposals: ContentProposal[]; drafts: ContentRecord[] }> {
     const plan = this.get(principal, planId);
     this.assertProvider(principal, plan.category, "portal.plan.draft");
-    const applied = this.apply(principal, planId);
+    const applied = await this.apply(principal, planId);
     if (!this.content) throw new PortalPlanningServiceError(503, "コンテンツサービスが接続されていません。");
     if (applied.proposals.length !== (applied.plan.appliedProposalIds?.length ?? 0)) {
       throw new PortalPlanningServiceError(409, "計画に紐づく企画案をすべて取得できません。再度計画を作成してください。");
@@ -269,7 +272,10 @@ export class PortalPlanningService {
 
     const existingContents = this.content.listContent(principal);
     const existingByProposalId = new Map(existingContents.map((content) => [content.proposalId, content]));
-    const drafts = applied.proposals.map((proposal) => existingByProposalId.get(proposal.id) ?? this.content!.createDraft(principal, proposal.id));
+    const drafts = [] as ContentRecord[];
+    for (const proposal of applied.proposals) {
+      drafts.push(existingByProposalId.get(proposal.id) ?? await this.content.createDraft(principal, proposal.id));
+    }
     const updated = this.store.update(applied.plan.id, {
       draftIds: drafts.map((draft) => draft.id),
       draftedAt: new Date().toISOString(),

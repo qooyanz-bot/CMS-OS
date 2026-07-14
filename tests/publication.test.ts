@@ -285,7 +285,7 @@ describe("CMS-OS承認済み静的公開", () => {
     const login = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
     if (!login || !("accessToken" in login)) throw new Error("SEOゲート用ログインに失敗しました。");
 
-    const createApprovedContent = (title: string) => {
+    const createApprovedContent = async (title: string) => {
       const draft = content.createContent(login.principal, {
         category: "legal",
         contentType: "blog",
@@ -300,14 +300,14 @@ describe("CMS-OS承認済み静的公開", () => {
           description: "相談前に確認すべき情報と具体的な次の行動を整理した案内です。",
         },
       });
-      content.polishContent(login.principal, draft.id);
+      await content.polishContent(login.principal, draft.id);
       content.auditSeo(login.principal, draft.id);
       content.factCheck(login.principal, draft.id);
       return content.approveContent(login.principal, draft.id);
     };
 
-    const first = createApprovedContent("SEO重複検証・相続相談");
-    const second = createApprovedContent("SEO重複検証・遺言相談");
+    const first = await createApprovedContent("SEO重複検証・相続相談");
+    const second = await createApprovedContent("SEO重複検証・遺言相談");
     await assert.rejects(
       () => publication.publish(login.principal, [first.id, second.id], "https://www.example.com"),
       (error: unknown) => error instanceof Error && error.message.includes("サイトSEO監査に重大な問題"),
@@ -338,15 +338,15 @@ describe("CMS-OS承認済み静的公開", () => {
       projectName: "cms-os-test",
     }));
 
-    const proposal = content.createProposal(login.principal, {
+    const proposal = await content.createProposal(login.principal, {
       category: "legal",
       contentType: "blog",
       audience: "customer",
       topic: "公開状態の検証",
       sourceFacts: ["確認済みの事実"],
     });
-    const draft = content.createDraft(login.principal, proposal.id);
-    content.polishContent(login.principal, draft.id);
+    const draft = await content.createDraft(login.principal, proposal.id);
+    await content.polishContent(login.principal, draft.id);
     content.auditSeo(login.principal, draft.id);
     content.factCheck(login.principal, draft.id);
     content.approveContent(login.principal, draft.id);
@@ -397,15 +397,15 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.equal(content.getContent(login.principal, draft.id).status, "archived");
     assert.equal(publication.listSchedules(login.principal).find((item) => item.id === pendingUnpublishSchedule.id)?.status, "cancelled");
 
-    const scheduledProposal = content.createProposal(login.principal, {
+    const scheduledProposal = await content.createProposal(login.principal, {
       category: "legal",
       contentType: "blog",
       audience: "customer",
       topic: "予約公開の実行確認",
       sourceFacts: ["予約公開の実行確認に使用する一次情報"],
     });
-    const scheduledDraft = content.createDraft(login.principal, scheduledProposal.id);
-    content.polishContent(login.principal, scheduledDraft.id);
+    const scheduledDraft = await content.createDraft(login.principal, scheduledProposal.id);
+    await content.polishContent(login.principal, scheduledDraft.id);
     content.auditSeo(login.principal, scheduledDraft.id);
     content.factCheck(login.principal, scheduledDraft.id);
     content.approveContent(login.principal, scheduledDraft.id);
