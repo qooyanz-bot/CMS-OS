@@ -136,8 +136,13 @@ export type HttpContentAgentAdapterOptions = {
   apiKey?: string;
   model?: string;
   timeoutMs?: number;
+  maxRequestBytes?: number;
+  maxResponseBytes?: number;
   fetchImpl?: typeof fetch;
 };
+
+const DEFAULT_MAX_REQUEST_BYTES = 1_048_576;
+const DEFAULT_MAX_RESPONSE_BYTES = 4_194_304;
 
 function createDeterministicBody(title: string, proposal: ContentProposal, audienceIntent: string): string {
   const sections = proposal.outline
@@ -241,6 +246,8 @@ export class HttpContentAgentAdapter implements ContentAgentAdapter {
   private readonly apiKey: string | undefined;
   private readonly model: string | undefined;
   private readonly timeoutMs: number;
+  private readonly maxRequestBytes: number;
+  private readonly maxResponseBytes: number;
   private readonly fetchImpl: typeof fetch;
 
   public constructor(options: HttpContentAgentAdapterOptions) {
@@ -253,6 +260,8 @@ export class HttpContentAgentAdapter implements ContentAgentAdapter {
     this.apiKey = options.apiKey?.trim() || undefined;
     this.model = options.model?.trim() || undefined;
     this.timeoutMs = Number.isSafeInteger(options.timeoutMs) && (options.timeoutMs ?? 0) >= 1 ? options.timeoutMs! : 30_000;
+    this.maxRequestBytes = Number.isSafeInteger(options.maxRequestBytes) && (options.maxRequestBytes ?? 0) >= 1 ? options.maxRequestBytes! : DEFAULT_MAX_REQUEST_BYTES;
+    this.maxResponseBytes = Number.isSafeInteger(options.maxResponseBytes) && (options.maxResponseBytes ?? 0) >= 1 ? options.maxResponseBytes! : DEFAULT_MAX_RESPONSE_BYTES;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
@@ -282,18 +291,29 @@ export class HttpContentAgentAdapter implements ContentAgentAdapter {
     try {
       const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json" };
       if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
+      const requestBody = JSON.stringify({
+        protocol: "cms-os-content-agent/v1",
+        operation,
+        ...(this.model ? { model: this.model } : {}),
+        input,
+      });
+      if (Buffer.byteLength(requestBody, "utf8") > this.maxRequestBytes) {
+        throw new Error(`AIエージェントへの入力が上限（${this.maxRequestBytes}バイト）を超えています。`);
+      }
       const response = await this.fetchImpl(this.endpoint, {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          protocol: "cms-os-content-agent/v1",
-          operation,
-          ...(this.model ? { model: this.model } : {}),
-          input,
-        }),
+        body: requestBody,
         signal: controller.signal,
       });
+      const declaredLength = Number(response.headers.get("content-length"));
+      if (Number.isSafeInteger(declaredLength) && declaredLength > this.maxResponseBytes) {
+        throw new Error(`AIエージェントの応答が上限（${this.maxResponseBytes}バイト）を超えています。`);
+      }
       const responseText = await response.text();
+      if (Buffer.byteLength(responseText, "utf8") > this.maxResponseBytes) {
+        throw new Error(`AIエージェントの応答が上限（${this.maxResponseBytes}バイト）を超えています。`);
+      }
       let payload: unknown;
       try {
         payload = JSON.parse(responseText) as unknown;
@@ -321,10 +341,14 @@ export function contentAgentAdapterFromEnvironment(env: NodeJS.ProcessEnv = proc
   const endpoint = env.CMS_OS_CONTENT_AGENT_ENDPOINT?.trim();
   if (!endpoint) return new DeterministicContentAgentAdapter();
   const timeoutValue = Number(env.CMS_OS_CONTENT_AGENT_TIMEOUT_MS ?? "30000");
+  const maxRequestValue = Number(env.CMS_OS_CONTENT_AGENT_MAX_REQUEST_BYTES ?? String(DEFAULT_MAX_REQUEST_BYTES));
+  const maxResponseValue = Number(env.CMS_OS_CONTENT_AGENT_MAX_RESPONSE_BYTES ?? String(DEFAULT_MAX_RESPONSE_BYTES));
   return new HttpContentAgentAdapter({
     endpoint,
     ...(env.CMS_OS_CONTENT_AGENT_API_KEY?.trim() ? { apiKey: env.CMS_OS_CONTENT_AGENT_API_KEY.trim() } : {}),
     ...(env.CMS_OS_CONTENT_AGENT_MODEL?.trim() ? { model: env.CMS_OS_CONTENT_AGENT_MODEL.trim() } : {}),
     ...(Number.isSafeInteger(timeoutValue) && timeoutValue >= 1 ? { timeoutMs: timeoutValue } : {}),
+    ...(Number.isSafeInteger(maxRequestValue) && maxRequestValue >= 1 ? { maxRequestBytes: maxRequestValue } : {}),
+    ...(Number.isSafeInteger(maxResponseValue) && maxResponseValue >= 1 ? { maxResponseBytes: maxResponseValue } : {}),
   });
 }

@@ -127,6 +127,41 @@ describe("CMS-OS ContentAgentAdapter", () => {
     assert.equal(contentAgentAdapterFromEnvironment({ CMS_OS_CONTENT_AGENT_ENDPOINT: "https://agent.example.test" }).id, "http-content-agent");
   });
 
+  it("HTTPアダプターの入出力サイズ上限で外部AIの暴走を抑止する", async () => {
+    const input = {
+      category: "legal" as const,
+      contentType: "blog" as const,
+      audience: "customer" as const,
+      topic: "サイズ上限テスト",
+      primaryKeyword: "サイズ上限",
+      relatedKeywords: [],
+      sourceFacts: [],
+      searchIntent: "比較検討",
+      outline: ["要点"],
+      rationale: "サイズ上限を確認します。",
+      audienceLabel: "顧客・発注者",
+      contentTypeLabel: "Blog記事",
+    };
+    let requestCalled = false;
+    const requestLimited = new HttpContentAgentAdapter({
+      endpoint: "https://agent.example.test/generate",
+      maxRequestBytes: 16,
+      fetchImpl: async () => {
+        requestCalled = true;
+        return new Response(JSON.stringify({ output: {} }), { status: 200 });
+      },
+    });
+    await assert.rejects(() => requestLimited.propose(input), /入力が上限/);
+    assert.equal(requestCalled, false);
+
+    const responseLimited = new HttpContentAgentAdapter({
+      endpoint: "https://agent.example.test/generate",
+      maxResponseBytes: 32,
+      fetchImpl: async () => new Response(JSON.stringify({ output: { searchIntent: "x".repeat(100), relatedKeywords: [], outline: ["要点"], rationale: "r" } }), { status: 200 }),
+    });
+    await assert.rejects(() => responseLimited.propose(input), /応答が上限/);
+  });
+
   it("AIプロバイダー障害を502系のサービスエラーへ変換する", async () => {
     const auth = new InMemoryAuthService();
     const portal = new PortalService(auth);
