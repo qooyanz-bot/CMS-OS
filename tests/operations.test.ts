@@ -132,7 +132,7 @@ describe("CMS-OS非同期操作ジョブ", () => {
     assert.equal(oversized.status, 400);
   });
 
-  it("対象ポジション別の企画案と下書きを非同期で一括生成できる", async () => {
+  it("対象ポジション別の企画案・下書き・清書を非同期で一括生成できる", async () => {
     const proposed = await request("/api/v1/operations", {
       method: "POST",
       body: JSON.stringify({
@@ -169,6 +169,32 @@ describe("CMS-OS非同期操作ジョブ", () => {
     assert.equal(draftedResult.status, 200);
     assert.equal(draftedResult.body.result.structuredContent.status, "succeeded");
     assert.equal(draftedResult.body.result.structuredContent.result.contentIds.length, 2);
+
+    const polished = await request("/api/v1/operations", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "content.polish_batch",
+        input: {
+          category: "legal",
+          contentIds: draftedResult.body.result.structuredContent.result.contentIds,
+          instructions: "見出しと段落の読みやすさを優先してください。",
+        },
+      }),
+    });
+    assert.equal(polished.status, 202);
+    assert.equal(polished.body.item.operation, "content.polish_batch");
+    const polishedResult = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "operation.execute", arguments: { operationId: polished.body.item.id } } }),
+    });
+    assert.equal(polishedResult.status, 200);
+    assert.equal(polishedResult.body.result.structuredContent.status, "succeeded");
+    assert.equal(polishedResult.body.result.structuredContent.result.contentIds.length, 2);
+
+    const polishedContent = await request(`/api/v1/content/${polishedResult.body.result.structuredContent.result.contentIds[0]}`);
+    assert.equal(polishedContent.status, 200);
+    assert.equal(polishedContent.body.item.status, "polished");
+    assert.match(polishedContent.body.item.body, /清書方針/);
 
     const partial = await request("/api/v1/operations", {
       method: "POST",

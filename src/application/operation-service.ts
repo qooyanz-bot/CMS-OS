@@ -14,7 +14,7 @@ export class OperationServiceError extends Error {
 
 export type OperationSubmitInput = {
   operation: OperationType;
-  input: ContentCreateInput | ContentCreateBatchInput | ContentProposeBatchInput | ContentDraftBatchInput;
+  input: ContentCreateInput | ContentCreateBatchInput | ContentProposeBatchInput | ContentDraftBatchInput | ContentPolishBatchInput;
 };
 
 export type ContentCreateBatchInput = {
@@ -30,6 +30,12 @@ export type ContentProposeBatchInput = {
 export type ContentDraftBatchInput = {
   category: CategorySlug;
   proposalIds: string[];
+};
+
+export type ContentPolishBatchInput = {
+  category: CategorySlug;
+  contentIds: string[];
+  instructions?: string;
 };
 
 export const MAX_BATCH_ITEMS = 50;
@@ -56,6 +62,10 @@ function isItemsBatchInput(input: OperationSubmitInput["input"]): input is Conte
 
 function isDraftBatchInput(input: OperationSubmitInput["input"]): input is ContentDraftBatchInput {
   return "proposalIds" in input && Array.isArray(input.proposalIds);
+}
+
+function isPolishBatchInput(input: OperationSubmitInput["input"]): input is ContentPolishBatchInput {
+  return "contentIds" in input && Array.isArray(input.contentIds);
 }
 
 export class OperationService {
@@ -86,6 +96,16 @@ export class OperationService {
       }
       if (input.input.category !== principal.category || input.input.proposalIds.some((proposalId) => typeof proposalId !== "string" || proposalId.length === 0)) {
         throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
+      }
+    } else if (input.operation === "content.polish_batch") {
+      if (!isPolishBatchInput(input.input) || input.input.contentIds.length < 1 || input.input.contentIds.length > MAX_BATCH_ITEMS) {
+        throw new OperationServiceError(400, `content.polish_batchは1〜${MAX_BATCH_ITEMS}件のcontentIdsを指定してください。`);
+      }
+      if (input.input.category !== principal.category || input.input.contentIds.some((contentId) => typeof contentId !== "string" || contentId.length === 0)) {
+        throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
+      }
+      if (input.input.instructions !== undefined && (typeof input.input.instructions !== "string" || input.input.instructions.length > 1000)) {
+        throw new OperationServiceError(400, "instructionsは1000文字以内で指定してください。");
       }
     } else if (isItemsBatchInput(input.input) || isDraftBatchInput(input.input) || input.input.category !== principal.category) {
       throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
@@ -170,6 +190,16 @@ export class OperationService {
           const created = this.content.createDraft(principal, proposalId);
           contentIds.push(created.id);
           partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.proposalIds.length };
+        }
+        result = { contentIds, itemCount: contentIds.length };
+      } else if (job.operation === "content.polish_batch") {
+        const batch = running.input as unknown as ContentPolishBatchInput;
+        const contentIds: string[] = [];
+        partialResult = { contentIds, completedCount: 0, totalCount: batch.contentIds.length };
+        for (const contentId of batch.contentIds) {
+          const polished = this.content.polishContent(principal, contentId, batch.instructions);
+          contentIds.push(polished.id);
+          partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.contentIds.length };
         }
         result = { contentIds, itemCount: contentIds.length };
       } else {
