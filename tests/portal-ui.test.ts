@@ -29,6 +29,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /CMS-OS Portal/);
   assert.match(body, /content-editor-panel/);
   assert.match(body, /publication-history-list/);
+  assert.match(body, /publication-schedule-panel/);
+  assert.match(body, /publication-schedule-list/);
   assert.match(body, /site-seo-audit-button/);
   assert.match(body, /site-seo-audit-result/);
   assert.match(body, /content-version-list/);
@@ -95,6 +97,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/publications\/build/);
   assert.match(scriptBody, /api\/v1\/publications\/publish/);
   assert.match(scriptBody, /BuilderOS Adapterで公開/);
+  assert.match(scriptBody, /api\/v1\/publications\/schedules/);
+  assert.match(scriptBody, /publication-schedule-cancel-button/);
+  assert.match(scriptBody, /reloadPublicationSchedules/);
   assert.match(scriptBody, /api\/v1\/publications\/unpublish/);
   assert.match(scriptBody, /api\/v1\/seo\/audit/);
   assert.match(scriptBody, /api\/v1\/publications/);

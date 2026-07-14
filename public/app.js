@@ -174,6 +174,8 @@ const elements = {
   contentVersions: document.querySelector("#content-version-list"),
   contentReviews: document.querySelector("#content-review-list"),
   publicationHistory: document.querySelector("#publication-history-list"),
+  publicationSchedulePanel: document.querySelector("#publication-schedule-panel"),
+  publicationScheduleList: document.querySelector("#publication-schedule-list"),
   siteSeoAuditButton: document.querySelector("#site-seo-audit-button"),
   siteSeoAuditResult: document.querySelector("#site-seo-audit-result"),
   contentPreview: document.querySelector("#content-preview"),
@@ -1016,6 +1018,7 @@ function contentActionButtons(content) {
   if (content.status === "approved") {
     actions.push(`<button class="button ghost content-action" data-action="build" data-content-id="${escapeHtml(content.id)}">静的ビルド</button>`);
     actions.push(`<button class="button primary content-action" data-action="publish" data-content-id="${escapeHtml(content.id)}">BuilderOS Adapterで公開</button>`);
+    if (state.experience?.allowedActions.includes("publication.schedule")) actions.push(`<button class="button ghost content-action" data-action="schedule" data-content-id="${escapeHtml(content.id)}">予約公開</button>`);
   }
   if (content.status === "published") actions.push(`<button class="button ghost content-action" data-action="unpublish" data-content-id="${escapeHtml(content.id)}">公開を取り消す</button>`);
   if (translationAction) actions.unshift(translationAction);
@@ -1116,6 +1119,39 @@ async function reloadPublicationHistory() {
   }
 }
 
+function renderPublicationSchedules(items) {
+  elements.publicationScheduleList.innerHTML = items.length
+    ? items.map((item) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(item.status)}</span><span>${escapeHtml(item.scheduledFor)}</span><span>${escapeHtml(String(item.contentIds.length))}件</span></div><h4>${escapeHtml(item.id)}</h4>${item.status === "scheduled" ? `<button class="button ghost publication-schedule-cancel-button" data-schedule-id="${escapeHtml(item.id)}">予約を取り消す</button>` : `<p class="muted">${escapeHtml(item.lastError ?? "実行済みまたは取消済み")}</p>`}</article>`).join("")
+    : '<p class="empty">予約公開はありません。</p>';
+  document.querySelectorAll(".publication-schedule-cancel-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("この予約公開を取り消しますか？")) return;
+      try {
+        await api(`/api/v1/publications/schedules/${encodeURIComponent(button.dataset.scheduleId ?? "")}/cancel`, { method: "POST", body: JSON.stringify({}) });
+        setContentMessage("予約公開を取り消しました。");
+        await reloadPublicationSchedules();
+      } catch (error) {
+        setContentMessage(error.message);
+      }
+    });
+  });
+}
+
+async function reloadPublicationSchedules() {
+  const visible = state.token && state.role === "provider" && state.experience?.allowedActions.includes("publication.schedule_list");
+  elements.publicationSchedulePanel.hidden = !visible;
+  if (!visible) {
+    elements.publicationScheduleList.replaceChildren();
+    return;
+  }
+  try {
+    const body = await api("/api/v1/publications/schedules");
+    renderPublicationSchedules(body.items);
+  } catch (error) {
+    elements.publicationScheduleList.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
+  }
+}
+
 async function handlePublicationRollback(publicationId) {
   if (!publicationId) return;
   try {
@@ -1142,6 +1178,7 @@ async function reloadContent() {
   renderProposals(proposals.items);
   renderContents(contents.items);
   await reloadPublicationHistory();
+  await reloadPublicationSchedules();
 }
 
 async function runSiteSeoAudit() {
@@ -1214,6 +1251,13 @@ async function handleContentAction(action, contentId) {
       if (!window.confirm("承認済みコンテンツをBuilderOS Adapter経由で公開しますか？")) return;
       const body = await api("/api/v1/publications/publish", { method: "POST", body: JSON.stringify({ contentIds: [contentId], baseUrl: window.location.origin }) });
       setContentMessage(body.item.deployment.status === "submitted" ? "BuilderOS Adapter経由で公開しました。" : "dry-runのため、公開状態は変更していません。公開設定を確認してください。");
+    } else if (action === "schedule") {
+      const defaultTime = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const scheduledFor = window.prompt("公開日時をISO 8601形式で指定してください。", defaultTime) ?? "";
+      if (!scheduledFor.trim()) return;
+      await api("/api/v1/publications/schedules", { method: "POST", body: JSON.stringify({ contentIds: [contentId], scheduledFor: scheduledFor.trim(), baseUrl: window.location.origin }) });
+      setContentMessage("予約公開を作成しました。外部スケジューラから実行できます。");
+      await reloadPublicationSchedules();
     }
     await reloadContent();
   } catch (error) {
