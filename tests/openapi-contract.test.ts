@@ -10,7 +10,7 @@ describe("CMS-OS OpenAPI契約", () => {
     const specification = JSON.parse(source) as {
       openapi: string;
       paths: Record<string, Record<string, unknown>>;
-      components: { securitySchemes: Record<string, { type: string; scheme?: string }> };
+      components: { securitySchemes: Record<string, { type: string; scheme?: string }>; schemas: Record<string, { enum?: unknown[]; properties?: Record<string, unknown> }> };
     };
     assert.equal(specification.openapi, "3.1.0");
     const requiredPaths = [
@@ -114,6 +114,8 @@ describe("CMS-OS OpenAPI契約", () => {
     }
     assert.deepEqual(specification.components.securitySchemes.BearerAuth, { type: "http", scheme: "bearer", bearerFormat: "opaque-session-token" });
     assert.deepEqual(specification.components.securitySchemes.OperatorKey, { type: "apiKey", in: "header", name: "x-cms-os-operator-key" });
+    assert.deepEqual(specification.components.schemas.AsyncOperationType?.enum, ["content.create", "content.create_batch"]);
+    assert.ok(specification.components.schemas.AsyncOperationContentCreateBatchRequest);
     assert.deepEqual((specification.paths["/api/v1/publications/schedules/execute"]?.post as { security?: unknown }).security, [{ BearerAuth: [] }, { OperatorKey: [] }]);
     for (const path of [
       "/api/v1/auth/login",

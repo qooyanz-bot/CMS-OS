@@ -16,7 +16,7 @@ import {
 import { PublicationService, PublicationServiceError } from "../application/publication-service.js";
 import { MediaService, MediaServiceError, mediaSortValues, type MediaRegisterInput, type MediaUpdateInput } from "../application/media-service.js";
 import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type WebhookSubscriptionCreateInput, type WebhookSubscriptionUpdateInput } from "../application/webhook-service.js";
-import { OperationService, OperationServiceError, type OperationSubmitInput } from "../application/operation-service.js";
+import { MAX_BATCH_ITEMS, OperationService, OperationServiceError, type ContentCreateBatchInput, type OperationSubmitInput } from "../application/operation-service.js";
 import { PortalPlanningService, PortalPlanningServiceError, type PortalPlanCreateInput } from "../application/portal-planning-service.js";
 import { operationTypes, type OperationType } from "../domain/operation-store.js";
 import { applicationStatuses, categorySlugs, contentAudiences, contentLocales, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type CategorySlug, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
@@ -382,7 +382,20 @@ function parseContentCreateInput(input: Record<string, unknown>): ContentCreateI
 function parseOperationSubmitInput(input: Record<string, unknown>): OperationSubmitInput {
   if (typeof input.operation !== "string" || !operationTypes.includes(input.operation as OperationType)) throw new Error("operationは有効な非同期操作を指定してください。");
   if (!input.input || typeof input.input !== "object" || Array.isArray(input.input)) throw new Error("inputはオブジェクトで指定してください。");
-  return { operation: input.operation as OperationType, input: parseContentCreateInput(input.input as Record<string, unknown>) };
+  const operationInput = input.input as Record<string, unknown>;
+  if (input.operation === "content.create_batch") {
+    if (!isCategorySlug(operationInput.category) || !Array.isArray(operationInput.items) || operationInput.items.length < 1 || operationInput.items.length > MAX_BATCH_ITEMS) {
+      throw new Error(`content.create_batchはcategoryと1〜${MAX_BATCH_ITEMS}件のitemsが必要です。`);
+    }
+    const items = operationInput.items.map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`items[${index}]はオブジェクトで指定してください。`);
+      return parseContentCreateInput(item as Record<string, unknown>);
+    });
+    if (items.some((item) => item.category !== operationInput.category)) throw new Error("content.create_batchの全itemsは同じcategoryを指定してください。");
+    const batch: ContentCreateBatchInput = { category: operationInput.category, items };
+    return { operation: input.operation as OperationType, input: batch };
+  }
+  return { operation: input.operation as OperationType, input: parseContentCreateInput(operationInput) };
 }
 
 function parsePortalPlanCreateInput(input: Record<string, unknown>): PortalPlanCreateInput {
@@ -738,8 +751,19 @@ async function handleMcp(
           },
           {
             name: "operation.submit",
-            description: "非同期コンテンツ作成ジョブを投入します。Idempotency-Keyで重複投入を防止できます。",
-            inputSchema: { type: "object", properties: { operation: { enum: [...operationTypes] }, input: { type: "object" }, idempotencyKey: { type: "string", maxLength: 200 } }, required: ["operation", "input"] },
+            description: "単一または最大50件の非同期コンテンツ作成ジョブを投入します。Idempotency-Keyで重複投入を防止できます。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                operation: { enum: [...operationTypes] },
+                input: {
+                  type: "object",
+                  description: "content.createは単一入力、content.create_batchはcategoryと1〜50件のitemsを指定します。",
+                },
+                idempotencyKey: { type: "string", maxLength: 200 },
+              },
+              required: ["operation", "input"],
+            },
           },
           {
             name: "operation.list",

@@ -89,6 +89,49 @@ describe("CMS-OS非同期操作ジョブ", () => {
     assert.equal(content.status, 200);
   });
 
+  it("同一カテゴリのコンテンツを最大50件まで一括ジョブで作成できる", async () => {
+    const submitted = await request("/api/v1/operations", {
+      method: "POST",
+      headers: { "Idempotency-Key": "operation-test-content-batch-1" },
+      body: JSON.stringify({
+        operation: "content.create_batch",
+        input: {
+          category: "legal",
+          items: [
+            { ...contentInput, title: "一括作成・相談案内" },
+            { ...contentInput, title: "一括作成・採用案内", audience: "candidate" },
+          ],
+        },
+      }),
+    });
+    assert.equal(submitted.status, 202);
+    assert.equal(submitted.body.item.operation, "content.create_batch");
+
+    const executed = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "operation.execute", arguments: { operationId: submitted.body.item.id } },
+      }),
+    });
+    assert.equal(executed.status, 200);
+    const result = executed.body.result.structuredContent.result;
+    assert.equal(executed.body.result.structuredContent.status, "succeeded");
+    assert.equal(result.itemCount, 2);
+    assert.equal(result.contentIds.length, 2);
+
+    const oversized = await request("/api/v1/operations", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "content.create_batch",
+        input: { category: "legal", items: Array.from({ length: 51 }, () => ({ ...contentInput })) },
+      }),
+    });
+    assert.equal(oversized.status, 400);
+  });
+
   it("MCPでジョブ一覧とキュー処理を実行し、別ロールからの取得を拒否する", async () => {
     const submitted = await request("/api/v1/operations", {
       method: "POST",

@@ -14,8 +14,15 @@ export class OperationServiceError extends Error {
 
 export type OperationSubmitInput = {
   operation: OperationType;
-  input: ContentCreateInput;
+  input: ContentCreateInput | ContentCreateBatchInput;
 };
+
+export type ContentCreateBatchInput = {
+  category: CategorySlug;
+  items: ContentCreateInput[];
+};
+
+export const MAX_BATCH_ITEMS = 50;
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -29,8 +36,12 @@ function fingerprint(input: Record<string, unknown>): string {
   return createHash("sha256").update(JSON.stringify(canonicalize(input)), "utf8").digest("hex");
 }
 
-function cloneInput(input: ContentCreateInput): Record<string, unknown> {
+function cloneInput(input: OperationSubmitInput["input"]): Record<string, unknown> {
   return JSON.parse(JSON.stringify(input)) as Record<string, unknown>;
+}
+
+function isBatchInput(input: OperationSubmitInput["input"]): input is ContentCreateBatchInput {
+  return "items" in input && Array.isArray(input.items);
 }
 
 export class OperationService {
@@ -48,7 +59,16 @@ export class OperationService {
   public submit(principal: AuthenticatedPrincipal | null, input: OperationSubmitInput, idempotencyKey?: string): OperationJob {
     this.assertProvider(principal, "operation.submit");
     if (!operationTypes.includes(input.operation)) throw new OperationServiceError(400, "operationが不正です。");
-    if (input.input.category !== principal.category) throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
+    if (input.operation === "content.create_batch") {
+      if (!isBatchInput(input.input) || input.input.items.length < 1 || input.input.items.length > MAX_BATCH_ITEMS) {
+        throw new OperationServiceError(400, `content.create_batchは1〜${MAX_BATCH_ITEMS}件のitemsを指定してください。`);
+      }
+      if (input.input.category !== principal.category || input.input.items.some((item) => item.category !== principal.category)) {
+        throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
+      }
+    } else if (isBatchInput(input.input) || input.input.category !== principal.category) {
+      throw new OperationServiceError(403, "現在のカテゴリ以外にはジョブを投入できません。");
+    }
     const normalizedKey = idempotencyKey?.trim();
     if (normalizedKey && (normalizedKey.length < 1 || normalizedKey.length > 200)) throw new OperationServiceError(400, "Idempotency-Keyは200文字以内で指定してください。");
     const storedInput = cloneInput(input.input);
@@ -98,14 +118,33 @@ export class OperationService {
     if (job.status === "running") throw new OperationServiceError(409, "ジョブはすでに実行中です。");
     const running = this.store.update(job.id, { status: "running", startedAt: new Date().toISOString(), error: undefined, completedAt: undefined, result: undefined });
     if (!running) throw new OperationServiceError(404, "ジョブが見つかりません。");
+    let partialResult: Record<string, unknown> | undefined;
     try {
-      const input = running.input as unknown as ContentCreateInput;
-      const created = this.content.createContent(principal, input);
-      const completed = this.store.update(job.id, { status: "succeeded", completedAt: new Date().toISOString(), result: { contentId: created.id } });
+      let result: Record<string, unknown>;
+      if (job.operation === "content.create_batch") {
+        const batch = running.input as unknown as ContentCreateBatchInput;
+        const contentIds: string[] = [];
+        partialResult = { contentIds, completedCount: 0, totalCount: batch.items.length };
+        for (const item of batch.items) {
+          const created = this.content.createContent(principal, item);
+          contentIds.push(created.id);
+          partialResult = { contentIds: [...contentIds], completedCount: contentIds.length, totalCount: batch.items.length };
+        }
+        result = { contentIds, itemCount: contentIds.length };
+      } else {
+        const created = this.content.createContent(principal, running.input as unknown as ContentCreateInput);
+        result = { contentId: created.id };
+      }
+      const completed = this.store.update(job.id, { status: "succeeded", completedAt: new Date().toISOString(), result });
       if (!completed) throw new OperationServiceError(404, "ジョブが見つかりません。");
       return this.toSummary(completed);
     } catch (error) {
-      const failed = this.store.update(job.id, { status: "failed", completedAt: new Date().toISOString(), error: error instanceof Error ? error.message.slice(0, 1000) : "ジョブの実行に失敗しました。" });
+      const failed = this.store.update(job.id, {
+        status: "failed",
+        completedAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message.slice(0, 1000) : "ジョブの実行に失敗しました。",
+        ...(partialResult ? { result: partialResult } : {}),
+      });
       if (!failed) throw new OperationServiceError(404, "ジョブが見つかりません。");
       return this.toSummary(failed);
     }
