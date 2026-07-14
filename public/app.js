@@ -142,6 +142,7 @@ const elements = {
   providerProfileMeta: document.querySelector("#provider-profile-meta"),
   providerProfileFields: document.querySelector("#provider-profile-fields"),
   providerProfileClose: document.querySelector("#provider-profile-close"),
+  providerProfileRequest: document.querySelector("#provider-profile-request"),
   providerProfileInquiry: document.querySelector("#provider-profile-inquiry"),
   providerProfileStatus: document.querySelector("#provider-profile-status"),
   providerPagination: document.querySelector("#provider-pagination"),
@@ -556,6 +557,8 @@ function clearProviderProfile() {
   elements.providerProfileSummary.textContent = "一覧から事業者を選ぶと、現在のロールで表示できる詳細を確認できます。";
   elements.providerProfileMeta.replaceChildren();
   elements.providerProfileFields.replaceChildren();
+  elements.providerProfileRequest.hidden = true;
+  elements.providerProfileRequest.dataset.providerId = "";
   elements.providerProfileInquiry.hidden = true;
   elements.providerProfileInquiry.dataset.providerId = "";
   setListStatus(elements.providerProfileStatus);
@@ -593,6 +596,9 @@ function renderProviderProfile(provider) {
     }
   }
 
+  const canRequest = Boolean(state.token && state.experience?.allowedActions.includes("request.create"));
+  elements.providerProfileRequest.hidden = !canRequest;
+  elements.providerProfileRequest.dataset.providerId = canRequest ? provider.id : "";
   const canInquire = Boolean(state.token && state.experience?.allowedActions.includes("inquiry.create"));
   elements.providerProfileInquiry.hidden = !canInquire;
   elements.providerProfileInquiry.dataset.providerId = provider.id;
@@ -606,6 +612,10 @@ async function openProviderProfile(providerId) {
   elements.providerProfileSummary.textContent = "現在のロールで表示できる詳細情報を読み込んでいます。";
   elements.providerProfileMeta.replaceChildren();
   elements.providerProfileFields.replaceChildren();
+  elements.providerProfileRequest.hidden = true;
+  elements.providerProfileRequest.dataset.providerId = "";
+  elements.providerProfileInquiry.hidden = true;
+  elements.providerProfileInquiry.dataset.providerId = "";
   setListStatus(elements.providerProfileStatus, "loading", "事業者プロフィールを読み込んでいます。");
   elements.providerProfilePanel.scrollIntoView({ behavior: "smooth", block: "center" });
   try {
@@ -615,6 +625,13 @@ async function openProviderProfile(providerId) {
   } catch (error) {
     setListStatus(elements.providerProfileStatus, "error", "事業者プロフィールを読み込めませんでした。再試行してください。", () => openProviderProfile(providerId));
   }
+}
+
+function focusRequestForm(providerId) {
+  if (!providerId) return;
+  elements.requestProvider.value = providerId;
+  elements.requestForm.scrollIntoView({ behavior: "smooth", block: "center" });
+  elements.requestForm.querySelector("input[name=title]")?.focus();
 }
 
 function comparisonProviders() {
@@ -1945,6 +1962,7 @@ elements.contentForm.addEventListener("submit", async (event) => {
 });
 
 elements.providerProfileClose.addEventListener("click", () => clearProviderProfile());
+elements.providerProfileRequest.addEventListener("click", () => focusRequestForm(elements.providerProfileRequest.dataset.providerId ?? ""));
 elements.providerProfileInquiry.addEventListener("click", () => {
   const providerId = elements.providerProfileInquiry.dataset.providerId ?? "";
   if (!providerId) return;
