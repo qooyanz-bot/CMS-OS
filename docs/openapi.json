@@ -556,6 +556,14 @@
         "tags": ["Content"],
         "operationId": "listContentProposals",
         "summary": "事業者自身の企画案一覧を取得",
+        "parameters": [
+          { "name": "search", "in": "query", "schema": { "type": "string", "maxLength": 200 } },
+          { "name": "audience", "in": "query", "schema": { "$ref": "#/components/schemas/ContentAudience" } },
+          { "name": "contentType", "in": "query", "schema": { "$ref": "#/components/schemas/ContentType" } },
+          { "name": "sort", "in": "query", "schema": { "$ref": "#/components/schemas/ProposalSort", "default": "createdAt_desc" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+          { "name": "cursor", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
         "security": [{ "BearerAuth": [] }],
         "responses": { "200": { "description": "企画案一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProposalListResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
@@ -1131,10 +1139,11 @@
       "PageInfo": { "type": "object", "required": ["limit"], "properties": { "limit": { "type": "integer" }, "nextCursor": { "type": "string" } } },
       "ProviderListingReviewListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ProviderListingReviewItem" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
       "ContentProposalRequest": { "type": "object", "required": ["category", "contentType", "audience", "topic"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "contentType": { "$ref": "#/components/schemas/ContentType" }, "audience": { "$ref": "#/components/schemas/ContentAudience" }, "topic": { "type": "string", "minLength": 3 }, "primaryKeyword": { "type": "string" }, "relatedKeywords": { "type": "array", "items": { "type": "string" } }, "sourceFacts": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": false },
+      "ProposalSort": { "type": "string", "enum": ["createdAt_desc", "createdAt_asc", "topic_asc"] },
       "ContentCreateRequest": { "type": "object", "required": ["category", "contentType", "audience", "title", "summary", "body"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "contentType": { "$ref": "#/components/schemas/ContentType" }, "audience": { "$ref": "#/components/schemas/ContentAudience" }, "title": { "type": "string", "minLength": 1, "maxLength": 160 }, "summary": { "type": "string", "minLength": 1, "maxLength": 320 }, "body": { "type": "string", "minLength": 1, "maxLength": 200000 }, "slug": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9-]{0,119}$" }, "locale": { "$ref": "#/components/schemas/ContentLocale" }, "proposalId": { "type": "string" }, "sourceFacts": { "type": "array", "items": { "type": "string" } }, "seo": { "$ref": "#/components/schemas/ContentSeoPatch" } }, "additionalProperties": false },
       "ContentProposal": { "type": "object", "required": ["id", "category", "providerId", "contentType", "audience", "topic", "searchIntent", "primaryKeyword", "relatedKeywords", "outline", "sourceFacts", "rationale", "createdAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "providerId": { "type": "string" }, "contentType": { "$ref": "#/components/schemas/ContentType" }, "audience": { "$ref": "#/components/schemas/ContentAudience" }, "topic": { "type": "string" }, "searchIntent": { "type": "string" }, "primaryKeyword": { "type": "string" }, "relatedKeywords": { "type": "array", "items": { "type": "string" } }, "outline": { "type": "array", "items": { "type": "string" } }, "sourceFacts": { "type": "array", "items": { "type": "string" } }, "rationale": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
       "ProposalResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/ContentProposal" } } },
-      "ProposalListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ContentProposal" } } } },
+      "ProposalListResponse": { "type": "object", "required": ["items", "page"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ContentProposal" } }, "page": { "$ref": "#/components/schemas/PageInfo" } } },
       "DraftRequest": { "type": "object", "required": ["proposalId"], "properties": { "proposalId": { "type": "string", "minLength": 1 } }, "additionalProperties": false },
       "PolishRequest": { "type": "object", "properties": { "instructions": { "type": "string" } }, "additionalProperties": false },
       "ContentTranslationRequest": { "type": "object", "required": ["targetLocale"], "properties": { "targetLocale": { "type": "string", "enum": ["ja", "en", "zh-CN", "es", "ko", "de", "fr"] }, "title": { "type": "string" }, "summary": { "type": "string" }, "body": { "type": "string" }, "instructions": { "type": "string" }, "seo": { "type": "object", "additionalProperties": true } }, "additionalProperties": false },

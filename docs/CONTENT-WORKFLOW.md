@@ -63,6 +63,9 @@ GET  /api/v1/content/{contentId}/versions
 GET  /api/v1/content/{contentId}/versions/{version}
 POST /api/v1/content/{contentId}/versions/{version}/restore
 POST /api/v1/publications/publish
+```
+
+`GET /api/v1/content/proposals`は`search`、`audience`、`contentType`、`sort`、`limit`、`cursor`で企画案を絞り込み、`{ items, page }`形式で返します。MCPでは`content.proposals`が同じ条件とページ形式を提供します。
 
 ## 多言語翻訳ワークフロー
 
@@ -75,7 +78,6 @@ POST /api/v1/publications/publish
 - 翻訳下書きは自動公開されません。AIエージェントは `content.translate` の入力に翻訳済みの `title`、`summary`、`body`、`seo` を渡すか、作成後に `content.update` で補完します。
 - 翻訳版も個別に事実確認、SEO監査、レビュー、承認を通過してから `publication.publish` を実行します。
 - 同じ原文・同じ翻訳先の有効な下書きは二重作成できません。既存版を更新して再利用します。
-```
 
 現在は`provider`ロールが、自分のカテゴリ・自分の事業者IDに紐づくコンテンツだけを操作できます。一般ユーザー、発注者、リクルーターが事業者の編集領域へ入ることはできません。
 

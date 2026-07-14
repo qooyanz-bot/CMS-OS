@@ -7,9 +7,11 @@ import { applicationSortValues, jobSortValues, PortalService, PortalServiceError
 import {
   ContentService,
   ContentServiceError,
+  proposalSortValues,
   contentSortValues,
   type ContentCreateInput,
   type ContentListQuery,
+  type ContentProposalListQuery,
   type ContentProposalCreateInput,
   isContentAudience,
   isContentLocale,
@@ -508,6 +510,34 @@ function parseContentListQueryFromUrl(url: URL): ContentListQuery {
     ...(audience ? { audience } : {}),
     ...(contentType ? { contentType } : {}),
     ...(locale ? { locale } : {}),
+    ...(sort ? { sort } : {}),
+  };
+}
+
+function parseProposalListQueryFromArguments(argumentsObject: Record<string, unknown>): ContentProposalListQuery {
+  const search = parseOptionalStringValue(argumentsObject.search, "search");
+  const audience = parseOptionalEnumValue(argumentsObject.audience, "audience", contentAudiences);
+  const contentType = parseOptionalEnumValue(argumentsObject.contentType, "contentType", contentTypes);
+  const sort = parseOptionalEnumValue(argumentsObject.sort, "sort", proposalSortValues);
+  return {
+    ...parsePaginationArguments(argumentsObject),
+    ...(search ? { search } : {}),
+    ...(audience ? { audience } : {}),
+    ...(contentType ? { contentType } : {}),
+    ...(sort ? { sort } : {}),
+  };
+}
+
+function parseProposalListQueryFromUrl(url: URL): ContentProposalListQuery {
+  const search = parseQueryString(url, "search");
+  const audience = parseOptionalEnumValue(url.searchParams.get("audience"), "audience", contentAudiences);
+  const contentType = parseOptionalEnumValue(url.searchParams.get("contentType"), "contentType", contentTypes);
+  const sort = parseOptionalEnumValue(url.searchParams.get("sort"), "sort", proposalSortValues);
+  return {
+    ...parsePaginationQuery(url),
+    ...(search ? { search } : {}),
+    ...(audience ? { audience } : {}),
+    ...(contentType ? { contentType } : {}),
     ...(sort ? { sort } : {}),
   };
 }
@@ -1077,6 +1107,21 @@ async function handleMcp(
                 seo: { type: "object", additionalProperties: true },
               },
               required: ["category", "contentType", "audience", "title", "summary", "body"],
+            },
+          },
+          {
+            name: "content.proposals",
+            description: "事業者自身の企画案を検索・ページング付きで一覧取得します。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                search: { type: "string", maxLength: 200 },
+                audience: { type: "string", enum: [...contentAudiences] },
+                contentType: { type: "string", enum: [...contentTypes] },
+                sort: { type: "string", enum: [...proposalSortValues] },
+                limit: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+                cursor: { type: "integer", minimum: 0, default: 0 },
+              },
             },
           },
           {
@@ -1947,6 +1992,12 @@ async function handleMcp(
         ...(sourceFacts ? { sourceFacts } : {}),
         ...(seo ? { seo } : {}),
       });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.proposals") {
+      const result = content.listProposalsPage(principal, parseProposalListQueryFromArguments(argumentsObject));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2898,7 +2949,7 @@ export function createHttpServer(
 
       if (request.method === "GET" && url.pathname === "/api/v1/content/proposals") {
         try {
-          writeJson(response, 200, { items: content.listProposals(principal) });
+          writeJson(response, 200, content.listProposalsPage(principal, parseProposalListQueryFromUrl(url)));
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "企画案を取得できません。" });
         }

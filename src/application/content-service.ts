@@ -60,6 +60,9 @@ export type ContentProposalCreateInput = {
 export const contentSortValues = ["updatedAt_desc", "updatedAt_asc", "title_asc", "status"] as const;
 export type ContentSort = (typeof contentSortValues)[number];
 
+export const proposalSortValues = ["createdAt_desc", "createdAt_asc", "topic_asc"] as const;
+export type ProposalSort = (typeof proposalSortValues)[number];
+
 export type ContentListQuery = {
   search?: string | undefined;
   status?: ContentWorkflowStatus | undefined;
@@ -73,6 +76,20 @@ export type ContentListQuery = {
 
 export type ContentListPage = {
   items: ContentRecord[];
+  page: { limit: number; nextCursor?: string };
+};
+
+export type ContentProposalListQuery = {
+  search?: string | undefined;
+  audience?: ContentAudience | undefined;
+  contentType?: ContentType | undefined;
+  sort?: ProposalSort | undefined;
+  limit?: number | undefined;
+  cursor?: number | undefined;
+};
+
+export type ContentProposalListPage = {
+  items: ContentProposal[];
   page: { limit: number; nextCursor?: string };
 };
 
@@ -207,6 +224,40 @@ export class ContentService {
   public listProposals(principal: AuthenticatedPrincipal | null): ContentProposal[] {
     this.assertProvider(principal, principal?.category);
     return this.store.listProposals(principal!.category, principal!.providerId!);
+  }
+
+  public listProposalsPage(principal: AuthenticatedPrincipal | null, query: ContentProposalListQuery = {}): ContentProposalListPage {
+    this.assertProvider(principal, principal?.category);
+    const limitValue = query.limit ?? 50;
+    const cursorValue = query.cursor ?? 0;
+    if (!Number.isSafeInteger(limitValue) || limitValue < 1 || limitValue > 100) {
+      throw new ContentServiceError(400, "limitは1以上100以下で指定してください。");
+    }
+    if (!Number.isSafeInteger(cursorValue) || cursorValue < 0) {
+      throw new ContentServiceError(400, "cursorは0以上の整数で指定してください。");
+    }
+    const normalizedSearch = query.search?.trim().toLocaleLowerCase();
+    if (normalizedSearch && normalizedSearch.length > 200) {
+      throw new ContentServiceError(400, "searchは200文字以内で指定してください。");
+    }
+
+    const proposals = this.store.listProposals(principal!.category, principal!.providerId!)
+      .filter((proposal) => !query.audience || proposal.audience === query.audience)
+      .filter((proposal) => !query.contentType || proposal.contentType === query.contentType)
+      .filter((proposal) => {
+        if (!normalizedSearch) return true;
+        const searchable = [proposal.topic, proposal.primaryKeyword, proposal.rationale, ...proposal.relatedKeywords].join(" ").toLocaleLowerCase();
+        return searchable.includes(normalizedSearch);
+      })
+      .sort((left, right) => {
+        const sort = query.sort ?? "createdAt_desc";
+        if (sort === "topic_asc") return left.topic.localeCompare(right.topic, "ja") || left.id.localeCompare(right.id);
+        const comparison = left.createdAt.localeCompare(right.createdAt);
+        return sort === "createdAt_asc" ? comparison || left.id.localeCompare(right.id) : -comparison || left.id.localeCompare(right.id);
+      });
+    const items = proposals.slice(cursorValue, cursorValue + limitValue);
+    const nextCursor = cursorValue + items.length < proposals.length ? String(cursorValue + items.length) : undefined;
+    return { items, page: { limit: limitValue, ...(nextCursor ? { nextCursor } : {}) } };
   }
 
   public createContent(

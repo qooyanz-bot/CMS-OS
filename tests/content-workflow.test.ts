@@ -227,6 +227,7 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     const names = tools.body.result.tools.map((tool: { name: string }) => tool.name);
     assert.ok(names.includes("content.propose"));
     assert.ok(names.includes("content.create"));
+    assert.ok(names.includes("content.proposals"));
     assert.ok(names.includes("content.list"));
     assert.ok(names.includes("content.get"));
     assert.ok(names.includes("content.versions"));
@@ -252,14 +253,37 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
       method: "POST",
       body: JSON.stringify({ email: "beauty@example.com", password: "demo-password", category: "beauty", role: "provider" }),
     });
+    const providerHeaders = { authorization: `Bearer ${providerLogin.body.accessToken}` };
+    for (const suffix of ["A", "B"]) {
+      const proposal = await request("/api/v1/content/proposals", {
+        method: "POST",
+        headers: providerHeaders,
+        body: JSON.stringify({ category: "beauty", contentType: "blog", audience: "customer", topic: `企画一覧フィルター ${suffix}` }),
+      });
+      assert.equal(proposal.status, 201);
+    }
+    const proposalPage = await request(`/api/v1/content/proposals?search=${encodeURIComponent("企画一覧フィルター")}&audience=customer&contentType=blog&sort=topic_asc&limit=1`, { headers: providerHeaders });
+    assert.equal(proposalPage.status, 200);
+    assert.equal(proposalPage.body.items.length, 1);
+    assert.equal(proposalPage.body.page.limit, 1);
+    assert.equal(proposalPage.body.page.nextCursor, "1");
     const list = await request("/mcp", {
       method: "POST",
-      headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
+      headers: providerHeaders,
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "content.list", arguments: {} } }),
     });
     assert.equal(list.status, 200);
     assert.ok(Array.isArray(list.body.result.structuredContent.items));
     assert.ok(Array.isArray(list.body.result.structuredContent.proposals));
+
+    const proposalMcp = await request("/mcp", {
+      method: "POST",
+      headers: providerHeaders,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "content.proposals", arguments: { search: "企画一覧フィルター", audience: "customer", contentType: "blog", limit: 10 } } }),
+    });
+    assert.equal(proposalMcp.status, 200);
+    assert.equal(proposalMcp.body.result.structuredContent.items.length, 2);
+    assert.equal(proposalMcp.body.result.structuredContent.page.limit, 10);
 
     const siteAudit = await request("/api/v1/seo/audit", {
       headers: { authorization: `Bearer ${providerLogin.body.accessToken}` },
