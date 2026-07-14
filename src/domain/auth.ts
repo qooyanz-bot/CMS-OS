@@ -1,5 +1,14 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { isRecruiterRole, type Account, type AuthenticatedPrincipal, type CategorySlug, type PortalRole } from "./types.js";
+import {
+  categorySlugs,
+  contextRoles,
+  isRecruiterRole,
+  type Account,
+  type AuthenticatedPrincipal,
+  type AuthContextOption,
+  type CategorySlug,
+  type PortalRole,
+} from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 import { createTotpUri, generateTotpSecret, verifyTotp } from "../security/totp.js";
 import { openSecret, sealSecret } from "../security/secret-box.js";
@@ -133,6 +142,13 @@ function hasAssignment(account: Account, category: CategorySlug, role: PortalRol
       (assignment.role === role || (isRecruiterRole(assignment.role) && isRecruiterRole(role))) &&
       (assignment.category === "*" || assignment.category === category),
   );
+}
+
+function listAvailableContexts(account: Account): AuthContextOption[] {
+  return categorySlugs.flatMap((category) => {
+    const roles = contextRoles.filter((role) => hasAssignment(account, category, role));
+    return roles.length > 0 ? [{ category, roles: [...roles] }] : [];
+  });
 }
 
 function normalizeIssuer(value: string): string {
@@ -684,6 +700,7 @@ export class InMemoryAuthService implements AuthService {
       displayName: account.displayName,
       category,
       role,
+      availableContexts: listAvailableContexts(account),
       ...(account.providerId ? { providerId: account.providerId } : {}),
     };
   }

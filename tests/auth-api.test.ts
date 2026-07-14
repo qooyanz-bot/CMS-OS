@@ -89,6 +89,8 @@ describe("認証REST APIとMCP", () => {
       assert.equal(response.status, 200, `${category}の事業者ログインに失敗しました。`);
       assert.equal(response.body.principal.category, category);
       assert.equal(response.body.principal.role, "provider");
+      const context = response.body.principal.availableContexts.find((item: { category: string }) => item.category === category);
+      assert.ok(context.roles.includes("provider"));
     }
   });
 
@@ -99,6 +101,7 @@ describe("認証REST APIとMCP", () => {
     });
     assert.equal(login.status, 200);
     assert.equal(login.body.principal.role, "recruiter");
+    assert.ok(login.body.principal.availableContexts.every((context: { roles: string[] }) => context.roles.includes("recruiter")));
 
     const experience = await request("/api/v1/categories/labor-shortage/experience", {
       headers: { authorization: `Bearer ${login.body.accessToken}` },
@@ -132,6 +135,7 @@ describe("認証REST APIとMCP", () => {
     assert.equal(switched.status, 200);
     assert.equal(switched.body.principal.category, "tourism");
     assert.equal(switched.body.principal.role, "orderer");
+    assert.ok(switched.body.principal.availableContexts.some((context: { category: string; roles: string[] }) => context.category === "tourism" && context.roles.includes("orderer")));
     const changedRole = await request("/api/v1/auth/context", {
       method: "POST",
       headers: { authorization: `Bearer ${login.body.accessToken}` },
@@ -232,6 +236,7 @@ describe("認証REST APIとMCP", () => {
     });
     assert.equal(me.status, 200);
     assert.equal(me.body.result.structuredContent.principal.role, "orderer");
+    assert.ok(Array.isArray(me.body.result.structuredContent.principal.availableContexts));
 
     const logout = await request("/mcp", {
       method: "POST",

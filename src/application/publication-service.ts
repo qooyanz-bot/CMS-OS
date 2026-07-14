@@ -957,6 +957,7 @@ export class PublicationService {
       displayName: "CMS-OSスケジューラ",
       category: schedule.category,
       role: "provider",
+      availableContexts: [{ category: schedule.category, roles: ["provider"] }],
       providerId: schedule.providerId,
     }));
   }

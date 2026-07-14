@@ -9,9 +9,12 @@ export const categorySlugs = [
   "gx",
   "regional-revitalization",
 ] as const;
+/** UIと認証応答で提示する正規の切り替えロール。candidateは互換入力としてのみ受け付ける。 */
+export const contextRoles = ["user", "orderer", "provider", "recruiter"] as const;
 
 export type PortalRole = (typeof portalRoles)[number];
 export type CategorySlug = (typeof categorySlugs)[number];
+export type ContextRole = (typeof contextRoles)[number];
 
 /** 求職者向けの公開ロール。candidateは既存クライアント互換の別名として扱う。 */
 export function isRecruiterRole(role: PortalRole): boolean {
@@ -38,6 +41,11 @@ export interface RoleAssignment {
   organizationId?: string;
 }
 
+export interface AuthContextOption {
+  category: CategorySlug;
+  roles: ContextRole[];
+}
+
 export interface Account {
   id: string;
   email: string;
@@ -57,6 +65,7 @@ export interface AuthenticatedPrincipal {
   displayName: string;
   category: CategorySlug;
   role: PortalRole;
+  availableContexts: AuthContextOption[];
   providerId?: string;
 }
 

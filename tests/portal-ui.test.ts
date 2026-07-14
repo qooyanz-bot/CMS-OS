@@ -83,6 +83,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /async function loadCategories/);
   assert.match(scriptBody, /api\("\/api\/v1\/categories"\)/);
   assert.match(scriptBody, /elements\.category\.replaceChildren/);
+  assert.match(scriptBody, /availableContexts/);
+  assert.match(scriptBody, /function renderRoleOptions/);
+  assert.match(scriptBody, /function applyPrincipal/);
   assert.match(scriptBody, /moduleLabels/);
   assert.match(scriptBody, /function isRecruiterRole/);
   assert.match(scriptBody, /navigationLabels\.themes/);

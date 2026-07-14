@@ -4,6 +4,8 @@ const state = {
   principal: null,
   category: "legal",
   role: "user",
+  categories: [],
+  availableContexts: [],
   authCapabilities: { passwordLogin: true, oidcLogin: false, mfaEnrollment: false },
   experience: null,
   providers: [],
@@ -33,6 +35,8 @@ const labels = {
   candidate: "リクルーター",
   recruiter: "リクルーター",
 };
+
+const defaultRoleOptions = ["user", "orderer", "provider", "recruiter"];
 
 function isRecruiterRole(role) {
   return role === "candidate" || role === "recruiter";
@@ -282,21 +286,58 @@ function updateAuthUi() {
   elements.password.required = state.authCapabilities.passwordLogin;
 }
 
+function contextForCategory(category) {
+  return state.availableContexts.find((context) => context.category === category);
+}
+
+function renderCategoryOptions() {
+  const categories = state.token && state.availableContexts.length > 0
+    ? state.categories.filter((category) => contextForCategory(category.slug))
+    : state.categories;
+  if (categories.length === 0) return;
+  const selectedCategory = categories.some((category) => category.slug === state.category) ? state.category : categories[0].slug;
+  elements.category.replaceChildren(...categories.map((category) => {
+    const option = document.createElement("option");
+    option.value = category.slug;
+    option.textContent = category.label;
+    return option;
+  }));
+  state.category = selectedCategory;
+  elements.category.value = selectedCategory;
+}
+
+function renderRoleOptions() {
+  const context = state.token ? contextForCategory(state.category) : undefined;
+  const roles = context?.roles?.filter((role) => labels[role]) ?? defaultRoleOptions;
+  const selectedRole = roles.includes(state.role) ? state.role : roles[0] ?? "user";
+  elements.role.replaceChildren(...roles.map((role) => {
+    const option = document.createElement("option");
+    option.value = role;
+    option.textContent = labels[role];
+    return option;
+  }));
+  state.role = selectedRole;
+  elements.role.value = selectedRole;
+}
+
+function applyPrincipal(principal) {
+  const normalizedRole = principal.role === "candidate" ? "recruiter" : principal.role;
+  state.principal = normalizedRole === principal.role ? principal : { ...principal, role: normalizedRole };
+  state.category = principal.category;
+  state.role = normalizedRole;
+  state.availableContexts = Array.isArray(principal.availableContexts) ? principal.availableContexts : [];
+  renderCategoryOptions();
+  renderRoleOptions();
+}
+
 async function loadCategories() {
   const body = await api("/api/v1/categories");
   const categories = Array.isArray(body.items)
     ? body.items.filter((item) => item && typeof item.slug === "string" && item.slug.trim() && typeof item.label === "string" && item.label.trim())
     : [];
   if (categories.length === 0) throw new Error("利用可能なカテゴリを取得できませんでした。");
-  const selectedCategory = categories.some((item) => item.slug === state.category) ? state.category : categories[0].slug;
-  elements.category.replaceChildren(...categories.map((item) => {
-    const option = document.createElement("option");
-    option.value = item.slug;
-    option.textContent = item.label;
-    return option;
-  }));
-  state.category = selectedCategory;
-  elements.category.value = selectedCategory;
+  state.categories = categories;
+  renderCategoryOptions();
 }
 
 async function loadAuthConfig() {
@@ -319,12 +360,8 @@ function finishLogin(result) {
     return false;
   }
   state.token = result.accessToken;
-  state.principal = result.principal;
   state.mfaChallengeToken = null;
-  state.category = result.principal.category;
-  state.role = result.principal.role;
-  elements.category.value = state.category;
-  elements.role.value = state.role;
+  applyPrincipal(result.principal);
   elements.mfaPanel.hidden = true;
   elements.loginForm.hidden = true;
   elements.oidc.hidden = true;
@@ -338,7 +375,9 @@ function clearSessionState() {
   state.principal = null;
   state.mfaChallengeToken = null;
   state.role = "user";
-  elements.role.value = "user";
+  state.availableContexts = [];
+  renderCategoryOptions();
+  renderRoleOptions();
   elements.mfaPanel.hidden = true;
   updateAuthUi();
   elements.logout.hidden = true;
@@ -1370,16 +1409,15 @@ async function logout() {
 elements.category.addEventListener("change", async () => {
   const previousCategory = state.category;
   const nextCategory = elements.category.value;
+  const nextContext = contextForCategory(nextCategory);
+  const nextRole = nextContext?.roles?.includes(state.role) ? state.role : nextContext?.roles?.[0] ?? state.role;
   if (state.token) {
     try {
       const body = await api("/api/v1/auth/context", {
         method: "POST",
-        body: JSON.stringify({ category: nextCategory, role: state.role }),
+        body: JSON.stringify({ category: nextCategory, role: nextRole }),
       });
-      state.category = body.principal.category;
-      state.role = body.principal.role;
-      state.principal = body.principal;
-      elements.role.value = state.role;
+      applyPrincipal(body.principal);
       await reload();
       setMessage(`${labels[state.role]}のカテゴリを切り替えました。`);
       return;
@@ -1394,6 +1432,7 @@ elements.category.addEventListener("change", async () => {
     }
   }
   state.category = nextCategory;
+  renderRoleOptions();
   try { await reload(); } catch (error) { setMessage(error.message); }
 });
 
@@ -1406,9 +1445,7 @@ elements.role.addEventListener("change", async () => {
       method: "POST",
       body: JSON.stringify({ category: state.category, role: nextRole }),
     });
-    state.role = body.principal.role;
-    state.principal = body.principal;
-    elements.role.value = state.role;
+    applyPrincipal(body.principal);
     await reload();
     setMessage(`${labels[state.role]}へ表示を切り替えました。`);
   } catch (error) {

@@ -53,6 +53,8 @@ RESTに定義したCMS操作は、対応するMCPツールを必ず持つ。`tes
 ```text
 GET  /api/v1/auth/config
 ログインロールは`user`、`orderer`、`provider`、`recruiter`を正式な公開名とし、既存クライアント互換のため`candidate`もリクルーターと同じ権限で受け付けます。
+
+ログイン成功、`auth.me`、`auth.switch_context`の主体情報には`availableContexts`を含めます。これはログイン中のアカウントが利用できるカテゴリごとの正規ロール一覧であり、管理画面やAIエージェントはこの一覧にないカテゴリ・ロールを表示・提案しません。`candidate`互換入力を利用した場合も、一覧では正規名`recruiter`として返します。
 GET  /api/v1/categories
 GET  /api/v1/categories/{category}
 GET  /api/v1/categories/{category}/experience
