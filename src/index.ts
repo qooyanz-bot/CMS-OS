@@ -34,9 +34,9 @@ async function main(): Promise<void> {
   const portal = new PortalService(auth, new PortalStore(stateStore));
   const webhook = new WebhookService(portal, undefined, stateStore);
   const contentAgent = contentAgentAdapterFromEnvironment();
-  const content = new ContentService(portal, new ContentStore(stateStore), webhook, contentAgent);
-  const publication = new PublicationService(portal, content, undefined, undefined, new PublicationStore(stateStore), webhook);
   const media = new MediaService(portal, new MediaStore(stateStore), webhook);
+  const content = new ContentService(portal, new ContentStore(stateStore), webhook, contentAgent, media);
+  const publication = new PublicationService(portal, content, undefined, undefined, new PublicationStore(stateStore), webhook, media);
   const operation = new OperationService(portal, content, stateStore);
   const portalPlanning = new PortalPlanningService(portal, stateStore, undefined, content, contentAgent);
   const server = createHttpServer(auth, portal, content, publication, media, webhook, operation, portalPlanning);

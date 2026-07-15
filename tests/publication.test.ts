@@ -5,6 +5,7 @@ import { InMemoryAuthService } from "../src/domain/auth.js";
 import { PortalService } from "../src/application/portal-service.js";
 import { ContentService } from "../src/application/content-service.js";
 import { PublicationService } from "../src/application/publication-service.js";
+import { MediaService } from "../src/application/media-service.js";
 import { BuilderOSAdapter } from "../src/integrations/builderos-adapter.js";
 import { createHttpServer } from "../src/api/http-server.js";
 
@@ -315,6 +316,88 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.equal(faqNodes.length, 1);
     assert.equal(faqNodes[0]?.headline, undefined);
     assert.equal(faqNodes[0]?.mainEntity[0]?.acceptedAnswer?.text, "相談内容と関係資料を整理してお持ちください。");
+  });
+
+  it("承認済みコンテンツへ所有メディアを関連付け、静的HTMLとJSON-LDへ反映する", () => {
+    const auth = new InMemoryAuthService();
+    const portal = new PortalService(auth);
+    const media = new MediaService(portal);
+    const content = new ContentService(portal, undefined, undefined, undefined, media);
+    const publication = new PublicationService(portal, content, new BuilderOSAdapter(), () => ({
+      accountId: "account-media-publication",
+      projectName: "cms-os-media-publication",
+      dryRun: true,
+    }), undefined, undefined, media);
+    const login = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
+    if (!login || !("accessToken" in login)) throw new Error("メディア公開用ログインに失敗しました。");
+
+    const asset = media.registerAsset(login.principal, {
+      category: "legal",
+      name: "相続相談の案内画像",
+      storageKey: "providers/legal/inheritance.webp",
+      publicUrl: "https://cdn.example.com/providers/legal/inheritance.webp",
+      mediaType: "image",
+      mimeType: "image/webp",
+      sizeBytes: 12_000,
+      altText: "相続相談の案内をする法律事務所のイメージ",
+      title: "相続相談の案内",
+      width: 1200,
+      height: 630,
+      rightsStatus: "owned",
+      rightsHolder: "CMS-OSテスト事務所",
+      status: "published",
+    });
+    const created = content.createContent(login.principal, {
+      category: "legal",
+      contentType: "blog",
+      audience: "customer",
+      mediaIds: [asset.id],
+      title: "相続相談の進め方",
+      summary: "相続相談を検討する方へ、準備と相談の進め方を案内します。",
+      body: "# 相続相談の進め方\n\n相続相談を検討する方が、必要な準備と次の行動を確認できる案内です。",
+      sourceFacts: ["事業者が確認した相続相談の案内情報です。"],
+      seo: {
+        title: "相続相談の進め方と準備",
+        description: "相続相談を検討する方へ、相談前に準備する資料と進め方をわかりやすく案内します。",
+        keywords: ["相続相談"],
+        canonicalPath: "/content/inheritance-guide",
+        ogTitle: "相続相談の進め方と準備",
+        ogDescription: "相続相談を検討する方へ、相談前に準備する資料と進め方をわかりやすく案内します。",
+        jsonLdType: "BlogPosting",
+        faq: [],
+      },
+    });
+    assert.deepEqual(created.mediaIds, [asset.id]);
+    assert.deepEqual(content.listVersions(login.principal, created.id)[0]?.mediaIds, [asset.id]);
+    content.auditSeo(login.principal, created.id);
+    content.factCheck(login.principal, created.id);
+    content.approveContent(login.principal, created.id);
+
+    const built = publication.build(login.principal, [created.id], "https://www.example.com");
+    const page = built.files.find((file) => file.path.startsWith("content/") && file.path.endsWith("/index.html"))?.content ?? "";
+    assert.match(page, /class="media-gallery"/);
+    assert.ok(page.includes(asset.publicUrl!));
+    assert.match(page, /alt="相続相談の案内をする法律事務所のイメージ"/);
+    const articleJsonLd = page.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
+    assert.ok(articleJsonLd);
+    const articleGraph = JSON.parse(articleJsonLd!) as { "@graph": Array<Record<string, any>> };
+    const articleNode = articleGraph["@graph"].find((node) => node["@type"] === "BlogPosting");
+    assert.deepEqual(articleNode?.image, [asset.publicUrl]);
+
+    const beautyLogin = auth.login("beauty@example.com", "demo-password", "beauty", "provider");
+    if (!beautyLogin || !("accessToken" in beautyLogin)) throw new Error("別カテゴリ用ログインに失敗しました。");
+    assert.throws(() => content.createContent(beautyLogin.principal, {
+      category: "beauty",
+      contentType: "blog",
+      audience: "customer",
+      mediaIds: [asset.id],
+      title: "別カテゴリからの参照",
+      summary: "所有者境界の検証用コンテンツです。",
+      body: "# 別カテゴリからの参照\n\n所有者境界を検証します。",
+    }), /mediaIdsを確認できません/);
+
+    media.updateAsset(login.principal, asset.id, { status: "draft" });
+    assert.throws(() => publication.build(login.principal, [created.id], "https://www.example.com"), /公開状態ではありません/);
   });
 
   it("静的公開の主要操作をMCPから利用できる", async () => {

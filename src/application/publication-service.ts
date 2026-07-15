@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { ContentService } from "./content-service.js";
 import type { PortalService } from "./portal-service.js";
 import { PublicationStore } from "../domain/publication-store.js";
-import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, JobPosting, PublicationBuildResult, PublicationDeploymentRecord, PublicationHistorySummary, PublicationScheduleRecord, PublicationScheduleSummary, VisibleProvider } from "../domain/types.js";
+import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, JobPosting, MediaAsset, PublicationBuildResult, PublicationDeploymentRecord, PublicationHistorySummary, PublicationScheduleRecord, PublicationScheduleSummary, VisibleProvider } from "../domain/types.js";
 import { BuilderOSAdapter, BuilderOSAdapterError, type CloudflarePagesDeployOptions, type CloudflarePagesDeploymentResult } from "../integrations/builderos-adapter.js";
 import type { WebhookService } from "./webhook-service.js";
+import { MediaService, MediaServiceError } from "./media-service.js";
 
 export class PublicationServiceError extends Error {
   public constructor(public readonly statusCode: number, message: string) {
@@ -357,14 +358,28 @@ function breadcrumbJsonLd(items: Array<{ name: string; url: string }>): Record<s
   };
 }
 
-function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], allContents: ContentRecord[], categoryLabel: string, baseUrl: string): string {
+function mediaHtml(mediaAssets: MediaAsset[]): string {
+  if (mediaAssets.length === 0) return "";
+  return `<section class="media-gallery" aria-labelledby="media-heading"><h2 id="media-heading">関連メディア</h2>${mediaAssets.map((asset) => {
+    const source = `<source src="${escapeHtml(asset.publicUrl ?? "")}" type="${escapeHtml(asset.mimeType)}">`;
+    const dimensions = asset.width && asset.height ? ` width="${asset.width}" height="${asset.height}"` : "";
+    if (asset.mediaType === "image") return `<figure><img src="${escapeHtml(asset.publicUrl ?? "")}" alt="${escapeHtml(asset.altText)}"${dimensions} loading="lazy" decoding="async"><figcaption>${escapeHtml(asset.title)}</figcaption></figure>`;
+    if (asset.mediaType === "video") return `<figure><video controls preload="metadata"${dimensions}>${source}</video><figcaption>${escapeHtml(asset.title)}</figcaption></figure>`;
+    return `<p><a class="directory-link" href="${escapeHtml(asset.publicUrl ?? "")}">${escapeHtml(asset.title)}</a>${asset.description ? ` <span>${escapeHtml(asset.description)}</span>` : ""}</p>`;
+  }).join("")}</section>`;
+}
+
+function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], allContents: ContentRecord[], categoryLabel: string, mediaAssets: MediaAsset[], baseUrl: string): string {
   const canonical = absoluteUrl(baseUrl, `/${routeFor(content)}/`);
   const categoryUrl = absoluteUrl(baseUrl, `/${categoryRoute(content.category)}/`);
   const alternates = translationAlternates(content, allContents);
   const defaultAlternate = alternates.find((item) => (item.locale || "ja") === "ja") ?? content;
   const alternateLinks = alternates.map((item) => `<link rel="alternate" hreflang="${escapeHtml(localeTag(item))}" href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(item)}/`))}">`).join("\n    ");
+  const article = articleJsonLd(content, categoryLabel, canonical);
+  const imageUrls = mediaAssets.filter((asset) => asset.mediaType === "image" && asset.publicUrl).map((asset) => asset.publicUrl as string);
+  if (imageUrls.length > 0) article.image = imageUrls;
   const graph: Record<string, unknown>[] = [
-    articleJsonLd(content, categoryLabel, canonical),
+    article,
     breadcrumbJsonLd([
       { name: "ホーム", url: absoluteUrl(baseUrl, "/") },
       { name: categoryLabel, url: categoryUrl },
@@ -423,6 +438,7 @@ function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], allC
           <p class="summary">${escapeHtml(content.summary)}</p>
           <p class="meta"><time datetime="${escapeHtml(content.updatedAt)}">最終更新日: ${escapeHtml(content.updatedAt.slice(0, 10))}</time> · ${escapeHtml(categoryLabel)}</p>
         </header>
+        ${mediaHtml(mediaAssets)}
         <div class="article-body">${renderMarkdown(content.body)}</div>
         ${faqHtml}
       </article>
@@ -652,6 +668,7 @@ function facetPageHtml(
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(value)}の${escapeHtml(category.label)}事業者・公開情報 | CMS-OS</title><meta name="description" content="${escapeHtml(value)}に対応する${escapeHtml(category.label)}の事業者、対応内容、公開情報を確認できます。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li aria-current="page">${escapeHtml(value)}</li></ol></nav><p class="eyebrow">CMS-OS / ${escapeHtml(label)} landing page</p><h1>${escapeHtml(value)}の${escapeHtml(category.label)}事業者・公開情報</h1><p class="lead-answer">${escapeHtml(value)}に対応する${escapeHtml(category.label)}の公開事業者を、確認済みの公開情報とともに案内します。</p><h2>対応事業者</h2><ul class="content-index">${providerLinks || "<li>掲載事業者は準備中です。</li>"}</ul>${contentLinks ? `<h2>関連する公開情報</h2><ul class="content-index">${contentLinks}</ul>` : ""}<p><a class="directory-link" href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}のカテゴリーハブへ戻る</a></p></main></body></html>`;
 }
 
+const mediaCss = ".media-gallery{border-top:1px solid var(--line);display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:40px 0;padding-top:20px}.media-gallery h2{grid-column:1/-1;margin:0}.media-gallery figure{background:#fff;border:1px solid var(--line);margin:0;padding:12px}.media-gallery img,.media-gallery video{display:block;height:auto;max-width:100%;width:100%}.media-gallery figcaption{color:var(--muted);font-size:.9rem;margin-top:8px} .media-gallery p{margin:0}";
 const css = `:root{color-scheme:light;--ink:#17202a;--muted:#64748b;--line:#dbe3ea;--accent:#0f766e}*{box-sizing:border-box}body{margin:0;background:#f8fafc;color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.8}.page-shell{max-width:860px;margin:0 auto;padding:48px 24px}.eyebrow{color:var(--accent);font-size:.8rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.breadcrumbs{color:var(--muted);font-size:.82rem;margin-bottom:28px}.breadcrumbs ol{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}.breadcrumbs li:not(:last-child)::after{content:"/";margin-left:8px;color:#94a3b8}.breadcrumbs a{color:var(--accent)}.article-header{border-bottom:1px solid var(--line);margin-bottom:32px;padding-bottom:24px}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.2;margin:0 0 16px}h2{margin-top:40px;line-height:1.3}.lead-answer{background:#ecfdf5;border-left:4px solid var(--accent);margin:20px 0;padding:16px 18px}.summary{color:#334155;font-size:1.12rem}.meta{color:var(--muted);font-size:.86rem}.article-body h2{border-left:4px solid var(--accent);padding-left:12px;margin-top:40px}.article-body h3{margin-top:28px}.article-body a{color:var(--accent);text-decoration:underline;text-underline-offset:.15em}.article-body blockquote{border-left:3px solid var(--line);color:var(--muted);margin:24px 0;padding-left:16px}.article-body li{margin:6px 0}.table-wrap{overflow-x:auto;margin:24px 0}.article-body table{border-collapse:collapse;min-width:620px;width:100%}.article-body th,.article-body td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}.article-body th{background:#ecfdf5}.content-index{list-style:none;margin:20px 0;padding:0}.content-index li{border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px;padding:18px 0}.content-index a{color:var(--accent);font-size:1.15rem;font-weight:700}.content-index span{color:var(--muted)}.related-section,.faq-section{border-top:1px solid var(--line);margin-top:40px;padding-top:10px}.faq-item{border-bottom:1px solid var(--line);padding:8px 0}.faq-item h3{font-size:1.05rem}.faq-item p{color:#334155}.directory-link{color:var(--accent);font-weight:700}.provider-facts{background:#fff;border:1px solid var(--line);display:grid;gap:8px;grid-template-columns:10rem 1fr;padding:18px}.provider-facts dt{color:var(--muted);font-weight:700}.provider-facts dd{margin:0}.provider-facts-list{list-style:none;padding:0}.provider-facts-list li{border-bottom:1px solid var(--line);padding:10px 0}`;
 
 function sitemapXml(
@@ -725,6 +742,7 @@ export class PublicationService {
     }),
     private readonly publicationStore = new PublicationStore(),
     private readonly webhook?: WebhookService,
+    private readonly media?: MediaService,
   ) {}
 
   public build(
@@ -754,6 +772,7 @@ export class PublicationService {
     const jobsByCategory = new Map<CategorySlug, JobPosting[]>(
       publishedCategories.map((category) => [category.slug, this.portal.listPublishedJobsForPublication(category.slug)]),
     );
+    const mediaByContent = this.resolvePublicationMedia(principal, contents);
 
     for (const item of contents) {
       this.portal.assertAction(principal, item.category, "publication.build");
@@ -810,12 +829,12 @@ export class PublicationService {
     ].join("\n");
     const files = [
       { path: "index.html", contentType: "text/html; charset=utf-8", content: rootHtml(contents, publishedCategories, baseUrl) },
-      { path: "assets/cms-os.css", contentType: "text/css; charset=utf-8", content: css },
+      { path: "assets/cms-os.css", contentType: "text/css; charset=utf-8", content: `${css}${mediaCss}` },
       ...providerDirectoryFiles,
       ...contents.map((content) => ({
         path: `${routeFor(content)}/index.html`,
         contentType: "text/html; charset=utf-8",
-        content: pageHtml(content, relatedContentsFor(content, contents), contents, categoryLabelBySlug.get(content.category) ?? content.category, baseUrl),
+        content: pageHtml(content, relatedContentsFor(content, contents), contents, categoryLabelBySlug.get(content.category) ?? content.category, mediaByContent.get(content.id) ?? [], baseUrl),
       })),
       { path: "sitemap.xml", contentType: "application/xml; charset=utf-8", content: sitemapXml(contents, publishedCategories, providersByCategory, jobsByCategory, baseUrl) },
       { path: "robots.txt", contentType: "text/plain; charset=utf-8", content: robots },
@@ -840,6 +859,21 @@ export class PublicationService {
       files: publication.files,
     });
     return publication;
+  }
+
+  private resolvePublicationMedia(principal: AuthenticatedPrincipal, contents: ContentRecord[]): Map<string, MediaAsset[]> {
+    const resolved = new Map<string, MediaAsset[]>();
+    for (const content of contents) {
+      if (!content.mediaIds || content.mediaIds.length === 0) continue;
+      if (!this.media) throw new PublicationServiceError(503, "メディア連携が構成されていないため公開できません。");
+      try {
+        resolved.set(content.id, this.media.getPublicationAssets(principal, content.mediaIds));
+      } catch (error) {
+        if (error instanceof MediaServiceError) throw new PublicationServiceError(error.statusCode, error.message);
+        throw error;
+      }
+    }
+    return resolved;
   }
 
   public async deploy(

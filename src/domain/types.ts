@@ -509,6 +509,8 @@ export interface ContentProposal {
   providerId: string;
   contentType: ContentType;
   audience: ContentAudience;
+  /** 下書き・公開ページへ添付する、同一事業者が管理するメディアアセットID。 */
+  mediaIds?: string[];
   topic: string;
   searchIntent: string;
   primaryKeyword: string;
@@ -542,6 +544,8 @@ export interface ContentRecord {
   providerId: string;
   contentType: ContentType;
   audience: ContentAudience;
+  /** 公開時にBuilderOS Adapterへ引き渡すメディアアセットID。 */
+  mediaIds?: string[];
   title: string;
   slug: string;
   summary: string;
@@ -565,6 +569,7 @@ export interface ContentVersionRecord {
   id: string;
   contentId: string;
   version: number;
+  mediaIds?: string[];
   title: string;
   summary: string;
   body: string;

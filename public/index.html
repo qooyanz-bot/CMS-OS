@@ -378,6 +378,7 @@
           <label>テーマ<input name="topic" required minlength="3" placeholder="例：弁護士のキャリア" /></label>
           <label>主キーワード<input name="primaryKeyword" placeholder="例：弁護士 キャリア" /></label>
           <label class="wide">確認済み情報（1行1件）<textarea name="sourceFacts" placeholder="例：弁護士とパラリーガルを募集しています。"></textarea></label>
+          <label class="wide">関連メディアID（1行1件、任意）<textarea name="mediaIds" placeholder="例：media-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></textarea></label>
           <button class="button primary" type="submit">企画案を作成</button>
         </form>
         <p id="content-message" class="message" role="status"></p>
@@ -396,6 +397,7 @@
             <label class="wide">要約<textarea name="summary" required maxlength="320" rows="3"></textarea></label>
             <label class="wide">本文（Markdown）<textarea name="body" required maxlength="200000" rows="12"></textarea></label>
             <label class="wide">確認済み情報（1行1件）<textarea name="sourceFacts" rows="4"></textarea></label>
+            <label class="wide">関連メディアID（1行1件、任意）<textarea name="mediaIds" rows="3" placeholder="公開済みメディアのIDを入力すると静的ページへ反映します"></textarea></label>
             <label>SEOタイトル<input name="seoTitle" maxlength="160" /></label>
             <label>canonicalパス<input name="canonicalPath" required pattern="^/.*" /></label>
             <label class="wide">メタディスクリプション<textarea name="seoDescription" maxlength="320" rows="3"></textarea></label>

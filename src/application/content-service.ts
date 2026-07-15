@@ -25,6 +25,7 @@ import {
   type SeoSiteAuditResult,
 } from "../domain/types.js";
 import type { WebhookService } from "./webhook-service.js";
+import type { MediaService } from "./media-service.js";
 import { DeterministicContentAgentAdapter, type ContentAgentAdapter, type ContentAgentResult } from "../integrations/content-agent-adapter.js";
 
 export class ContentServiceError extends Error {
@@ -38,6 +39,7 @@ export type ContentCreateInput = {
   category: CategorySlug;
   contentType: ContentType;
   audience: ContentAudience;
+  mediaIds?: string[] | undefined;
   title: string;
   summary: string;
   body: string;
@@ -52,6 +54,7 @@ export type ContentProposalCreateInput = {
   category: CategorySlug;
   contentType: ContentType;
   audience: ContentAudience;
+  mediaIds?: string[] | undefined;
   topic: string;
   primaryKeyword?: string | undefined;
   relatedKeywords?: string[] | undefined;
@@ -182,6 +185,7 @@ export class ContentService {
     private readonly store = new ContentStore(),
     private readonly webhook?: WebhookService,
     private readonly agent: ContentAgentAdapter = new DeterministicContentAgentAdapter(),
+    private readonly media?: MediaService,
   ) {}
 
   public async createProposal(
@@ -194,6 +198,7 @@ export class ContentService {
 
     const topic = input.topic.trim();
     if (topic.length < 3) throw new ContentServiceError(400, "topicは3文字以上で入力してください。");
+    const mediaIds = this.normalizeMediaIds(principal, input.mediaIds);
     const primaryKeyword = (input.primaryKeyword?.trim() || topic).slice(0, 80);
     const sourceFacts = trimList(input.sourceFacts);
     const relatedKeywords = trimList([...(input.relatedKeywords ?? []), topic, audienceLabels[input.audience]]);
@@ -202,6 +207,7 @@ export class ContentService {
       providerId: principal.providerId!,
       contentType: input.contentType,
       audience: input.audience,
+      ...(mediaIds.length > 0 ? { mediaIds } : {}),
       topic,
       searchIntent: audienceIntents[input.audience],
       primaryKeyword,
@@ -278,18 +284,21 @@ export class ContentService {
     const body = this.normalizeEditableText(input.body, "body", 200_000);
     const sourceFacts = trimList(input.sourceFacts);
     const locale = input.locale ?? "ja";
+    let mediaIds = this.normalizeMediaIds(principal, input.mediaIds);
     let proposal: ContentProposal | undefined;
     if (input.proposalId !== undefined) {
       proposal = this.getOwnedProposal(principal, input.proposalId);
       if (proposal.category !== input.category || proposal.contentType !== input.contentType || proposal.audience !== input.audience) {
         throw new ContentServiceError(409, "proposalIdのカテゴリ、コンテンツ種別、対象ポジションが入力内容と一致しません。");
       }
+      if (input.mediaIds === undefined) mediaIds = this.normalizeMediaIds(principal, proposal.mediaIds);
     } else {
       proposal = this.store.createProposal({
         category: input.category,
         providerId: principal.providerId,
         contentType: input.contentType,
         audience: input.audience,
+        ...(mediaIds.length > 0 ? { mediaIds } : {}),
         topic: title,
         searchIntent: audienceIntents[input.audience],
         primaryKeyword: input.seo?.keywords?.[0]?.trim() || title,
@@ -306,6 +315,7 @@ export class ContentService {
       providerId: principal.providerId,
       contentType: input.contentType,
       audience: input.audience,
+      ...(mediaIds.length > 0 ? { mediaIds } : {}),
       title,
       slug,
       summary,
@@ -323,6 +333,7 @@ export class ContentService {
   public async createDraft(principal: AuthenticatedPrincipal | null, proposalId: string): Promise<ContentRecord> {
     const proposal = this.getOwnedProposal(principal, proposalId);
     this.portal.assertAction(principal, proposal.category, "content.draft");
+    const mediaIds = this.normalizeMediaIds(principal, proposal.mediaIds);
 
     const generated = await this.callAgent("下書き", () => this.agent.draft({
       proposal,
@@ -340,6 +351,7 @@ export class ContentService {
       providerId: proposal.providerId,
       contentType: proposal.contentType,
       audience: proposal.audience,
+      ...(mediaIds.length > 0 ? { mediaIds } : {}),
       title,
       slug,
       summary,
@@ -473,6 +485,7 @@ export class ContentService {
       providerId: source.providerId,
       contentType: source.contentType,
       audience: source.audience,
+      ...(source.mediaIds && source.mediaIds.length > 0 ? { mediaIds: [...source.mediaIds] } : {}),
       title,
       slug: `${source.slug}-${localeSegment}`,
       summary,
@@ -585,6 +598,7 @@ export class ContentService {
       body?: string;
       seo?: Partial<ContentSeo>;
       sourceFacts?: string[];
+      mediaIds?: string[];
     },
   ): ContentRecord {
     const content = this.getContent(principal, contentId);
@@ -598,6 +612,7 @@ export class ContentService {
     if (input.summary !== undefined) patch.summary = this.normalizeEditableText(input.summary, "summary", 320);
     if (input.body !== undefined) patch.body = this.normalizeEditableText(input.body, "body", 200_000);
     if (input.sourceFacts !== undefined) patch.sourceFacts = trimList(input.sourceFacts);
+    if (input.mediaIds !== undefined) patch.mediaIds = this.normalizeMediaIds(principal, input.mediaIds);
     if (input.seo !== undefined) {
       const seo: ContentSeo = { ...content.seo, ...input.seo };
       seo.title = this.normalizeEditableText(seo.title, "seo.title", 60);
@@ -626,6 +641,7 @@ export class ContentService {
       providerId: content.providerId,
       contentType: content.contentType,
       audience: content.audience,
+      ...(content.mediaIds && content.mediaIds.length > 0 ? { mediaIds: [...content.mediaIds] } : {}),
       title: `${content.title}（複製）`,
       slug: `${content.slug}-copy-${copySuffix}`,
       summary: content.summary,
@@ -1029,6 +1045,20 @@ export class ContentService {
       throw new ContentServiceError(502, `AIエージェントの${fieldName}が文字列配列ではありません。`);
     }
     return trimList(value);
+  }
+
+  private normalizeMediaIds(principal: AuthenticatedPrincipal | null, mediaIds: string[] | undefined): string[] {
+    const normalized = [...new Set((mediaIds ?? []).map((mediaId) => mediaId.trim()).filter(Boolean))];
+    if (normalized.length > 20) throw new ContentServiceError(400, "mediaIdsは20件以内で指定してください。");
+    if (normalized.length === 0) return [];
+    if (!this.media) throw new ContentServiceError(503, "メディア連携が構成されていません。");
+    try {
+      this.media.getOwnedAssets(principal, normalized);
+    } catch (error) {
+      if (error instanceof Error) throw new ContentServiceError(400, `mediaIdsを確認できません。${error.message}`);
+      throw error;
+    }
+    return normalized;
   }
 
   private async callAgent<T>(stage: string, callback: () => ContentAgentResult<T>): Promise<T> {

@@ -118,6 +118,32 @@ export class MediaService {
     return asset;
   }
 
+  /** コンテンツへの関連付け時に、同一事業者が管理するアセットだけを返します。 */
+  public getOwnedAssets(principal: AuthenticatedPrincipal | null, assetIds: string[]): MediaAsset[] {
+    this.assertProvider(principal, "media.read");
+    const normalizedIds = [...new Set(assetIds.map((assetId) => assetId.trim()).filter(Boolean))];
+    if (normalizedIds.length > 20) throw new MediaServiceError(400, "mediaIdsは20件以内で指定してください。");
+    return normalizedIds.map((assetId) => {
+      const asset = this.getOwnedAsset(principal, assetId);
+      if (!asset) throw new MediaServiceError(404, `メディアアセットが見つかりません: ${assetId}`);
+      return asset;
+    });
+  }
+
+  /** 静的公開で参照できる状態かを確認し、公開HTMLへ渡すアセットを返します。 */
+  public getPublicationAssets(principal: AuthenticatedPrincipal | null, assetIds: string[]): MediaAsset[] {
+    const assets = this.getOwnedAssets(principal, assetIds);
+    const now = Date.now();
+    for (const asset of assets) {
+      if (asset.status !== "published") throw new MediaServiceError(409, `メディアアセット「${asset.name}」は公開状態ではありません。`);
+      if (!asset.publicUrl) throw new MediaServiceError(409, `メディアアセット「${asset.name}」にpublicUrlがありません。`);
+      if (asset.rightsStatus === "expired" || (asset.licenseExpiresAt && Date.parse(asset.licenseExpiresAt) <= now)) {
+        throw new MediaServiceError(409, `メディアアセット「${asset.name}」の利用権限が期限切れです。`);
+      }
+    }
+    return assets;
+  }
+
   public registerAsset(principal: AuthenticatedPrincipal | null, input: MediaRegisterInput): MediaAsset {
     this.assertProvider(principal, "media.manage");
     if (!principal || input.category !== principal.category) throw new MediaServiceError(403, "現在のカテゴリ以外にはメディアを登録できません。");

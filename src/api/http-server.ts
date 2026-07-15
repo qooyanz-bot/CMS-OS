@@ -435,11 +435,13 @@ function parseContentCreateInput(input: Record<string, unknown>): ContentCreateI
   if (input.locale !== undefined && !isContentLocale(input.locale)) throw new Error(`localeは${contentLocales.join(", ")}のいずれかを指定してください。`);
   if (input.proposalId !== undefined && typeof input.proposalId !== "string") throw new Error("proposalIdは文字列で指定してください。");
   const seo = parseContentSeoPatch(input.seo);
+  const mediaIds = parseOptionalStringArray(input.mediaIds, "mediaIds");
   const sourceFacts = parseOptionalStringArray(input.sourceFacts, "sourceFacts");
   return {
     category: input.category,
     contentType: input.contentType,
     audience: input.audience,
+    ...(mediaIds ? { mediaIds } : {}),
     title: input.title,
     summary: input.summary,
     body: input.body,
@@ -457,11 +459,13 @@ function parseContentProposalInput(input: Record<string, unknown>): ContentPropo
   }
   if (input.primaryKeyword !== undefined && typeof input.primaryKeyword !== "string") throw new Error("primaryKeywordは文字列で指定してください。");
   const relatedKeywords = parseOptionalStringArray(input.relatedKeywords, "relatedKeywords");
+  const mediaIds = parseOptionalStringArray(input.mediaIds, "mediaIds");
   const sourceFacts = parseOptionalStringArray(input.sourceFacts, "sourceFacts");
   return {
     category: input.category,
     contentType: input.contentType,
     audience: input.audience,
+    ...(mediaIds ? { mediaIds } : {}),
     topic: input.topic,
     ...(typeof input.primaryKeyword === "string" ? { primaryKeyword: input.primaryKeyword } : {}),
     ...(relatedKeywords ? { relatedKeywords } : {}),
@@ -1272,6 +1276,7 @@ async function handleMcp(
                 category: { enum: categoryEnum },
                 contentType: { enum: ["company", "blog", "job", "pr", "ir"] },
                 audience: { enum: ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] },
+                mediaIds: { type: "array", maxItems: 20, items: { type: "string" } },
                 topic: { type: "string" },
                 primaryKeyword: { type: "string" },
                 relatedKeywords: { type: "array", items: { type: "string" } },
@@ -1289,6 +1294,7 @@ async function handleMcp(
                 category: { enum: categoryEnum },
                 contentType: { enum: ["company", "blog", "job", "pr", "ir"] },
                 audience: { enum: ["customer", "candidate", "media", "investor", "beginner", "existingCustomer"] },
+                mediaIds: { type: "array", maxItems: 20, items: { type: "string" } },
                 title: { type: "string" },
                 summary: { type: "string" },
                 body: { type: "string" },
@@ -1372,6 +1378,7 @@ async function handleMcp(
                 title: { type: "string" },
                 summary: { type: "string" },
                 body: { type: "string" },
+                mediaIds: { type: "array", maxItems: 20, items: { type: "string" } },
                 sourceFacts: { type: "array", items: { type: "string" } },
                 seo: { type: "object", additionalProperties: true },
               },
@@ -2236,6 +2243,7 @@ async function handleMcp(
         category: argumentsObject.category,
         contentType: argumentsObject.contentType,
         audience: argumentsObject.audience,
+        mediaIds: parseOptionalStringArray(argumentsObject.mediaIds, "mediaIds"),
         topic: argumentsObject.topic,
         primaryKeyword: typeof argumentsObject.primaryKeyword === "string" ? argumentsObject.primaryKeyword : undefined,
         relatedKeywords: parseOptionalStringArray(argumentsObject.relatedKeywords, "relatedKeywords"),
@@ -2253,11 +2261,13 @@ async function handleMcp(
       if (argumentsObject.locale !== undefined && !isContentLocale(argumentsObject.locale)) throw new Error(`localeは${contentLocales.join(", ")}のいずれかを指定してください。`);
       if (argumentsObject.proposalId !== undefined && typeof argumentsObject.proposalId !== "string") throw new Error("proposalIdは文字列で指定してください。");
       const seo = parseContentSeoPatch(argumentsObject.seo);
+      const mediaIds = parseOptionalStringArray(argumentsObject.mediaIds, "mediaIds");
       const sourceFacts = parseOptionalStringArray(argumentsObject.sourceFacts, "sourceFacts");
       const result = content.createContent(principal, {
         category: argumentsObject.category,
         contentType: argumentsObject.contentType,
         audience: argumentsObject.audience,
+        ...(mediaIds ? { mediaIds } : {}),
         title: argumentsObject.title,
         summary: argumentsObject.summary,
         body: argumentsObject.body,
@@ -2324,12 +2334,14 @@ async function handleMcp(
     if (name === "content.update") {
       if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
       const seo = parseContentSeoPatch(argumentsObject.seo);
+      const mediaIds = parseOptionalStringArray(argumentsObject.mediaIds, "mediaIds");
       const sourceFacts = parseOptionalStringArray(argumentsObject.sourceFacts, "sourceFacts");
       const result = content.updateContent(principal, argumentsObject.contentId, {
         ...(typeof argumentsObject.title === "string" ? { title: argumentsObject.title } : {}),
         ...(typeof argumentsObject.summary === "string" ? { summary: argumentsObject.summary } : {}),
         ...(typeof argumentsObject.body === "string" ? { body: argumentsObject.body } : {}),
         ...(seo ? { seo } : {}),
+        ...(mediaIds ? { mediaIds } : {}),
         ...(sourceFacts ? { sourceFacts } : {}),
       });
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
@@ -2540,9 +2552,9 @@ export function createHttpServer(
   operation?: OperationService,
   portalPlanning?: PortalPlanningService,
 ): Server {
-  content ??= new ContentService(portal, undefined, webhook);
-  publication ??= new PublicationService(portal, content, undefined, undefined, undefined, webhook);
   media ??= new MediaService(portal, undefined, webhook);
+  content ??= new ContentService(portal, undefined, webhook, undefined, media);
+  publication ??= new PublicationService(portal, content, undefined, undefined, undefined, webhook, media);
   operation ??= new OperationService(portal, content);
   portalPlanning ??= new PortalPlanningService(portal, undefined, undefined, content);
   const authRateLimiter = new FixedWindowRateLimiter(10, 10 * 60 * 1000);
@@ -3280,6 +3292,7 @@ export function createHttpServer(
             category: body.category,
             contentType: body.contentType,
             audience: body.audience,
+            mediaIds: parseOptionalStringArray(body.mediaIds, "mediaIds"),
             topic: body.topic,
             primaryKeyword: typeof body.primaryKeyword === "string" ? body.primaryKeyword : undefined,
             relatedKeywords: parseOptionalStringArray(body.relatedKeywords, "relatedKeywords"),
@@ -3335,11 +3348,13 @@ export function createHttpServer(
         }
         try {
           const seo = parseContentSeoPatch(body.seo);
+          const mediaIds = parseOptionalStringArray(body.mediaIds, "mediaIds");
           const sourceFacts = parseOptionalStringArray(body.sourceFacts, "sourceFacts");
           const item = content.createContent(principal, {
             category: body.category,
             contentType: body.contentType,
             audience: body.audience,
+            ...(mediaIds ? { mediaIds } : {}),
             title: body.title,
             summary: body.summary,
             body: body.body,
@@ -3717,12 +3732,14 @@ export function createHttpServer(
         }
         try {
           const seo = parseContentSeoPatch(body.seo);
+          const mediaIds = parseOptionalStringArray(body.mediaIds, "mediaIds");
           const sourceFacts = parseOptionalStringArray(body.sourceFacts, "sourceFacts");
           writeJson(response, 200, {
             item: content.updateContent(principal, contentId, {
               ...(typeof body.title === "string" ? { title: body.title } : {}),
               ...(typeof body.summary === "string" ? { summary: body.summary } : {}),
               ...(typeof body.body === "string" ? { body: body.body } : {}),
+              ...(mediaIds ? { mediaIds } : {}),
               ...(seo ? { seo } : {}),
               ...(sourceFacts ? { sourceFacts } : {}),
             }),

@@ -156,6 +156,63 @@ describe("CMS-OSメディアアセット", () => {
     assert.equal(assetAudit.status, 200);
     assert.equal(assetAudit.body.result.structuredContent.assetId, assetId);
   });
+
+  it("RESTとMCPのコンテンツ操作へメディアIDを渡せる", async () => {
+    const asset = await request("/api/v1/media", {
+      method: "POST",
+      body: JSON.stringify({
+        category: "legal",
+        name: "コンテンツ関連付け用画像",
+        storageKey: "legal/content-reference.webp",
+        publicUrl: "https://cdn.example.com/legal/content-reference.webp",
+        mediaType: "image",
+        mimeType: "image/webp",
+        sizeBytes: 9000,
+        altText: "法律相談の記事に関連する案内画像",
+        status: "published",
+        rightsStatus: "owned",
+      }),
+    });
+    assert.equal(asset.status, 201);
+    const assetId = asset.body.item.id as string;
+
+    const proposal = await request("/api/v1/content/proposals", {
+      method: "POST",
+      body: JSON.stringify({ category: "legal", contentType: "blog", audience: "customer", topic: "メディア付き相談案内", mediaIds: [assetId] }),
+    });
+    assert.equal(proposal.status, 201);
+    assert.deepEqual(proposal.body.item.mediaIds, [assetId]);
+
+    const mcpProposal = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "content.propose", arguments: { category: "legal", contentType: "blog", audience: "customer", topic: "MCPメディア付き案内", mediaIds: [assetId] } } }),
+    });
+    assert.equal(mcpProposal.status, 200);
+    assert.deepEqual(mcpProposal.body.result.structuredContent.mediaIds, [assetId]);
+
+    const created = await request("/api/v1/content", {
+      method: "POST",
+      body: JSON.stringify({
+        category: "legal",
+        contentType: "blog",
+        audience: "customer",
+        mediaIds: [assetId],
+        title: "メディア付き法律相談案内",
+        summary: "メディアを関連付けた法律相談の案内です。",
+        body: "# メディア付き法律相談案内\n\n相談前に確認できる情報を整理します。",
+        sourceFacts: ["事業者が確認した案内情報です。"],
+      }),
+    });
+    assert.equal(created.status, 201);
+    assert.deepEqual(created.body.item.mediaIds, [assetId]);
+
+    const cleared = await request(`/api/v1/content/${created.body.item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ mediaIds: [] }),
+    });
+    assert.equal(cleared.status, 200);
+    assert.deepEqual(cleared.body.item.mediaIds, []);
+  });
 });
 
 describe("MediaStore永続化", () => {

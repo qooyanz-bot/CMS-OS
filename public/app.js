@@ -1401,7 +1401,7 @@ async function reloadPortalPlanning() {
 function renderMediaAssets(items) {
   state.mediaAssets = items;
   elements.mediaList.innerHTML = items.length
-    ? items.map((asset) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(asset.mediaType)}</span><span>${escapeHtml(asset.status)}</span><span>${escapeHtml(asset.rightsStatus)}</span></div><h3>${escapeHtml(asset.name)}</h3><p>${escapeHtml(asset.altText)} / ${escapeHtml(String(asset.sizeBytes))} bytes</p><div class="editor-actions"><button class="button ghost media-transform-button" data-asset-id="${escapeHtml(asset.id)}">変換アセット作成</button>${asset.status !== "archived" ? `<button class="button ghost media-archive-button" data-asset-id="${escapeHtml(asset.id)}">アーカイブ</button>` : ""}</div></article>`).join("")
+    ? items.map((asset) => `<article class="editor-item"><div class="meta"><span>${escapeHtml(asset.mediaType)}</span><span>${escapeHtml(asset.status)}</span><span>${escapeHtml(asset.rightsStatus)}</span></div><h3>${escapeHtml(asset.name)}</h3><p>${escapeHtml(asset.altText)} / ${escapeHtml(String(asset.sizeBytes))} bytes</p><p class="meta">メディアID: <code>${escapeHtml(asset.id)}</code></p><div class="editor-actions"><button class="button ghost media-transform-button" data-asset-id="${escapeHtml(asset.id)}">変換アセット作成</button>${asset.status !== "archived" ? `<button class="button ghost media-archive-button" data-asset-id="${escapeHtml(asset.id)}">アーカイブ</button>` : ""}</div></article>`).join("")
     : '<p class="empty">登録済みメディアはありません。</p>';
   document.querySelectorAll(".media-transform-button").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -1666,6 +1666,7 @@ async function openContentEditor(contentId) {
   form.elements.namedItem("summary").value = content.summary;
   form.elements.namedItem("body").value = content.body;
   form.elements.namedItem("sourceFacts").value = (content.sourceFacts ?? []).join("\n");
+  form.elements.namedItem("mediaIds").value = (content.mediaIds ?? []).join("\n");
   form.elements.namedItem("seoTitle").value = content.seo.title;
   form.elements.namedItem("seoDescription").value = content.seo.description;
   form.elements.namedItem("canonicalPath").value = content.seo.canonicalPath;
@@ -2302,6 +2303,7 @@ elements.contentForm.addEventListener("submit", async (event) => {
         audience: form.get("audience"),
         topic: form.get("topic"),
         primaryKeyword: form.get("primaryKeyword"),
+        mediaIds: String(form.get("mediaIds") ?? "").split("\n").map((mediaId) => mediaId.trim()).filter(Boolean),
         sourceFacts: String(form.get("sourceFacts") ?? "").split("\n").map((fact) => fact.trim()).filter(Boolean),
       }),
     });
@@ -2334,6 +2336,7 @@ elements.contentEditForm.addEventListener("submit", async (event) => {
         title: form.get("title"),
         summary: form.get("summary"),
         body: form.get("body"),
+        mediaIds: String(form.get("mediaIds") ?? "").split("\n").map((mediaId) => mediaId.trim()).filter(Boolean),
         sourceFacts: String(form.get("sourceFacts") ?? "").split("\n").map((fact) => fact.trim()).filter(Boolean),
         seo: {
           title: form.get("seoTitle"),
