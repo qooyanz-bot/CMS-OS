@@ -277,6 +277,49 @@ function jsonLdString(value: unknown): string {
 }
 
 function articleJsonLd(content: ContentRecord, categoryLabel: string, canonical: string): Record<string, unknown> {
+  if (content.seo.jsonLdType === "FAQPage") {
+    return {
+      "@type": "FAQPage",
+      "@id": `${canonical}#faq`,
+      name: content.title,
+      description: content.summary,
+      url: canonical,
+      inLanguage: localeTag(content),
+      mainEntity: content.seo.faq.map((item) => ({
+        "@type": "Question",
+        name: item.question,
+        acceptedAnswer: { "@type": "Answer", text: item.answer },
+      })),
+    };
+  }
+
+  if (content.seo.jsonLdType === "Organization") {
+    return {
+      "@type": "Organization",
+      "@id": `${canonical}#organization`,
+      name: content.title,
+      description: content.summary,
+      url: canonical,
+      inLanguage: localeTag(content),
+      knowsAbout: content.seo.keywords,
+    };
+  }
+
+  if (content.seo.jsonLdType === "JobPosting") {
+    return {
+      "@type": "JobPosting",
+      "@id": `${canonical}#job`,
+      title: content.title,
+      description: content.summary,
+      url: canonical,
+      datePosted: content.createdAt,
+      inLanguage: localeTag(content),
+      employmentType: "OTHER",
+      hiringOrganization: { "@type": "Organization", name: "掲載事業者" },
+      jobLocation: { "@type": "Place", address: { "@type": "PostalAddress", addressCountry: "JP" } },
+    };
+  }
+
   const article: Record<string, unknown> = {
     "@type": content.seo.jsonLdType,
     "@id": `${canonical}#article`,
@@ -294,11 +337,6 @@ function articleJsonLd(content: ContentRecord, categoryLabel: string, canonical:
     author: { "@type": "Organization", name: "CMS-OS編集チーム" },
     publisher: { "@type": "Organization", name: "CMS-OS" },
   };
-  if (content.seo.jsonLdType === "JobPosting") {
-    article.datePosted = content.createdAt;
-    article.employmentType = "OTHER";
-    article.hiringOrganization = { "@type": "Organization", name: "掲載事業者" };
-  }
   return article;
 }
 
@@ -328,7 +366,7 @@ function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], allC
       { name: content.title, url: canonical },
     ]),
   ];
-  if (content.seo.faq.length > 0) {
+  if (content.seo.faq.length > 0 && content.seo.jsonLdType !== "FAQPage") {
     graph.push({
       "@type": "FAQPage",
       "@id": `${canonical}#faq`,

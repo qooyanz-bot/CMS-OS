@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface StateStore {
@@ -23,6 +23,16 @@ export class JsonStateStore implements StateStore {
 
   public save<T>(name: string, value: T): void {
     const path = join(this.directory, name);
-    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    const temporaryPath = `${path}.${process.pid}.tmp`;
+    try {
+      writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+      renameSync(temporaryPath, path);
+    } finally {
+      try {
+        unlinkSync(temporaryPath);
+      } catch {
+        // 正常なrename後は一時ファイルが存在しないため、後処理の失敗は無視します。
+      }
+    }
   }
 }

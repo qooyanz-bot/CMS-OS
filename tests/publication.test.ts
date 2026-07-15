@@ -254,6 +254,49 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.equal(dryRunRollback.status, 409);
   });
 
+  it("FAQPageのJSON-LDをFAQ構造として1つだけ出力する", async () => {
+    const auth = new InMemoryAuthService();
+    const portal = new PortalService(auth);
+    const content = new ContentService(portal);
+    const publication = new PublicationService(portal, content);
+    const login = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
+    if (!login || !("accessToken" in login)) throw new Error("FAQ構造化データ用ログインに失敗しました。");
+
+    const created = content.createContent(login.principal, {
+      category: "legal",
+      contentType: "blog",
+      audience: "customer",
+      title: "法律相談のよくある質問",
+      summary: "法律相談を検討する方が確認したい質問と回答を整理した案内です。",
+      body: "# 法律相談のよくある質問\n\n相談前に確認できる情報を掲載しています。",
+      sourceFacts: ["事業者が確認したFAQ情報です。"],
+      seo: {
+        title: "法律相談のよくある質問と回答",
+        description: "法律相談を検討する前に確認したい質問と回答を整理した案内です。",
+        keywords: ["法律相談"],
+        canonicalPath: "/content/legal-faq/",
+        ogTitle: "法律相談のよくある質問と回答",
+        ogDescription: "法律相談を検討する前に確認したい質問と回答を整理した案内です。",
+        jsonLdType: "FAQPage",
+        faq: [{ question: "初回相談で何を準備しますか？", answer: "相談内容と関係資料を整理してお持ちください。" }],
+      },
+    });
+    await content.polishContent(login.principal, created.id);
+    content.auditSeo(login.principal, created.id);
+    content.factCheck(login.principal, created.id);
+    content.approveContent(login.principal, created.id);
+
+    const built = publication.build(login.principal, [created.id], "https://www.example.com");
+    const page = built.files.find((file) => file.path.startsWith("content/") && file.path.endsWith("/index.html"))?.content ?? "";
+    const jsonLdText = page.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
+    assert.ok(jsonLdText);
+    const graph = JSON.parse(jsonLdText) as { "@graph": Array<Record<string, any>> };
+    const faqNodes = graph["@graph"].filter((node) => node["@type"] === "FAQPage");
+    assert.equal(faqNodes.length, 1);
+    assert.equal(faqNodes[0]?.headline, undefined);
+    assert.equal(faqNodes[0]?.mainEntity[0]?.acceptedAnswer?.text, "相談内容と関係資料を整理してお持ちください。");
+  });
+
   it("静的公開の主要操作をMCPから利用できる", async () => {
     const tools = await request("/mcp", {
       method: "POST",

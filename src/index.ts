@@ -16,7 +16,7 @@ import { PostgresStateStore } from "./infrastructure/postgres-state-store.js";
 import { contentAgentAdapterFromEnvironment } from "./integrations/content-agent-adapter.js";
 
 async function createStateStore(): Promise<StateStore | undefined> {
-  const storageMode = process.env.CMS_OS_STORAGE ?? "memory";
+  const storageMode = process.env.CMS_OS_STORAGE ?? "file";
   if (storageMode === "memory") return undefined;
   if (storageMode === "file") return new JsonStateStore(process.env.CMS_OS_DATA_DIR ?? ".cms-os-data");
   if (storageMode === "postgres") {
