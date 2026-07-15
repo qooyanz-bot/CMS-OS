@@ -95,6 +95,22 @@ export interface PortalCategoryContext {
   directoryGuides: DirectoryGuide[];
 }
 
+/** ログイン前にカテゴリごとの表示対象を選択するためのロール定義です。 */
+export interface CategoryLoginRoleOption {
+  role: ContextRole;
+  label: string;
+  audience: string;
+  visibleModules: string[];
+  navigation: CategoryModule[];
+}
+
+/** ログイン画面とAIエージェントが利用するカテゴリ別ログイン候補です。 */
+export interface CategoryLoginOption {
+  category: CategorySlug;
+  categoryLabel: string;
+  roles: CategoryLoginRoleOption[];
+}
+
 export interface ProviderRecord {
   id: string;
   category: CategorySlug;

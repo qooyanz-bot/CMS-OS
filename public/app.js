@@ -5,6 +5,7 @@ const state = {
   category: "legal",
   role: "user",
   categories: [],
+  loginOptions: [],
   availableContexts: [],
   authCapabilities: { passwordLogin: true, oidcLogin: false, mfaEnrollment: false },
   experience: null,
@@ -356,6 +357,10 @@ function contextForCategory(category) {
   return state.availableContexts.find((context) => context.category === category);
 }
 
+function loginOptionForCategory(category) {
+  return state.loginOptions.find((option) => option.category === category);
+}
+
 function renderCategoryOptions() {
   const categories = state.token && state.availableContexts.length > 0
     ? state.categories.filter((category) => contextForCategory(category.slug))
@@ -374,7 +379,10 @@ function renderCategoryOptions() {
 
 function renderRoleOptions() {
   const context = state.token ? contextForCategory(state.category) : undefined;
-  const roles = context?.roles?.filter((role) => labels[role]) ?? defaultRoleOptions;
+  const loginOption = loginOptionForCategory(state.category);
+  const roles = context?.roles?.filter((role) => labels[role])
+    ?? loginOption?.roles?.map((role) => role.role).filter((role) => labels[role])
+    ?? defaultRoleOptions;
   const selectedRole = roles.includes(state.role) ? state.role : roles[0] ?? "user";
   elements.role.replaceChildren(...roles.map((role) => {
     const option = document.createElement("option");
@@ -404,6 +412,14 @@ async function loadCategories() {
   if (categories.length === 0) throw new Error("利用可能なカテゴリを取得できませんでした。");
   state.categories = categories;
   renderCategoryOptions();
+}
+
+async function loadLoginOptions() {
+  const body = await api("/api/v1/auth/login-options");
+  state.loginOptions = Array.isArray(body.items)
+    ? body.items.filter((item) => item && typeof item.category === "string" && Array.isArray(item.roles))
+    : [];
+  renderRoleOptions();
 }
 
 async function loadAuthConfig() {
@@ -2235,6 +2251,7 @@ elements.providerCompareClear.addEventListener("click", () => clearProviderCompa
 async function initialize() {
   try {
     await loadCategories();
+    await loadLoginOptions();
   } catch (error) {
     setMessage(error.message);
   }

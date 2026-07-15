@@ -10,6 +10,7 @@ const root = new URL("../../", import.meta.url);
 const expectedMcpToolNames = [
   "auth.login",
   "auth.config",
+  "auth.login_options",
   "auth.oidc_start",
   "auth.oidc_callback",
   "auth.mfa_enroll",
@@ -115,6 +116,7 @@ const expectedMcpToolNames = [
 const openApiOperationToMcpTool: Record<string, string> = {
   login: "auth.login",
   getAuthConfig: "auth.config",
+  getAuthLoginOptions: "auth.login_options",
   startOidcLogin: "auth.oidc_start",
   completeOidcLogin: "auth.oidc_callback",
   enrollMfa: "auth.mfa_enroll",

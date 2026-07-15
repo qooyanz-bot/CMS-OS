@@ -50,6 +50,14 @@
         "responses": { "200": { "description": "認証設定", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthConfigResponse" } } } } }
       }
     },
+    "/api/v1/auth/login-options": {
+      "get": {
+        "tags": ["Auth"],
+        "operationId": "getAuthLoginOptions",
+        "summary": "ログイン前にカテゴリごとの表示対象ロールを取得",
+        "responses": { "200": { "description": "カテゴリ別ロール候補", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginOptionsResponse" } } } } }
+      }
+    },
     "/api/v1/auth/oidc/start": {
       "post": {
         "tags": ["Auth"],
@@ -1171,6 +1179,9 @@
       "ErrorResponse": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } } },
       "LoginRequest": { "type": "object", "required": ["email", "password", "category"], "properties": { "email": { "type": "string", "format": "email" }, "password": { "type": "string", "minLength": 1 }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole", "default": "user" } }, "additionalProperties": false },
       "AuthConfigResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["passwordLogin", "oidcLogin", "mfaEnrollment"], "properties": { "passwordLogin": { "type": "boolean" }, "oidcLogin": { "type": "boolean" }, "mfaEnrollment": { "type": "boolean" } } } } },
+      "LoginOptionsResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/CategoryLoginOption" } } } },
+      "CategoryLoginOption": { "type": "object", "required": ["category", "categoryLabel", "roles"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "categoryLabel": { "type": "string" }, "roles": { "type": "array", "items": { "$ref": "#/components/schemas/CategoryLoginRoleOption" } } } },
+      "CategoryLoginRoleOption": { "type": "object", "required": ["role", "label", "audience", "visibleModules", "navigation"], "properties": { "role": { "$ref": "#/components/schemas/AuthRole" }, "label": { "type": "string" }, "audience": { "type": "string" }, "visibleModules": { "type": "array", "items": { "type": "string" } }, "navigation": { "type": "array", "items": { "type": "object", "required": ["id", "label"], "properties": { "id": { "type": "string" }, "label": { "type": "string" } } } } } },
       "OidcStartRequest": { "type": "object", "required": ["category"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "role": { "$ref": "#/components/schemas/PortalRole", "default": "user" } }, "additionalProperties": false },
       "OidcStartResponse": { "type": "object", "required": ["item"], "properties": { "item": { "type": "object", "required": ["authorizationUrl", "state", "expiresInSeconds"], "properties": { "authorizationUrl": { "type": "string", "format": "uri" }, "state": { "type": "string" }, "expiresInSeconds": { "type": "integer" } } } } },
       "OidcCallbackResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/LoginResponse" } } },

@@ -1,6 +1,7 @@
 import type { AuthService } from "../domain/auth.js";
 import {
   getCategoryPolicy,
+  listCategoryLoginOptions,
   listCategoryPolicies,
   projectProvider,
   resolveExperience,
@@ -211,6 +212,10 @@ export class PortalService {
       themes: [...policy.themes],
       navigation: policy.navigation,
     }));
+  }
+
+  public listLoginOptions() {
+    return listCategoryLoginOptions();
   }
 
   private listThemeOptions(category: CategorySlug, principal: AuthenticatedPrincipal | null): string[] {

@@ -1066,6 +1066,11 @@ async function handleMcp(
             inputSchema: { type: "object", properties: {} },
           },
           {
+            name: "auth.login_options",
+            description: "ログイン前にカテゴリごとの表示対象ロールとナビゲーションを取得します。",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
             name: "auth.switch_context",
             description: "許可されたカテゴリとロールへ操作コンテキストを切り替えます。",
             inputSchema: {
@@ -1604,6 +1609,12 @@ async function handleMcp(
 
     if (name === "auth.config") {
       const result = auth.getAuthCapabilities();
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "auth.login_options") {
+      const result = { items: portal.listLoginOptions() };
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2521,6 +2532,11 @@ export function createHttpServer(
 
       if (request.method === "GET" && url.pathname === "/api/v1/auth/config") {
         writeJson(response, 200, { item: auth.getAuthCapabilities() });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/v1/auth/login-options") {
+        writeJson(response, 200, { items: portal.listLoginOptions() });
         return;
       }
 

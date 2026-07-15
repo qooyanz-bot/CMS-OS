@@ -1,8 +1,10 @@
-import { isRecruiterRole } from "./types.js";
+import { contextRoles, isRecruiterRole } from "./types.js";
 import type {
+  CategoryLoginOption,
   CategoryExperience,
   CategoryModule,
   CategorySlug,
+  ContextRole,
   PortalRole,
   ProviderRecord,
   VisibleProvider,
@@ -26,6 +28,20 @@ const commonActions = [
   "notification.read",
   "notification.update",
 ];
+
+const loginRoleLabels: Record<ContextRole, string> = {
+  user: "ユーザー",
+  orderer: "発注者",
+  provider: "事業者",
+  recruiter: "リクルーター",
+};
+
+const loginRoleAudiences: Record<ContextRole, string> = {
+  user: "公開情報を閲覧し、カテゴリの事業者を探す人",
+  orderer: "カテゴリの事業者へ相談・発注・予約を行う人",
+  provider: "カテゴリの事業を運営し、掲載・案件・コンテンツを管理する事業者",
+  recruiter: "カテゴリの事業者への応募意思があり、求人・応募を確認する人",
+};
 
 type GenericCategorySlug = Exclude<CategorySlug, "legal" | "beauty">;
 
@@ -613,6 +629,27 @@ export function resolveExperience(
     allowedActions: authenticated ? rolePolicy.allowedActions : ["profile.read", "provider.search"],
     notices: rolePolicy.notices,
   };
+}
+
+/**
+ * ログイン前にカテゴリ別の表示対象を選択できるよう、認証情報を含めずに返します。
+ * 実際のデータや操作権限はログイン後のカテゴリコンテキストで再評価します。
+ */
+export function listCategoryLoginOptions(): CategoryLoginOption[] {
+  return listCategoryPolicies().map((policy) => ({
+    category: policy.slug,
+    categoryLabel: policy.label,
+    roles: contextRoles.map((role) => {
+      const experience = resolveExperience(policy.slug, role, false);
+      return {
+        role,
+        label: loginRoleLabels[role],
+        audience: loginRoleAudiences[role],
+        visibleModules: [...experience.visibleModules],
+        navigation: experience.navigation.map((module) => ({ ...module })),
+      };
+    }),
+  }));
 }
 
 export function projectProvider(

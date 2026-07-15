@@ -203,6 +203,7 @@ describe("認証REST APIとMCP", () => {
       "auth.me",
       "auth.logout",
       "auth.config",
+      "auth.login_options",
       "auth.switch_context",
       "auth.oidc_start",
       "auth.oidc_callback",
