@@ -28,6 +28,10 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.equal(html.status, 200);
   assert.match(body, /CMS-OS Portal/);
   assert.match(body, /content-editor-panel/);
+  assert.match(body, /content-edit-panel/);
+  assert.match(body, /content-edit-form/);
+  assert.match(body, /name="jsonLdType"/);
+  assert.match(body, /name="faqJson"/);
   assert.match(body, /publication-history-list/);
   assert.match(body, /publication-schedule-panel/);
   assert.match(body, /publication-schedule-list/);
@@ -121,6 +125,11 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/auth\/oidc\/start/);
   assert.match(scriptBody, /api\/v1\/auth\/mfa\/complete/);
   assert.match(scriptBody, /api\/v1\/content\/proposals/);
+  assert.match(scriptBody, /contentEditForm/);
+  assert.match(scriptBody, /contentJsonLdTypes/);
+  assert.match(scriptBody, /openContentEditor/);
+  assert.match(scriptBody, /data-action="edit"/);
+  assert.match(scriptBody, /method: "PATCH"/);
   assert.match(scriptBody, /api\/v1\/content\/.*translate/);
   assert.match(scriptBody, /api\/v1\/publications\/build/);
   assert.match(scriptBody, /api\/v1\/publications\/publish/);

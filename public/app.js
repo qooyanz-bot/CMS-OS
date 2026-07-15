@@ -43,6 +43,7 @@ const labels = {
 
 const defaultRoleOptions = ["user", "orderer", "provider", "recruiter"];
 const providerCompareLimit = 3;
+const contentJsonLdTypes = ["Organization", "Article", "BlogPosting", "JobPosting", "NewsArticle", "FAQPage"];
 
 function isRecruiterRole(role) {
   return role === "candidate" || role === "recruiter";
@@ -234,6 +235,10 @@ const elements = {
   contentPanel: document.querySelector("#content-editor-panel"),
   contentForm: document.querySelector("#content-proposal-form"),
   contentMessage: document.querySelector("#content-message"),
+  contentEditPanel: document.querySelector("#content-edit-panel"),
+  contentEditForm: document.querySelector("#content-edit-form"),
+  contentEditClose: document.querySelector("#content-edit-close"),
+  contentEditCancel: document.querySelector("#content-edit-cancel"),
   proposals: document.querySelector("#proposal-list"),
   contents: document.querySelector("#content-list"),
   contentVersions: document.querySelector("#content-version-list"),
@@ -1489,6 +1494,7 @@ function contentActionButtons(content) {
     ? `<button class="button ghost content-action" data-action="translate" data-content-id="${escapeHtml(content.id)}">翻訳下書き</button>`
     : "";
   const actions = [
+    ...(["approved", "published", "review_requested", "archived"].includes(content.status) ? [] : [`<button class="button ghost content-action" data-action="edit" data-content-id="${escapeHtml(content.id)}">編集</button>`]),
     `<button class="button ghost content-action" data-action="preview" data-content-id="${escapeHtml(content.id)}">本文を見る</button>`,
     `<button class="button ghost content-action" data-action="versions" data-content-id="${escapeHtml(content.id)}">版履歴</button>`,
     `<button class="button ghost content-action" data-action="reviews" data-content-id="${escapeHtml(content.id)}">レビュー履歴</button>`,
@@ -1509,6 +1515,32 @@ function contentActionButtons(content) {
   if (content.status === "published") actions.push(`<button class="button ghost content-action" data-action="unpublish" data-content-id="${escapeHtml(content.id)}">公開を取り消す</button>`);
   if (translationAction) actions.unshift(translationAction);
   return actions.join("");
+}
+
+function closeContentEditor() {
+  elements.contentEditPanel.hidden = true;
+  elements.contentEditForm.reset();
+}
+
+async function openContentEditor(contentId) {
+  const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}`);
+  const content = body.item;
+  const form = elements.contentEditForm;
+  form.elements.namedItem("contentId").value = content.id;
+  form.elements.namedItem("title").value = content.title;
+  form.elements.namedItem("summary").value = content.summary;
+  form.elements.namedItem("body").value = content.body;
+  form.elements.namedItem("sourceFacts").value = (content.sourceFacts ?? []).join("\n");
+  form.elements.namedItem("seoTitle").value = content.seo.title;
+  form.elements.namedItem("seoDescription").value = content.seo.description;
+  form.elements.namedItem("canonicalPath").value = content.seo.canonicalPath;
+  form.elements.namedItem("ogTitle").value = content.seo.ogTitle;
+  form.elements.namedItem("ogDescription").value = content.seo.ogDescription;
+  form.elements.namedItem("keywords").value = (content.seo.keywords ?? []).join(", ");
+  form.elements.namedItem("jsonLdType").value = contentJsonLdTypes.includes(content.seo.jsonLdType) ? content.seo.jsonLdType : "Article";
+  form.elements.namedItem("faqJson").value = content.seo.faq?.length ? JSON.stringify(content.seo.faq, null, 2) : "";
+  elements.contentEditPanel.hidden = false;
+  elements.contentEditPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function renderContents(items) {
@@ -1653,6 +1685,7 @@ async function reloadContent() {
   const visible = state.token && state.role === "provider" && state.experience?.allowedActions.includes("content.propose");
   elements.contentPanel.hidden = !visible;
   if (!visible) {
+    closeContentEditor();
     elements.contentVersions.innerHTML = "";
     elements.contentReviews.innerHTML = "";
     elements.siteSeoAuditResult.hidden = true;
@@ -1684,6 +1717,10 @@ async function runSiteSeoAudit() {
 async function handleContentAction(action, contentId) {
   if (!contentId) return;
   try {
+    if (action === "edit") {
+      await openContentEditor(contentId);
+      return;
+    }
     if (action === "preview") {
       const body = await api(`/api/v1/content/${encodeURIComponent(contentId)}`);
       elements.contentPreview.hidden = false;
@@ -2139,7 +2176,51 @@ elements.contentForm.addEventListener("submit", async (event) => {
   }
 });
 
+elements.contentEditForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(elements.contentEditForm);
+  const contentId = String(form.get("contentId") ?? "");
+  if (!contentId) return;
+  let faq = [];
+  try {
+    const faqText = String(form.get("faqJson") ?? "").trim();
+    if (faqText) {
+      const parsed = JSON.parse(faqText);
+      if (!Array.isArray(parsed) || parsed.some((item) => !item || typeof item.question !== "string" || typeof item.answer !== "string")) {
+        throw new Error("FAQはquestionとanswerを持つJSON配列で指定してください。");
+      }
+      faq = parsed;
+    }
+    await api(`/api/v1/content/${encodeURIComponent(contentId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        title: form.get("title"),
+        summary: form.get("summary"),
+        body: form.get("body"),
+        sourceFacts: String(form.get("sourceFacts") ?? "").split("\n").map((fact) => fact.trim()).filter(Boolean),
+        seo: {
+          title: form.get("seoTitle"),
+          description: form.get("seoDescription"),
+          canonicalPath: form.get("canonicalPath"),
+          ogTitle: form.get("ogTitle"),
+          ogDescription: form.get("ogDescription"),
+          keywords: String(form.get("keywords") ?? "").split(/[,\n]/).map((keyword) => keyword.trim()).filter(Boolean),
+          jsonLdType: form.get("jsonLdType"),
+          faq,
+        },
+      }),
+    });
+    closeContentEditor();
+    setContentMessage("編集内容を保存しました。事実確認とSEO監査を再実行してください。");
+    await reloadContent();
+  } catch (error) {
+    setContentMessage(error.message);
+  }
+});
+
 elements.providerProfileClose.addEventListener("click", () => clearProviderProfile());
+elements.contentEditClose.addEventListener("click", () => closeContentEditor());
+elements.contentEditCancel.addEventListener("click", () => closeContentEditor());
 elements.providerProfileRequest.addEventListener("click", () => focusRequestForm(elements.providerProfileRequest.dataset.providerId ?? ""));
 elements.providerProfileBooking.addEventListener("click", () => focusBookingForm(elements.providerProfileBooking.dataset.providerId ?? ""));
 elements.providerProfileInquiry.addEventListener("click", () => {

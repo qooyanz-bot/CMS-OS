@@ -358,6 +358,35 @@
           <button class="button primary" type="submit">企画案を作成</button>
         </form>
         <p id="content-message" class="message" role="status"></p>
+        <section id="content-edit-panel" class="content-edit-panel" hidden aria-labelledby="content-edit-heading">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">CONTENT EDITOR</div>
+              <h3 id="content-edit-heading">生成内容を編集</h3>
+              <p class="muted">本文・SEO・構造化データを確認して保存します。保存後は事実確認とSEO監査をやり直します。</p>
+            </div>
+            <button id="content-edit-close" class="button ghost" type="button">閉じる</button>
+          </div>
+          <form id="content-edit-form" class="content-form">
+            <input name="contentId" type="hidden" />
+            <label class="wide">タイトル<input name="title" required maxlength="160" /></label>
+            <label class="wide">要約<textarea name="summary" required maxlength="320" rows="3"></textarea></label>
+            <label class="wide">本文（Markdown）<textarea name="body" required maxlength="200000" rows="12"></textarea></label>
+            <label class="wide">確認済み情報（1行1件）<textarea name="sourceFacts" rows="4"></textarea></label>
+            <label>SEOタイトル<input name="seoTitle" maxlength="160" /></label>
+            <label>canonicalパス<input name="canonicalPath" required pattern="^/.*" /></label>
+            <label class="wide">メタディスクリプション<textarea name="seoDescription" maxlength="320" rows="3"></textarea></label>
+            <label>OGタイトル<input name="ogTitle" maxlength="160" /></label>
+            <label>OG説明文<input name="ogDescription" maxlength="320" /></label>
+            <label>主キーワード（カンマ区切り）<input name="keywords" /></label>
+            <label>JSON-LD種別<select name="jsonLdType"><option value="Organization">Organization</option><option value="Article">Article</option><option value="BlogPosting">BlogPosting</option><option value="JobPosting">JobPosting</option><option value="NewsArticle">NewsArticle</option><option value="FAQPage">FAQPage</option></select></label>
+            <label class="wide">FAQ（JSON配列、任意）<textarea name="faqJson" rows="5" placeholder='[{"question":"質問","answer":"回答"}]'></textarea></label>
+            <div class="editor-actions wide">
+              <button class="button primary" type="submit">編集内容を保存</button>
+              <button id="content-edit-cancel" class="button ghost" type="button">キャンセル</button>
+            </div>
+          </form>
+        </section>
         <div class="editor-columns">
           <div>
             <div class="section-kicker">PROPOSALS</div>
