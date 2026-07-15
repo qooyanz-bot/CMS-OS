@@ -25,6 +25,66 @@ const defaultJobs: JobPosting[] = [
     description: "技術研修と長期的なキャリア形成を重視しています。",
     status: "published",
   },
+  {
+    id: "job-ai-business-demo",
+    category: "ai-business",
+    providerId: "provider-ai-business-demo",
+    title: "生成AI活用コンサルタント",
+    employmentType: "正社員・業務委託",
+    location: "東京・オンライン",
+    description: "企業の業務改善と生成AI導入を支援するプロジェクト担当を募集します。",
+    status: "published",
+  },
+  {
+    id: "job-labor-shortage-demo",
+    category: "labor-shortage",
+    providerId: "provider-labor-shortage-demo",
+    title: "採用支援プロジェクト担当",
+    employmentType: "正社員・業務委託",
+    location: "東京・大阪・オンライン",
+    description: "採用計画、候補者対応、現場の人材課題解決を支援するメンバーを募集します。",
+    status: "published",
+  },
+  {
+    id: "job-tourism-demo",
+    category: "tourism",
+    providerId: "provider-tourism-demo",
+    title: "観光体験プランナー",
+    employmentType: "正社員・契約社員",
+    location: "全国・地域拠点",
+    description: "地域の魅力を生かした観光体験と訪日旅行者向け企画をつくる仕事です。",
+    status: "published",
+  },
+  {
+    id: "job-mobility-dx-demo",
+    category: "mobility-dx",
+    providerId: "provider-mobility-dx-demo",
+    title: "モビリティDXプロジェクト担当",
+    employmentType: "正社員・業務委託",
+    location: "東京・オンライン",
+    description: "車両データと移動サービスを活用した業務改善プロジェクトを推進します。",
+    status: "published",
+  },
+  {
+    id: "job-gx-demo",
+    category: "gx",
+    providerId: "provider-gx-demo",
+    title: "脱炭素・GXコンサルタント",
+    employmentType: "正社員・業務委託",
+    location: "東京・オンライン",
+    description: "企業の脱炭素計画、環境データ整理、実行支援を担当するメンバーを募集します。",
+    status: "published",
+  },
+  {
+    id: "job-regional-revitalization-demo",
+    category: "regional-revitalization",
+    providerId: "provider-regional-revitalization-demo",
+    title: "地域プロジェクトコーディネーター",
+    employmentType: "正社員・業務委託",
+    location: "地域拠点・リモート",
+    description: "自治体、地域事業者、移住希望者をつなぐ地域プロジェクトを運営します。",
+    status: "published",
+  },
 ];
 
 function cloneFields(fields: Record<string, string | string[]>): Record<string, string | string[]> {
@@ -80,7 +140,9 @@ export class PortalStore {
     this.requests = stateStore?.load<ServiceRequest[]>("portal-requests.json", []) ?? [];
     this.bookings = stateStore?.load<ServiceBooking[]>("portal-bookings.json", []) ?? [];
     const savedJobs = stateStore?.load<JobPosting[]>("portal-jobs.json", defaultJobs) ?? defaultJobs;
-    this.jobs = savedJobs.map((job) => ({ ...job }));
+    const jobsById = new Map(defaultJobs.map((job) => [job.id, job]));
+    for (const job of savedJobs) jobsById.set(job.id, job);
+    this.jobs = [...jobsById.values()].map((job) => ({ ...job }));
     this.applications = stateStore?.load<JobApplication[]>("portal-applications.json", []) ?? [];
     this.inquiries = stateStore?.load<ProviderInquiry[]>("portal-inquiries.json", []) ?? [];
     this.notifications = stateStore?.load<PortalNotification[]>("portal-notifications.json", []) ?? [];
