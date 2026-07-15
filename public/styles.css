@@ -68,6 +68,18 @@ select:focus, input:focus, textarea:focus { border-color: rgba(184, 243, 106, .6
 .experience-navigation { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .experience-navigation a { color: var(--text); background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 999px; padding: 8px 11px; font-size: 12px; font-weight: 800; text-decoration: none; }
 .experience-navigation a:hover { border-color: rgba(184, 243, 106, .55); color: var(--accent); }
+.portal-summary { border-top: 1px solid var(--border); margin-top: 22px; padding-top: 20px; }
+.portal-summary h3 { font-size: 16px; margin: 0 0 7px; }
+.summary-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; margin-top: 14px; }
+.summary-metric { background: rgba(255,255,255,.035); border: 1px solid var(--border); border-radius: 12px; padding: 11px; }
+.summary-metric-label { color: var(--muted); font-size: 11px; }
+.summary-metric strong { display: block; color: var(--accent); font-size: 24px; letter-spacing: -.04em; margin-top: 5px; }
+.summary-metric p { color: var(--muted); font-size: 10px; line-height: 1.5; margin: 5px 0 0; }
+.summary-actions { display: grid; gap: 7px; margin-top: 12px; }
+.summary-actions .button { display: grid; gap: 3px; text-align: left; text-decoration: none; }
+.summary-actions .button strong, .summary-action-note strong { font-size: 12px; }
+.summary-actions .button span, .summary-action-note span { color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.45; }
+.summary-action-note { display: grid; gap: 3px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; }
 .workflow-card { background: linear-gradient(145deg, rgba(246, 184, 122, .12), var(--panel)); }
 .workflow-line { display: grid; grid-template-columns: 28px 1fr; gap: 11px 10px; align-items: center; margin-top: 24px; }
 .workflow-line span { color: var(--warm); font-size: 12px; font-weight: 900; }

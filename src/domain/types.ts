@@ -86,6 +86,34 @@ export interface CategoryExperience {
   notices: string[];
 }
 
+/** ログイン後にカテゴリ・ロール別で表示するポータルの集計値です。内部IDや個人情報は含めません。 */
+export interface PortalSummaryMetric {
+  id: string;
+  label: string;
+  value: number;
+  module: string;
+  description: string;
+}
+
+/** サマリーから直接移動できる、現在のロール向けの次アクションです。 */
+export interface PortalSummaryAction {
+  id: string;
+  label: string;
+  module: string;
+  action: string;
+  reason: string;
+}
+
+/** カテゴリとロールで表示対象を切り替えたポータルの状態サマリーです。 */
+export interface PortalSummary {
+  category: CategorySlug;
+  categoryLabel: string;
+  role: PortalRole;
+  authenticated: boolean;
+  metrics: PortalSummaryMetric[];
+  nextActions: PortalSummaryAction[];
+}
+
 export interface PortalCategoryContext {
   slug: CategorySlug;
   label: string;

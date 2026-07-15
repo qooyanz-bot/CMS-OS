@@ -212,6 +212,12 @@ function listMcpResources(portal: PortalService): McpResource[] {
         mimeType: "application/json" as const,
       },
       {
+        uri: "cms-os://categories/" + category.slug + "/summary",
+        name: category.label + "のポータルサマリー",
+        description: "現在の認証ロールで表示できる件数と次アクションを返します。",
+        mimeType: "application/json" as const,
+      },
+      {
         uri: `cms-os://categories/${category.slug}/directories`,
         name: `${category.label}の外部案内`,
         description: "現在の認証ロールで表示できる外部ディレクトリ・予約・事業者向け案内を返します。",
@@ -223,11 +229,12 @@ function listMcpResources(portal: PortalService): McpResource[] {
 
 function readMcpResource(uri: string, portal: PortalService, principal: ReturnType<AuthService["authenticate"]>): unknown {
   if (uri === "cms-os://categories") return { items: portal.listCategories() };
-  const match = uri.match(/^cms-os:\/\/categories\/([^/]+)\/(context|experience|directories)$/);
+  const match = uri.match(/^cms-os:\/\/categories\/([^/]+)\/(context|experience|summary|directories)$/);
   if (!match || !isCategorySlug(match[1])) throw new Error("指定されたMCPリソースが見つかりません。");
   const category = match[1];
   if (match[2] === "context") return { item: portal.getCategoryContext(category, principal) };
   if (match[2] === "experience") return { item: portal.getExperience(category, principal) };
+  if (match[2] === "summary") return { item: portal.getSummary(category, principal) };
   return { items: portal.listDirectoryGuides(category, principal) };
 }
 
@@ -755,6 +762,11 @@ async function handleMcp(
           {
             name: "category.resolve_experience",
             description: "カテゴリと認証コンテキストに応じた表示モジュールと操作権限を取得します。",
+            inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
+          },
+          {
+            name: "category.summary",
+            description: "カテゴリとロールに応じた件数サマリーと次アクションを取得します。",
             inputSchema: { type: "object", properties: { category: { enum: categoryEnum } }, required: ["category"] },
           },
           {
@@ -1633,6 +1645,13 @@ async function handleMcp(
     if (name === "category.resolve_experience") {
       if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
       const result = portal.getExperience(argumentsObject.category, principal);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "category.summary") {
+      if (!isCategorySlug(argumentsObject.category)) throw new Error("categoryが不正です。");
+      const result = portal.getSummary(argumentsObject.category, principal);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2710,6 +2729,17 @@ export function createHttpServer(
           return;
         }
         writeJson(response, 200, { experience: portal.getExperience(category, principal) });
+        return;
+      }
+
+      const summaryMatch = url.pathname.match(/^\/api\/v1\/categories\/([^/]+)\/summary$/);
+      if (request.method === "GET" && summaryMatch) {
+        const category = summaryMatch[1];
+        if (!isCategorySlug(category)) {
+          writeJson(response, 404, { error: "カテゴリが見つかりません。" });
+          return;
+        }
+        writeJson(response, 200, { summary: portal.getSummary(category, principal) });
         return;
       }
 

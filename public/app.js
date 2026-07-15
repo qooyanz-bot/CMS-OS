@@ -9,6 +9,7 @@ const state = {
   availableContexts: [],
   authCapabilities: { passwordLogin: true, oidcLogin: false, mfaEnrollment: false },
   experience: null,
+  summary: null,
   providers: [],
   favorites: [],
   providerProfile: null,
@@ -123,6 +124,9 @@ const navigationAnchorTargets = {
   bookingManagement: "booking-status-panel",
   styleManagement: "provider-management-panel",
   jobManagement: "job-management-panel",
+  inquiries: "inquiry-status-panel",
+  notifications: "notification-panel",
+  favorites: "favorite-panel",
   contentAssistant: "content-editor-panel",
   seoAssistant: "content-editor-panel",
 };
@@ -155,6 +159,11 @@ const elements = {
   notice: document.querySelector("#category-notice"),
   modules: document.querySelector("#module-list"),
   navigation: document.querySelector("#experience-navigation"),
+  summaryTitle: document.querySelector("#portal-summary-title"),
+  summaryCopy: document.querySelector("#portal-summary-copy"),
+  summaryMetrics: document.querySelector("#portal-summary-metrics"),
+  summaryActions: document.querySelector("#portal-summary-actions"),
+  summaryStatus: document.querySelector("#portal-summary-status"),
   workflowTitle: document.querySelector("#workflow-title"),
   workflowCopy: document.querySelector("#workflow-copy"),
   workflowOne: document.querySelector("#workflow-step-one"),
@@ -470,6 +479,7 @@ function clearSessionState() {
   state.principal = null;
   state.mfaChallengeToken = null;
   state.role = "user";
+  state.summary = null;
   state.availableContexts = [];
   state.favorites = [];
   state.compareProviderIds = [];
@@ -552,6 +562,26 @@ function renderExperience(experience, navigation = [], themeOptions = []) {
   const canSeeJobs = experience.visibleModules.includes("jobSearch") || experience.visibleModules.includes("jobManagement");
   elements.jobPanel.hidden = !canSeeJobs;
   if (!canSeeJobs) clearJobView();
+}
+
+function renderSummary(summary) {
+  state.summary = summary;
+  elements.summaryTitle.textContent = labels[summary.role] + "向けのポータル状況";
+  elements.summaryCopy.textContent = summary.authenticated
+    ? "現在のカテゴリとロールで表示できる状態だけを集計しています。"
+    : "未ログイン時は公開情報だけを集計しています。";
+  elements.summaryMetrics.innerHTML = Array.isArray(summary.metrics) && summary.metrics.length
+    ? summary.metrics.map((metric) => '<article class="summary-metric"><div class="summary-metric-label">' + escapeHtml(metric.label) + '</div><strong>' + escapeHtml(String(metric.value)) + '</strong><p>' + escapeHtml(metric.description) + '</p></article>').join("")
+    : '<p class="empty">現在表示できる集計はありません。</p>';
+  elements.summaryActions.innerHTML = Array.isArray(summary.nextActions) && summary.nextActions.length
+    ? summary.nextActions.map((action) => {
+        const targetId = resolveNavigationTarget(action.module);
+        return targetId
+          ? '<a class="button ghost summary-action-link" href="#' + escapeHtml(targetId) + '" data-summary-module="' + escapeHtml(action.module) + '"><strong>' + escapeHtml(action.label) + '</strong><span>' + escapeHtml(action.reason) + '</span></a>'
+          : '<span class="summary-action-note"><strong>' + escapeHtml(action.label) + '</strong><span>' + escapeHtml(action.reason) + '</span></span>';
+      }).join("")
+    : '<p class="empty">次に必要な操作はありません。</p>';
+  elements.summaryStatus.hidden = true;
 }
 
 function renderListPagination(target, page = {}, cursor = "", reloadFunction, label) {
@@ -1206,6 +1236,18 @@ function clearJobView() {
   elements.jobPagination.replaceChildren();
 }
 
+async function reloadSummary() {
+  elements.summaryStatus.hidden = false;
+  setListStatus(elements.summaryStatus, "loading", "カテゴリ別サマリーを読み込んでいます。");
+  try {
+    const body = await api("/api/v1/categories/" + encodeURIComponent(state.category) + "/summary");
+    renderSummary(body.summary);
+  } catch (error) {
+    setListStatus(elements.summaryStatus, "error", "カテゴリ別サマリーを読み込めませんでした。再試行してください。", () => void reloadSummary());
+    throw error;
+  }
+}
+
 async function reloadRoleData() {
   const canSeeRequests = Boolean(state.token && (state.role === "orderer" || state.role === "provider"));
   const canSeeApplications = Boolean(state.token && (isRecruiterRole(state.role) || state.role === "provider"));
@@ -1261,6 +1303,11 @@ async function reloadRoleData() {
     } catch (error) {
       setMessage(error.message);
     }
+  }
+  try {
+    await reloadSummary();
+  } catch (error) {
+    setMessage(error.message);
   }
 }
 

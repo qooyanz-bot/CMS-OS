@@ -100,6 +100,48 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(providers.body.items[0].contactOptions, undefined);
   });
 
+  it("カテゴリ・ロール別サマリーをRESTとMCPで返し、個別データを分離する", async () => {
+    const guest = await request("/api/v1/categories/legal/summary");
+    const beautyOrderer = await request("/api/v1/categories/beauty/summary", {
+      headers: { authorization: "Bearer " + beautyOrdererToken },
+    });
+    const legalProvider = await request("/api/v1/categories/legal/summary", {
+      headers: { authorization: "Bearer " + legalProviderToken },
+    });
+    const recruiter = await request("/api/v1/categories/labor-shortage/summary", {
+      headers: { authorization: "Bearer " + recruiterToken },
+    });
+    const metricIds = (body: { summary: { role: string; metrics: Array<{ id: string }> } }) => body.summary.metrics.map((metric) => metric.id);
+
+    assert.equal(guest.status, 200);
+    assert.equal(guest.body.summary.role, "user");
+    assert.ok(metricIds(guest.body).includes("publicProviders"));
+    assert.equal(beautyOrderer.body.summary.role, "orderer");
+    assert.ok(metricIds(beautyOrderer.body).includes("activeBookings"));
+    assert.ok(metricIds(beautyOrderer.body).includes("openRequests"));
+    assert.equal(legalProvider.body.summary.role, "provider");
+    assert.ok(metricIds(legalProvider.body).includes("jobs"));
+    assert.ok(metricIds(legalProvider.body).includes("activeApplications"));
+    assert.ok(metricIds(legalProvider.body).includes("openInquiries"));
+    assert.equal(recruiter.body.summary.role, "recruiter");
+    assert.ok(metricIds(recruiter.body).includes("jobs"));
+    assert.ok(metricIds(recruiter.body).includes("activeApplications"));
+    assert.notDeepEqual(metricIds(legalProvider.body), metricIds(recruiter.body));
+
+    const mcp = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: "Bearer " + recruiterToken },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 55,
+        method: "tools/call",
+        params: { name: "category.summary", arguments: { category: "labor-shortage" } },
+      }),
+    });
+    assert.equal(mcp.status, 200);
+    assert.deepEqual(mcp.body.result.structuredContent, recruiter.body.summary);
+  });
+
   it("カテゴリ別事業者ログイン後に専用表示モジュールを返す", async () => {
     const expectedModules: Record<string, string> = {
       "ai-business": "aiSolutionManagement",
@@ -298,6 +340,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(listed.status, 200);
     assert.ok(listed.body.result.resources.some((resource: { uri: string }) => resource.uri === "cms-os://categories/beauty/context"));
+    assert.ok(listed.body.result.resources.some((resource: { uri: string }) => resource.uri === "cms-os://categories/beauty/summary"));
 
     const ordererExperience = await request("/mcp", {
       method: "POST",
@@ -307,6 +350,16 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     const ordererExperienceValue = JSON.parse(ordererExperience.body.result.contents[0].text) as { item: { role: string; allowedActions: string[] } };
     assert.equal(ordererExperienceValue.item.role, "orderer");
     assert.equal(ordererExperienceValue.item.allowedActions.includes("request.create"), true);
+
+    const ordererSummary = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: "Bearer " + legalOrdererToken },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 53, method: "resources/read", params: { uri: "cms-os://categories/legal/summary" } }),
+    });
+    const ordererSummaryValue = JSON.parse(ordererSummary.body.result.contents[0].text) as { item: { role: string; metrics: Array<{ id: string }> } };
+    assert.equal(ordererSummary.status, 200);
+    assert.equal(ordererSummaryValue.item.role, "orderer");
+    assert.ok(ordererSummaryValue.item.metrics.some((metric) => metric.id === "openRequests"));
 
     const publicDirectories = await request("/mcp", {
       method: "POST",

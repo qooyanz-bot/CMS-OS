@@ -77,6 +77,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /provider-section-title/);
   assert.match(body, /provider-discovery/);
   assert.match(body, /experience-navigation/);
+  assert.match(body, /portal-summary-panel/);
+  assert.match(body, /portal-summary-metrics/);
+  assert.match(body, /portal-summary-actions/);
   assert.match(body, /directory-guide-title/);
   assert.match(body, /job-panel-title/);
   assert.match(body, /request-list-status/);
@@ -113,6 +116,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /moduleLabels/);
   assert.match(scriptBody, /navigationAnchorTargets/);
   assert.match(scriptBody, /resolveNavigationTarget/);
+  assert.match(scriptBody, /async function reloadSummary/);
+  assert.match(scriptBody, /api\/v1\/categories\/.*summary/);
+  assert.match(scriptBody, /function renderSummary/);
   assert.match(scriptBody, /elements\.navigation/);
   assert.match(scriptBody, /function isRecruiterRole/);
   assert.match(scriptBody, /navigationLabels\.themes/);

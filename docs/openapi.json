@@ -171,6 +171,19 @@
         }
       }
     },
+    "/api/v1/categories/{category}/summary": {
+      "get": {
+        "tags": ["Portal"],
+        "operationId": "getCategorySummary",
+        "summary": "カテゴリとロールに応じたポータルサマリーを取得",
+        "parameters": [{ "$ref": "#/components/parameters/CategoryPath" }],
+        "security": [{}, { "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "カテゴリポータルサマリー", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PortalSummaryResponse" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/v1/categories/{category}/directories": {
       "get": {
         "tags": ["Portal"],
@@ -1206,6 +1219,10 @@
       "CategoryListResponse": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } } } },
       "Experience": { "type": "object", "required": ["category", "categoryLabel", "role", "authenticated", "navigation", "visibleModules", "visibleFields", "allowedActions", "notices"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "categoryLabel": { "type": "string" }, "role": { "$ref": "#/components/schemas/AuthRole" }, "authenticated": { "type": "boolean" }, "navigation": { "type": "array", "items": { "type": "object", "additionalProperties": true } }, "visibleModules": { "type": "array", "items": { "type": "string" } }, "visibleFields": { "type": "array", "items": { "type": "string" } }, "allowedActions": { "type": "array", "items": { "type": "string" } }, "notices": { "type": "array", "items": { "type": "string" } } } },
       "ExperienceResponse": { "type": "object", "required": ["experience"], "properties": { "experience": { "$ref": "#/components/schemas/Experience" } } },
+      "PortalSummaryMetric": { "type": "object", "required": ["id", "label", "value", "module", "description"], "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "value": { "type": "integer", "minimum": 0 }, "module": { "type": "string" }, "description": { "type": "string" } } },
+      "PortalSummaryAction": { "type": "object", "required": ["id", "label", "module", "action", "reason"], "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "module": { "type": "string" }, "action": { "type": "string" }, "reason": { "type": "string" } } },
+      "PortalSummary": { "type": "object", "required": ["category", "categoryLabel", "role", "authenticated", "metrics", "nextActions"], "properties": { "category": { "$ref": "#/components/schemas/CategorySlug" }, "categoryLabel": { "type": "string" }, "role": { "$ref": "#/components/schemas/AuthRole" }, "authenticated": { "type": "boolean" }, "metrics": { "type": "array", "items": { "$ref": "#/components/schemas/PortalSummaryMetric" } }, "nextActions": { "type": "array", "items": { "$ref": "#/components/schemas/PortalSummaryAction" } } } },
+      "PortalSummaryResponse": { "type": "object", "required": ["summary"], "properties": { "summary": { "$ref": "#/components/schemas/PortalSummary" } } },
       "CategoryContext": { "type": "object", "required": ["slug", "label", "themeOptions", "navigation", "experience", "directoryGuides"], "properties": { "slug": { "$ref": "#/components/schemas/CategorySlug" }, "label": { "type": "string" }, "themeOptions": { "type": "array", "items": { "type": "string" } }, "navigation": { "type": "array", "items": { "type": "object", "required": ["id", "label"], "properties": { "id": { "type": "string" }, "label": { "type": "string" } } } }, "experience": { "$ref": "#/components/schemas/Experience" }, "directoryGuides": { "type": "array", "items": { "$ref": "#/components/schemas/DirectoryGuide" } } } },
       "CategoryContextResponse": { "type": "object", "required": ["item"], "properties": { "item": { "$ref": "#/components/schemas/CategoryContext" } } },
       "DirectoryGuide": { "type": "object", "required": ["id", "category", "name", "kind", "description", "url", "targetRoles", "verifiedAt"], "properties": { "id": { "type": "string" }, "category": { "$ref": "#/components/schemas/CategorySlug" }, "name": { "type": "string" }, "kind": { "type": "string", "enum": ["directory", "booking", "provider_resource"] }, "description": { "type": "string" }, "url": { "type": "string", "format": "uri" }, "targetRoles": { "type": "array", "items": { "$ref": "#/components/schemas/PortalRole" } }, "verifiedAt": { "type": "string", "format": "date" } } },

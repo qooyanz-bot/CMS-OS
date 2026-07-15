@@ -19,6 +19,7 @@ import type {
   PortalRole,
   PortalNotification,
   PortalCategoryContext,
+  PortalSummary,
   VisibleProviderFavorite,
   ProviderListingReviewItem,
   ProviderInquiry,
@@ -302,6 +303,226 @@ export class PortalService {
   ) {
     const role = principal?.category === category ? principal.role : "user";
     return resolveExperience(category, role, principal !== null);
+  }
+
+  /**
+   * カテゴリ・ロール別にログイン後の初期表示で必要な集計値を返します。
+   * 集計対象は公開データまたは現在の主体が所有するデータに限定し、内部IDは返しません。
+   */
+  public getSummary(category: CategorySlug, principal: AuthenticatedPrincipal | null): PortalSummary {
+    const experience = this.getExperience(category, principal);
+    const currentContext = principal?.category === category;
+    const publicProviders = this.store.listProviders(category).filter(isPublicProvider);
+    const guides = this.listDirectoryGuides(category, principal);
+    const metrics: PortalSummary["metrics"] = [];
+    const nextActions: PortalSummary["nextActions"] = [];
+
+    const addMetric = (metric: PortalSummary["metrics"][number]): void => {
+      if (!metrics.some((item) => item.id === metric.id)) metrics.push(metric);
+    };
+    const addAction = (action: PortalSummary["nextActions"][number]): void => {
+      if (experience.allowedActions.includes(action.action) && !nextActions.some((item) => item.id === action.id)) {
+        nextActions.push(action);
+      }
+    };
+
+    if (experience.visibleModules.includes("providerSearch")) {
+      addMetric({
+        id: "publicProviders",
+        label: "公開事業者",
+        value: publicProviders.length,
+        module: "providers",
+        description: "現在のカテゴリで公開されている事業者数",
+      });
+      addAction({
+        id: "searchProviders",
+        label: "事業者を探す",
+        module: "providers",
+        action: "provider.search",
+        reason: "カテゴリとテーマに合う公開事業者を確認できます。",
+      });
+    }
+
+    const guideNavigation = experience.navigation.find((item) => item.id === "guides" || item.id === "styles");
+    if (guideNavigation) {
+      addMetric({
+        id: "externalGuides",
+        label: guideNavigation.id === "styles" ? "スタイル・外部案内" : "外部案内",
+        value: guides.length,
+        module: guideNavigation.id,
+        description: "現在のロールで閲覧できるカテゴリ別案内の件数",
+      });
+    }
+
+    const canSearchJobs = experience.allowedActions.includes("job.search");
+    const canManageJobs = experience.allowedActions.includes("job.manage") && currentContext && principal?.role === "provider" && Boolean(principal.providerId);
+    const visibleJobs = canManageJobs
+      ? this.store.listJobsForProvider(category, principal!.providerId!)
+      : canSearchJobs
+        ? this.store.listJobs(category).filter((job) => Boolean(this.publicJobProviderName(job)))
+        : [];
+    if (canSearchJobs || canManageJobs) {
+      addMetric({
+        id: "jobs",
+        label: canManageJobs ? "自社求人" : "公開求人",
+        value: visibleJobs.length,
+        module: canManageJobs ? "jobManagement" : "jobs",
+        description: canManageJobs ? "自社で管理している求人の件数" : "応募可能な公開求人の件数",
+      });
+    }
+
+    if (currentContext && principal && experience.allowedActions.includes("favorite.manage")) {
+      addMetric({
+        id: "favorites",
+        label: "保存した事業者",
+        value: this.store.listFavorites(principal.accountId, category).length,
+        module: "favorites",
+        description: "現在のカテゴリで保存した公開事業者の件数",
+      });
+    }
+
+    let openRequestCount = 0;
+    if (currentContext && principal && (principal.role === "orderer" || principal.role === "provider")) {
+      const requests = this.store.listRequests(category).filter((request) =>
+        principal.role === "orderer" ? request.ordererId === principal.accountId : request.providerId === principal.providerId,
+      );
+      openRequestCount = requests.filter((request) => request.status !== "closed").length;
+      addMetric({
+        id: "openRequests",
+        label: "進行中の依頼",
+        value: openRequestCount,
+        module: "requests",
+        description: principal.role === "orderer" ? "自分が送信した依頼のうち終了していない件数" : "自社が担当する依頼のうち終了していない件数",
+      });
+    }
+
+    let bookingCount = 0;
+    if (currentContext && principal && category === "beauty" && experience.allowedActions.includes("booking.read") && (principal.role === "orderer" || principal.role === "provider")) {
+      bookingCount = this.store.listBookings(category).filter((booking) =>
+        principal.role === "orderer" ? booking.ordererId === principal.accountId : booking.providerId === principal.providerId,
+      ).filter((booking) => booking.status !== "cancelled").length;
+      addMetric({
+        id: "activeBookings",
+        label: "有効な予約",
+        value: bookingCount,
+        module: "bookings",
+        description: principal.role === "orderer" ? "自分が送信した予約リクエストの件数" : "自社が担当する予約リクエストの件数",
+      });
+    }
+
+    let inquiryCount = 0;
+    if (currentContext && principal && experience.allowedActions.includes("inquiry.read")) {
+      inquiryCount = this.store.listInquiries(category).filter((inquiry) =>
+        principal.role === "provider" ? inquiry.providerId === principal.providerId : inquiry.senderId === principal.accountId,
+      ).filter((inquiry) => inquiry.status !== "closed").length;
+      addMetric({
+        id: "openInquiries",
+        label: principal.role === "provider" ? "対応中の問い合わせ" : "送信中の問い合わせ",
+        value: inquiryCount,
+        module: principal.role === "provider" ? "inquiryManagement" : "inquiries",
+        description: "終了していない問い合わせの件数",
+      });
+    }
+
+    let applicationCount = 0;
+    if (currentContext && principal && (isRecruiterRole(principal.role) || principal.role === "provider") && (experience.allowedActions.includes("application.read") || experience.allowedActions.includes("application.status.update"))) {
+      applicationCount = this.store.listApplications(category).filter((application) =>
+        isRecruiterRole(principal.role) ? application.candidateId === principal.accountId : application.providerId === principal.providerId,
+      ).filter((application) => application.status !== "closed").length;
+      addMetric({
+        id: "activeApplications",
+        label: principal.role === "provider" ? "選考中の応募" : "進行中の応募",
+        value: applicationCount,
+        module: "applications",
+        description: "終了していない応募の件数",
+      });
+    }
+
+    let unreadNotificationCount = 0;
+    if (currentContext && principal && experience.allowedActions.includes("notification.read")) {
+      const recipientType = principal.role === "provider" ? "provider" : "account";
+      const recipientId = principal.role === "provider" ? principal.providerId : principal.accountId;
+      unreadNotificationCount = this.store.listNotifications().filter((notification) =>
+        notification.category === category
+        && notification.recipientType === recipientType
+        && notification.recipientId === recipientId
+        && !notification.readAt,
+      ).length;
+      addMetric({
+        id: "unreadNotifications",
+        label: "未読通知",
+        value: unreadNotificationCount,
+        module: "notifications",
+        description: "現在のカテゴリとロールに届いた未読通知の件数",
+      });
+    }
+
+    if (currentContext && principal?.role === "provider" && principal.providerId) {
+      const provider = this.store.getProvider(principal.providerId);
+      if (provider && providerListingStatus(provider) !== "published") {
+        addAction({
+          id: "submitListing",
+          label: "掲載情報を審査へ送る",
+          module: "listingManagement",
+          action: "listing.submit",
+          reason: "掲載情報を審査へ送信すると、公開検索の対象にできます。",
+        });
+      }
+      if (visibleJobs.length === 0) {
+        addAction({
+          id: "createJob",
+          label: "求人を登録する",
+          module: "jobManagement",
+          action: "job.manage",
+          reason: "求人を登録すると、リクルーター向けの採用導線を作れます。",
+        });
+      }
+    }
+    if (principal?.role === "orderer" && openRequestCount === 0) {
+      addAction({
+        id: "createRequest",
+        label: "相談・依頼を作成する",
+        module: "requests",
+        action: "request.create",
+        reason: "公開事業者へ相談内容を送信できます。",
+      });
+      if (category === "beauty" && bookingCount === 0) {
+        addAction({
+          id: "createBooking",
+          label: "予約リクエストを作成する",
+          module: "bookings",
+          action: "booking.create",
+          reason: "希望日時とメニューを指定して店舗へ送信できます。",
+        });
+      }
+    }
+    if (isRecruiterRole(experience.role) && canSearchJobs && applicationCount === 0) {
+      addAction({
+        id: "searchJobs",
+        label: "求人を探す",
+        module: "jobs",
+        action: "job.search",
+        reason: "カテゴリの公開求人を確認して応募できます。",
+      });
+    }
+    if (unreadNotificationCount > 0) {
+      addAction({
+        id: "readNotifications",
+        label: "未読通知を確認する",
+        module: "notifications",
+        action: "notification.read",
+        reason: "依頼・予約・応募などの更新を確認できます。",
+      });
+    }
+
+    return {
+      category,
+      categoryLabel: experience.categoryLabel,
+      role: experience.role,
+      authenticated: Boolean(principal),
+      metrics,
+      nextActions: nextActions.slice(0, 4),
+    };
   }
 
   public switchContext(
