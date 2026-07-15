@@ -72,6 +72,8 @@ POST /api/v1/publications/{publicationId}/rollback
 | `categories/{category}/themes/{theme}/index.html` | テーマ別の事業者案内 |
 | `categories/{category}/regions/{region}/index.html` | 地域別の事業者案内 |
 | `categories/{category}/providers/index.html` | カテゴリ別事業者一覧 |
+| `categories/{category}/jobs/index.html` | カテゴリ別の公開求人一覧 |
+| `categories/{category}/jobs/{jobId}/index.html` | 公開求人の詳細と`JobPosting`構造化データ |
 | `assets/cms-os.css` | 最小表示スタイル |
 | `sitemap.xml` | 公開ページの検索エンジン向け一覧 |
 | `robots.txt` | クローラーの公開方針とsitemap URL |
@@ -88,6 +90,7 @@ POST /api/v1/publications/{publicationId}/rollback
 - OGPタイトル・説明・URL
 - `application/ld+json`
 - 公開日・更新日
+- 公開求人には`JobPosting`、求人一覧には`CollectionPage`・`ItemList`を出力し、勤務地・雇用形態・応募導線を明示します。求人は公開情報として静的生成しますが、応募操作はリクルーター認証後に限定します。
 - 言語属性はコンテンツの `locale` に合わせて出力します。翻訳版は `lang`、`og:locale`、JSON-LD の `inLanguage` を個別に持ちます。
 - 同じ原文に紐づく翻訳版が同時に公開対象に含まれる場合、各ページに言語別の `hreflang` と `x-default` を出力します。
 

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ContentService } from "./content-service.js";
 import type { PortalService } from "./portal-service.js";
 import { PublicationStore } from "../domain/publication-store.js";
-import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, PublicationBuildResult, PublicationDeploymentRecord, PublicationHistorySummary, PublicationScheduleRecord, PublicationScheduleSummary, VisibleProvider } from "../domain/types.js";
+import type { AuthenticatedPrincipal, CategorySlug, ContentRecord, DirectoryGuide, JobPosting, PublicationBuildResult, PublicationDeploymentRecord, PublicationHistorySummary, PublicationScheduleRecord, PublicationScheduleSummary, VisibleProvider } from "../domain/types.js";
 import { BuilderOSAdapter, BuilderOSAdapterError, type CloudflarePagesDeployOptions, type CloudflarePagesDeploymentResult } from "../integrations/builderos-adapter.js";
 import type { WebhookService } from "./webhook-service.js";
 
@@ -239,6 +239,11 @@ function categoryRoute(category: CategorySlug): string {
 function providerRoute(category: CategorySlug, providerId: string): string {
   const safeId = providerId.replace(/[^a-zA-Z0-9._~-]/g, "-");
   return `${categoryRoute(category)}/providers/${safeId}`;
+}
+
+function jobRoute(category: CategorySlug, jobId: string): string {
+  const safeId = jobId.replace(/[^a-zA-Z0-9._~-]/g, "-") || "job";
+  return `${categoryRoute(category)}/jobs/${safeId}`;
 }
 
 function facetRoute(category: CategorySlug, facetType: "themes" | "regions", value: string): string {
@@ -486,15 +491,17 @@ function rootHtml(contents: ContentRecord[], categories: PublishedCategory[], ba
 </html>`;
 }
 
-function categoryHtml(category: PublishedCategory, contents: ContentRecord[], providers: VisibleProvider[], guides: DirectoryGuide[], baseUrl: string): string {
+function categoryHtml(category: PublishedCategory, contents: ContentRecord[], providers: VisibleProvider[], guides: DirectoryGuide[], jobs: JobPosting[], baseUrl: string): string {
   const canonical = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`);
   const providerUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/providers/`);
+  const jobsUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/jobs/`);
   const contentLinks = contents.map((content) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(content)}/`))}">${escapeHtml(content.title)}</a><span>${escapeHtml(content.summary)}</span></li>`).join("\n");
   const providerLinks = providers.slice(0, 8).map((provider) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`))}">${escapeHtml(provider.name)}</a><span>${escapeHtml(provider.location)} · ${escapeHtml(provider.themes.join("・"))}</span></li>`).join("\n");
+  const jobLinks = jobs.slice(0, 8).map((job) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`))}">${escapeHtml(job.title)}</a><span>${escapeHtml(job.employmentType)} · ${escapeHtml(job.location)}</span></li>`).join("\n");
   const guideLinks = guides.map((guide) => `<li><a href="${escapeHtml(guide.url)}" rel="nofollow noopener noreferrer">${escapeHtml(guide.name)}</a><span>${escapeHtml(guide.description)}</span></li>`).join("\n");
   const themeLinks = uniqueThemeValues(providers).map((theme) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${facetRoute(category.slug, "themes", theme)}/`))}">${escapeHtml(theme)}</a><span>${escapeHtml(theme)}に対応する公開事業者</span></li>`).join("\n");
   const regionLinks = uniqueFacetValues(providers, (provider) => provider.location).map((region) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${facetRoute(category.slug, "regions", region)}/`))}">${escapeHtml(region)}</a><span>${escapeHtml(region)}の公開事業者</span></li>`).join("\n");
-  const itemList = [...contents.map((content) => absoluteUrl(baseUrl, `/${routeFor(content)}/`)), ...providers.map((provider) => absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`))];
+  const itemList = [...contents.map((content) => absoluteUrl(baseUrl, `/${routeFor(content)}/`)), ...providers.map((provider) => absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`)), ...jobs.map((job) => absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`))];
   const jsonLd = jsonLdString({
     "@context": "https://schema.org",
     "@graph": [
@@ -518,9 +525,10 @@ function categoryHtml(category: PublishedCategory, contents: ContentRecord[], pr
     <nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li aria-current="page">${escapeHtml(category.label)}</li></ol></nav>
     <p class="eyebrow">CMS-OS / Category hub</p><h1>${escapeHtml(category.label)}の事業者・公開情報案内</h1>
     <p class="lead-answer">${escapeHtml(category.label)}に関するテーマ、事業者、公開情報を、利用者の検索意図に合わせて整理しています。</p>
-    <p><a class="directory-link" href="${escapeHtml(providerUrl)}">事業者一覧を見る（${providers.length}件）</a></p>
+    <p><a class="directory-link" href="${escapeHtml(providerUrl)}">事業者一覧を見る（${providers.length}件）</a> · <a class="directory-link" href="${escapeHtml(jobsUrl)}">求人一覧を見る（${jobs.length}件）</a></p>
     <h2>公開情報</h2><ul class="content-index">${contentLinks || "<li>公開情報は準備中です。</li>"}</ul>
     <h2>注目の事業者</h2><ul class="content-index">${providerLinks || "<li>掲載事業者は準備中です。</li>"}</ul>
+    <h2>公開求人</h2><ul class="content-index">${jobLinks || "<li>公開求人は準備中です。</li>"}</ul>
     <h2>テーマ別案内</h2><ul class="content-index">${themeLinks || "<li>テーマ別案内は準備中です。</li>"}</ul>
     <h2>地域別案内</h2><ul class="content-index">${regionLinks || "<li>地域別案内は準備中です。</li>"}</ul>
     <h2>外部の事業者案内</h2><ul class="content-index">${guideLinks || "<li>外部案内は準備中です。</li>"}</ul>
@@ -547,6 +555,55 @@ function providerDirectoryHtml(category: PublishedCategory, providers: VisiblePr
     itemListElement: providers.map((provider, index) => ({ "@type": "ListItem", position: index + 1, url: absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`), name: provider.name })),
   });
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(category.label)}の事業者一覧 | CMS-OS</title><meta name="description" content="${escapeHtml(category.label)}の掲載事業者をテーマ・地域別に案内します。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`))}">${escapeHtml(category.label)}</a></li><li aria-current="page">事業者一覧</li></ol></nav><p class="eyebrow">CMS-OS / Provider directory</p><h1>${escapeHtml(category.label)}の事業者一覧</h1><p class="lead-answer">公開情報と掲載条件を確認できる${escapeHtml(category.label)}の事業者を案内します。</p><ul class="content-index">${links || "<li>掲載事業者は準備中です。</li>"}</ul></main></body></html>`;
+}
+
+function jobJsonLd(category: PublishedCategory, job: JobPosting, canonical: string, baseUrl: string): Record<string, unknown> {
+  return {
+    "@type": "JobPosting",
+    "@id": `${canonical}#job`,
+    title: job.title,
+    description: job.description,
+    url: canonical,
+    inLanguage: "ja-JP",
+    employmentType: "OTHER",
+    occupationalCategory: category.label,
+    hiringOrganization: { "@type": "Organization", name: "掲載事業者" },
+    jobLocation: {
+      "@type": "Place",
+      name: job.location,
+      address: { "@type": "PostalAddress", addressLocality: job.location, addressCountry: "JP" },
+    },
+    isPartOf: { "@type": "WebPage", url: absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/jobs/`) },
+  };
+}
+
+function jobDirectoryHtml(category: PublishedCategory, jobs: JobPosting[], baseUrl: string): string {
+  const canonical = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/jobs/`);
+  const categoryUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`);
+  const links = jobs.map((job) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`))}">${escapeHtml(job.title)}</a><span>${escapeHtml(job.employmentType)} · ${escapeHtml(job.location)}</span><p>${escapeHtml(job.description)}</p></li>`).join("\n");
+  const jsonLd = jsonLdString({
+    "@context": "https://schema.org",
+    "@graph": [
+      { "@type": "CollectionPage", name: `${category.label}の求人一覧`, description: `${category.label}カテゴリで公開されている求人を案内します。`, url: canonical, inLanguage: "ja-JP" },
+      { "@type": "ItemList", name: `${category.label}の公開求人`, itemListElement: jobs.map((job, index) => ({ "@type": "ListItem", position: index + 1, name: job.title, url: absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`) })) },
+      breadcrumbJsonLd([{ name: "ホーム", url: absoluteUrl(baseUrl, "/") }, { name: category.label, url: categoryUrl }, { name: "求人一覧", url: canonical }]),
+    ],
+  });
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(category.label)}の求人一覧 | CMS-OS</title><meta name="description" content="${escapeHtml(category.label)}カテゴリで公開されている求人、勤務地、雇用形態を案内します。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li aria-current="page">求人一覧</li></ol></nav><p class="eyebrow">CMS-OS / Job directory</p><h1>${escapeHtml(category.label)}の求人一覧</h1><p class="lead-answer">${escapeHtml(category.label)}カテゴリで公開されている求人を、仕事内容、雇用形態、勤務地から確認できます。応募操作はリクルーター認証後に行います。</p><ul class="content-index">${links || "<li>公開求人は準備中です。</li>"}</ul></main></body></html>`;
+}
+
+function jobDetailHtml(category: PublishedCategory, job: JobPosting, baseUrl: string): string {
+  const canonical = absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`);
+  const categoryUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`);
+  const jobsUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/jobs/`);
+  const jsonLd = jsonLdString({
+    "@context": "https://schema.org",
+    "@graph": [
+      jobJsonLd(category, job, canonical, baseUrl),
+      breadcrumbJsonLd([{ name: "ホーム", url: absoluteUrl(baseUrl, "/") }, { name: category.label, url: categoryUrl }, { name: "求人一覧", url: jobsUrl }, { name: job.title, url: canonical }]),
+    ],
+  });
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(job.title)} | ${escapeHtml(category.label)}の求人 | CMS-OS</title><meta name="description" content="${escapeHtml(job.title)}。${escapeHtml(job.location)}、${escapeHtml(job.employmentType)}の求人詳細です。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(job.title)}"><meta property="og:description" content="${escapeHtml(job.description)}"><meta property="og:url" content="${escapeHtml(canonical)}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li><a href="${escapeHtml(jobsUrl)}">求人一覧</a></li><li aria-current="page">${escapeHtml(job.title)}</li></ol></nav><p class="eyebrow">CMS-OS / Job posting</p><article><header class="article-header"><h1>${escapeHtml(job.title)}</h1><p class="summary">${escapeHtml(job.description)}</p></header><dl class="provider-facts"><dt>カテゴリ</dt><dd>${escapeHtml(category.label)}</dd><dt>雇用形態</dt><dd>${escapeHtml(job.employmentType)}</dd><dt>勤務地</dt><dd>${escapeHtml(job.location)}</dd></dl><h2>応募について</h2><p>この求人への応募は、CMS-OSポータルでリクルーターとしてログインした後に行えます。応募前に仕事内容と条件をご確認ください。</p><p><a class="directory-link" href="${escapeHtml(jobsUrl)}">${escapeHtml(category.label)}の求人一覧へ戻る</a></p></article></main></body></html>`;
 }
 
 function providerDetailHtml(category: PublishedCategory, provider: VisibleProvider, baseUrl: string): string {
@@ -596,6 +653,7 @@ function sitemapXml(
   contents: ContentRecord[],
   categories: PublishedCategory[],
   providersByCategory: Map<CategorySlug, VisibleProvider[]>,
+  jobsByCategory: Map<CategorySlug, JobPosting[]>,
   baseUrl: string,
 ): string {
   const entries: Array<{ url: string; lastmod?: string }> = [{ url: absoluteUrl(baseUrl, "/") }];
@@ -604,6 +662,8 @@ function sitemapXml(
     const lastmod = categoryContents.map((content) => content.updatedAt).sort().at(-1);
     entries.push({ url: absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`), ...(lastmod ? { lastmod } : {}) });
     entries.push({ url: absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/providers/`) });
+    const jobs = jobsByCategory.get(category.slug) ?? [];
+    entries.push({ url: absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/jobs/`) });
     const providers = providersByCategory.get(category.slug) ?? [];
     for (const theme of uniqueThemeValues(providers)) {
       entries.push({ url: absoluteUrl(baseUrl, `/${facetRoute(category.slug, "themes", theme)}/`) });
@@ -614,13 +674,16 @@ function sitemapXml(
     for (const provider of providers) {
       entries.push({ url: absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`) });
     }
+    for (const job of jobs) {
+      entries.push({ url: absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`) });
+    }
   }
   entries.push(...contents.map((content) => ({ url: absoluteUrl(baseUrl, `/${routeFor(content)}/`), lastmod: content.updatedAt })));
   const urls = entries.map((entry) => `  <url><loc>${escapeHtml(entry.url)}</loc>${entry.lastmod ? `<lastmod>${escapeHtml(entry.lastmod)}</lastmod>` : ""}</url>`).join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 }
 
-function llmsText(contents: ContentRecord[], categories: PublishedCategory[], providersByCategory: Map<CategorySlug, VisibleProvider[]>, baseUrl: string): string {
+function llmsText(contents: ContentRecord[], categories: PublishedCategory[], providersByCategory: Map<CategorySlug, VisibleProvider[]>, jobsByCategory: Map<CategorySlug, JobPosting[]>, baseUrl: string): string {
   const categoryPages = categories.map((category) => `- [${category.label}](${absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`)}): ${category.label}の公開情報と事業者案内`).join("\n");
   const facetPages = categories.flatMap((category) => {
     const providers = providersByCategory.get(category.slug) ?? [];
@@ -630,8 +693,12 @@ function llmsText(contents: ContentRecord[], categories: PublishedCategory[], pr
     ];
   }).join("\n");
   const providerPages = categories.flatMap((category) => (providersByCategory.get(category.slug) ?? []).map((provider) => `- [${provider.name}](${absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`)}): ${category.label} / ${provider.location} / ${provider.themes.join("・")}`)).join("\n");
+  const jobPages = categories.flatMap((category) => [
+    `- [${category.label}の求人一覧](${absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/jobs/`)}): 公開求人の一覧`,
+    ...(jobsByCategory.get(category.slug) ?? []).map((job) => `- [${job.title}](${absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`)}): ${category.label} / ${job.employmentType} / ${job.location}`),
+  ]).join("\n");
   const contentPages = contents.map((content) => `- [${content.title}](${absoluteUrl(baseUrl, `/${routeFor(content)}/`)}): ${content.summary}（最終更新: ${content.updatedAt.slice(0, 10)}）`).join("\n");
-  return `# CMS-OS公開コンテンツ\n\n> 承認済みコンテンツ、カテゴリーハブ、テーマ・地域別案内、事業者プロフィールの機械可読インデックスです。\n> 情報の利用時は各ページの最終更新日と一次情報を確認してください。\n\n## Categories\n${categoryPages || "- 準備中"}\n\n## Themes and Regions\n${facetPages || "- 準備中"}\n\n## Providers\n${providerPages || "- 準備中"}\n\n## Pages\n${contentPages || "- 準備中"}\n`;
+  return `# CMS-OS公開コンテンツ\n\n> 承認済みコンテンツ、カテゴリーハブ、テーマ・地域別案内、事業者プロフィール、公開求人の機械可読インデックスです。\n> 情報の利用時は各ページの最終更新日と一次情報を確認してください。求人への応募操作にはリクルーター認証が必要です。\n\n## Categories\n${categoryPages || "- 準備中"}\n\n## Themes and Regions\n${facetPages || "- 準備中"}\n\n## Providers\n${providerPages || "- 準備中"}\n\n## Jobs\n${jobPages || "- 準備中"}\n\n## Pages\n${contentPages || "- 準備中"}\n`;
 }
 
 export class PublicationService {
@@ -674,6 +741,9 @@ export class PublicationService {
     const providersByCategory = new Map<CategorySlug, VisibleProvider[]>(
       publishedCategories.map((category) => [category.slug, this.portal.searchProviders(category.slug, null, {})]),
     );
+    const jobsByCategory = new Map<CategorySlug, JobPosting[]>(
+      publishedCategories.map((category) => [category.slug, this.portal.listPublishedJobsForPublication(category.slug)]),
+    );
 
     for (const item of contents) {
       this.portal.assertAction(principal, item.category, "publication.build");
@@ -685,10 +755,12 @@ export class PublicationService {
     const providerDirectoryFiles = publishedCategories.flatMap((category) => {
       const providers = providersByCategory.get(category.slug) ?? [];
       const categoryContents = contents.filter((content) => content.category === category.slug);
+      const jobs = jobsByCategory.get(category.slug) ?? [];
       const guides = this.portal.listDirectoryGuides(category.slug, null);
       return [
-        { path: `${categoryRoute(category.slug)}/index.html`, contentType: "text/html; charset=utf-8", content: categoryHtml(category, categoryContents, providers, guides, baseUrl) },
+        { path: `${categoryRoute(category.slug)}/index.html`, contentType: "text/html; charset=utf-8", content: categoryHtml(category, categoryContents, providers, guides, jobs, baseUrl) },
         { path: `${categoryRoute(category.slug)}/providers/index.html`, contentType: "text/html; charset=utf-8", content: providerDirectoryHtml(category, providers, baseUrl) },
+        { path: `${categoryRoute(category.slug)}/jobs/index.html`, contentType: "text/html; charset=utf-8", content: jobDirectoryHtml(category, jobs, baseUrl) },
         ...uniqueThemeValues(providers).map((theme) => ({
           path: `${facetRoute(category.slug, "themes", theme)}/index.html`,
           contentType: "text/html; charset=utf-8",
@@ -703,6 +775,11 @@ export class PublicationService {
           path: `${providerRoute(category.slug, provider.id)}/index.html`,
           contentType: "text/html; charset=utf-8",
           content: providerDetailHtml(category, provider, baseUrl),
+        })),
+        ...jobs.map((job) => ({
+          path: `${jobRoute(category.slug, job.id)}/index.html`,
+          contentType: "text/html; charset=utf-8",
+          content: jobDetailHtml(category, job, baseUrl),
         })),
       ];
     });
@@ -724,9 +801,9 @@ export class PublicationService {
         contentType: "text/html; charset=utf-8",
         content: pageHtml(content, relatedContentsFor(content, contents), contents, categoryLabelBySlug.get(content.category) ?? content.category, baseUrl),
       })),
-      { path: "sitemap.xml", contentType: "application/xml; charset=utf-8", content: sitemapXml(contents, publishedCategories, providersByCategory, baseUrl) },
+      { path: "sitemap.xml", contentType: "application/xml; charset=utf-8", content: sitemapXml(contents, publishedCategories, providersByCategory, jobsByCategory, baseUrl) },
       { path: "robots.txt", contentType: "text/plain; charset=utf-8", content: robots },
-      { path: "llms.txt", contentType: "text/plain; charset=utf-8", content: llmsText(contents, publishedCategories, providersByCategory, baseUrl) },
+      { path: "llms.txt", contentType: "text/plain; charset=utf-8", content: llmsText(contents, publishedCategories, providersByCategory, jobsByCategory, baseUrl) },
     ];
 
     const publication: PublicationBuildResult = {

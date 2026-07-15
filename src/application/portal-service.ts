@@ -904,6 +904,11 @@ export class PortalService {
     });
   }
 
+  /** 静的公開ビルド向けに、公開済み求人だけを取得します。認証APIには公開しません。 */
+  public listPublishedJobsForPublication(category: CategorySlug): JobPosting[] {
+    return this.store.listJobs(category).map((job) => ({ ...job }));
+  }
+
   public listJobsPage(
     category: CategorySlug,
     principal: AuthenticatedPrincipal | null,

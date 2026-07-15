@@ -123,6 +123,8 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(fileMap.has("categories/legal/index.html"));
     assert.ok(fileMap.has("categories/legal/providers/index.html"));
     assert.ok(fileMap.has("categories/legal/providers/provider-legal-demo/index.html"));
+    assert.ok(fileMap.has("categories/legal/jobs/index.html"));
+    assert.ok(fileMap.has("categories/legal/jobs/job-legal-demo/index.html"));
     const legalThemePath = `categories/legal/themes/${encodeURIComponent("相続")}/index.html`;
     const legalRegionPath = `categories/legal/regions/${encodeURIComponent("東京都")}/index.html`;
     assert.ok(fileMap.has(legalThemePath));
@@ -138,11 +140,16 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get(pagePath) ?? "", /hreflang="ja"/);
     assert.match(fileMap.get("sitemap.xml") ?? "", /https:\/\/www\.example\.com/);
     assert.match(fileMap.get("sitemap.xml") ?? "", /categories\/legal\/providers\/provider-legal-demo/);
+    assert.match(fileMap.get("sitemap.xml") ?? "", /categories\/legal\/jobs\/job-legal-demo/);
     assert.match(fileMap.get("sitemap.xml") ?? "", /categories\/legal\/themes\//);
     assert.match(fileMap.get("robots.txt") ?? "", /Sitemap: https:\/\/www\.example\.com\/sitemap\.xml/);
     assert.match(fileMap.get("robots.txt") ?? "", /GPTBot/);
     assert.match(fileMap.get("robots.txt") ?? "", /Disallow: \/api\//);
     assert.match(fileMap.get("llms.txt") ?? "", /Provider/);
+    assert.match(fileMap.get("llms.txt") ?? "", /Jobs/);
+    assert.match(fileMap.get("categories/legal/jobs/index.html") ?? "", /CollectionPage/);
+    assert.match(fileMap.get("categories/legal/jobs/job-legal-demo/index.html") ?? "", /弁護士・パラリーガルを募集しています/);
+    assert.match(fileMap.get("categories/legal/jobs/job-legal-demo/index.html") ?? "", /この求人への応募は、CMS-OSポータルでリクルーターとしてログインした後に行えます/);
     assert.match(fileMap.get("llms.txt") ?? "", /Themes and Regions/);
     assert.match(fileMap.get("llms.txt") ?? "", /ai-business/);
     assert.match(fileMap.get("categories/legal/index.html") ?? "", /弁護士ドットコム/);
