@@ -871,8 +871,14 @@ export class PortalService {
   }
 
   public listJobs(category: CategorySlug, principal: AuthenticatedPrincipal | null, filters: JobListFilters = {}): JobPosting[] {
-    const jobs = principal?.role === "provider" && principal.category === category && principal.providerId
-      ? this.store.listJobsForProvider(category, principal.providerId)
+    const isOwnProvider = principal?.role === "provider" && principal.category === category && Boolean(principal.providerId);
+    if (isOwnProvider) {
+      this.assertAction(principal, category, "job.manage");
+    } else {
+      this.assertAction(principal, category, "job.search");
+    }
+    const jobs = isOwnProvider
+      ? this.store.listJobsForProvider(category, principal.providerId!)
       : this.store.listJobs(category);
     const normalizedSearch = normalizeFilterText(filters.search);
     const normalizedEmploymentType = normalizeFilterText(filters.employmentType);
@@ -905,6 +911,26 @@ export class PortalService {
     filters: JobListFilters = {},
   ): PortalPage<JobPosting> {
     return this.paginate(this.listJobs(category, principal, filters), pagination.limit ?? 50, pagination.cursor ?? 0);
+  }
+
+  public getJob(principal: AuthenticatedPrincipal | null, jobId: string): JobPosting {
+    const job = this.store.getJob(jobId);
+    if (!job) throw new PortalServiceError(404, "指定された求人が見つかりません。");
+
+    const isOwnProvider = principal?.role === "provider"
+      && principal.category === job.category
+      && principal.providerId === job.providerId;
+    if (isOwnProvider) {
+      this.assertAction(principal, job.category, "job.manage");
+      return { ...job };
+    }
+
+    if (principal?.role === "provider" && principal.category === job.category) {
+      throw new PortalServiceError(404, "指定された求人が見つかりません。");
+    }
+    this.assertAction(principal, job.category, "job.search");
+    if (job.status !== "published") throw new PortalServiceError(404, "指定された求人が見つかりません。");
+    return { ...job, providerId: "非公開" };
   }
 
   public createJob(

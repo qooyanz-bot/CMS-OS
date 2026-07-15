@@ -1196,6 +1196,11 @@ async function handleMcp(
             inputSchema: { type: "object", properties: { category: { enum: categoryEnum }, search: { type: "string" }, employmentType: { type: "string" }, location: { type: "string" }, status: { enum: [...jobStatuses] }, sort: { enum: [...jobSortValues] }, limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "integer", minimum: 0 } }, required: ["category"] },
           },
           {
+            name: "job.get",
+            description: "リクルーターは公開求人、事業者は自社求人の詳細を取得します。",
+            inputSchema: { type: "object", properties: { jobId: { type: "string" } }, required: ["jobId"] },
+          },
+          {
             name: "job.create",
             description: "事業者本人の求人を作成します。",
             inputSchema: {
@@ -1970,6 +1975,13 @@ async function handleMcp(
         status: parseOptionalEnumValue(argumentsObject.status, "status", jobStatuses),
         sort: parseOptionalEnumValue(argumentsObject.sort, "sort", jobSortValues),
       });
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "job.get") {
+      if (typeof argumentsObject.jobId !== "string") throw new Error("jobIdが必要です。");
+      const result = portal.getJob(principal, argumentsObject.jobId);
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -3988,6 +4000,19 @@ export function createHttpServer(
       }
 
       const jobMatch = url.pathname.match(/^\/api\/v1\/jobs\/([^/]+)$/);
+      if (request.method === "GET" && jobMatch) {
+        const jobId = jobMatch[1];
+        if (!jobId) {
+          writeJson(response, 400, { error: "jobIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { item: portal.getJob(principal, jobId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "求人を取得できません。" });
+        }
+        return;
+      }
       if (request.method === "PATCH" && jobMatch) {
         const jobId = jobMatch[1];
         if (!jobId) {

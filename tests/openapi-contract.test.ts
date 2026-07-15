@@ -98,6 +98,7 @@ describe("CMS-OS OpenAPI契約", () => {
     assert.ok(providerPath.patch);
     const jobPath = specification.paths["/api/v1/jobs/{jobId}"];
     assert.ok(jobPath);
+    assert.ok(jobPath.get);
     assert.ok(jobPath.patch);
     const bookingPath = specification.paths["/api/v1/bookings"];
     assert.ok(bookingPath);
@@ -124,11 +125,14 @@ describe("CMS-OS OpenAPI契約", () => {
       const names = new Set((operation.parameters ?? []).map((parameter) => parameter.name).filter((name): name is string => Boolean(name)));
       for (const parameter of expectedParameters) assert.ok(names.has(parameter), `${path}に${parameter}クエリがありません`);
     }
-    for (const path of ["/api/v1/categories/{category}", "/api/v1/categories/{category}/experience", "/api/v1/providers", "/api/v1/jobs", "/mcp"]) {
+    for (const path of ["/api/v1/categories/{category}", "/api/v1/categories/{category}/experience", "/api/v1/providers", "/mcp"]) {
       const pathItem = specification.paths[path] ?? {};
       const operation = (pathItem.get ?? Object.values(pathItem)[0]) as { security?: unknown };
       assert.deepEqual(operation.security, [{}, { BearerAuth: [] }], `${path}は任意認証である必要があります。`);
     }
+    const jobListOperation = specification.paths["/api/v1/jobs"]?.get as { security?: unknown } | undefined;
+    assert.ok(jobListOperation);
+    assert.deepEqual(jobListOperation.security, [{ BearerAuth: [] }], "/api/v1/jobsはリクルーター認証が必要です。");
     assert.deepEqual(specification.components.securitySchemes.BearerAuth, { type: "http", scheme: "bearer", bearerFormat: "opaque-session-token" });
     assert.deepEqual(specification.components.securitySchemes.OperatorKey, { type: "apiKey", in: "header", name: "x-cms-os-operator-key" });
     assert.deepEqual(specification.components.schemas.AuthRole?.enum, ["user", "orderer", "provider", "recruiter"]);

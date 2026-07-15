@@ -121,6 +121,7 @@ POST /api/v1/bookings
 GET  /api/v1/bookings?status=requested&limit=50&cursor=0
 PATCH /api/v1/bookings/{bookingId}
 GET  /api/v1/jobs?category=legal&limit=50&cursor=0
+GET  /api/v1/jobs/{jobId}
 GET  /api/v1/applications?limit=50&cursor=0
 POST /api/v1/jobs
 PATCH /api/v1/jobs/{jobId}
@@ -146,7 +147,8 @@ PATCH /api/v1/jobs/{jobId}
 - `GET /api/v1/providers/compare` / `provider.compare` は、同じカテゴリの公開事業者を2〜3件受け取り、現在のロールで表示可能な項目だけを同じ順序で返します。非公開事業者、別カテゴリの事業者、不存在のIDは比較結果へ混ぜません。
 - `PATCH /api/v1/providers/{providerId}` は、対象カテゴリの事業者本人だけが利用できます。名前、テーマ、所在地、公開項目を更新でき、`id`、カテゴリ、ロール別項目、確認状態などの保護項目は更新できません。
 - `POST /api/v1/jobs` と `PATCH /api/v1/jobs/{jobId}` は、事業者本人のカテゴリ・providerIdを検証します。求人状態は `published` または `closed` です。
-- 公開・ユーザー・発注者・リクルーターには公開中求人だけを返し、事業者本人には自社求人の状態を含めて返します。
+- 求人検索はリクルーターだけが利用でき、リクルーターには公開中求人だけを返します。事業者本人は自社求人の状態を含めて取得できます。未ログインのユーザー、発注者、別カテゴリの事業者からの求人一覧取得は許可しません。
+- `GET /api/v1/jobs/{jobId}` / `job.get` は、リクルーターには公開求人の詳細を、事業者には自社求人の詳細を返します。リクルーターへの事業者IDは非公開です。
 
 掲載情報の状態は `draft`、`pending_review`、`published`、`suspended` を使います。事業者本人の `listing-submission` は審査待ちへ進め、審査待ちの事業者は公開検索から除外します。運営審査用の `listing-review` は4つのポータルロールとは分離し、`CMS_OS_OPERATOR_KEY` と `x-cms-os-operator-key` ヘッダーで保護します。
 
@@ -160,7 +162,7 @@ PATCH /api/v1/jobs/{jobId}
 
 運営審査キューは `GET /api/v1/provider-listing-reviews` または `provider.listing_review_queue` で取得します。`category`、`status`、`limit`、`cursor` で絞り込み・ページングできます。審査キューと掲載審査更新は、ログインロールではなく運営キーで保護します。
 
-依頼、求人、応募の一覧も `limit`（1〜100）と `cursor` による共通ページ形式 `{ items, page }` を返します。MCPでは `request.list`、`job.search`、`application.list` に同じ引数を渡します。依頼作成・状態変更、応募作成・状態変更も通知を作成し、対象の発注者、事業者、リクルーターへ投影します。
+依頼、求人、応募の一覧も `limit`（1〜100）と `cursor` による共通ページ形式 `{ items, page }` を返します。MCPでは `request.list`、`job.search`、`application.list` に同じ引数を渡します。`job.search`はリクルーター専用で、未ログイン・ユーザー・発注者は利用できません。依頼作成・状態変更、応募作成・状態変更も通知を作成し、対象の発注者、事業者、リクルーターへ投影します。
 
 ## ポータル一覧の検索・ソート・フィルター
 
@@ -172,6 +174,7 @@ PATCH /api/v1/jobs/{jobId}
 | `request.list` / `GET /api/v1/requests` | `search`、`status` | `createdAt_desc`、`createdAt_asc`、`title_asc` |
 | `booking.list` / `GET /api/v1/bookings` | `status` | — |
 | `job.search` / `GET /api/v1/jobs` | `search`、`employmentType`、`location`、`status` | `title_asc`、`title_desc`、`location_asc` |
+| `job.get` / `GET /api/v1/jobs/{jobId}` | — | — |
 | `application.list` / `GET /api/v1/applications` | `search`、`jobId`、`status` | `createdAt_desc`、`createdAt_asc`、`status` |
 | `content.list` / `GET /api/v1/content` | `search`、`status`、`audience`、`contentType`、`locale` | `updatedAt_desc`、`updatedAt_asc`、`title_asc`、`status` |
 | `content.proposals` / `GET /api/v1/content/proposals` | `search`、`audience`、`contentType` | `createdAt_desc`、`createdAt_asc`、`topic_asc` |
@@ -276,6 +279,7 @@ AIエージェントが操作前にカテゴリと表示条件を確認できる
 - `notification.list`
 - `notification.mark_read`
 - `job.search`（limit/cursor対応）
+- `job.get`
 - `job.create`
 - `job.update`
 - `application.create`

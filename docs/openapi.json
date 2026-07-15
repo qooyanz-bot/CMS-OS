@@ -1056,7 +1056,7 @@
       "get": {
         "tags": ["Recruitment"],
         "operationId": "searchJobs",
-        "summary": "カテゴリ別の公開求人を取得",
+        "summary": "リクルーター向けにカテゴリ別の公開求人を取得",
         "parameters": [
           { "$ref": "#/components/parameters/CategoryQuery" },
           { "name": "search", "in": "query", "schema": { "type": "string" } },
@@ -1067,11 +1067,19 @@
           { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
           { "name": "cursor", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
         ],
-        "security": [{}, { "BearerAuth": [] }],
-        "responses": { "200": { "description": "求人一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "求人一覧", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobListResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/jobs/{jobId}": {
+      "get": {
+        "tags": ["Recruitment"],
+        "operationId": "getJob",
+        "summary": "リクルーターまたは事業者本人が求人詳細を取得",
+        "parameters": [{ "$ref": "#/components/parameters/JobIdPath" }],
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "求人詳細", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobResponse" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
       "patch": {
         "tags": ["Recruitment"],
         "operationId": "updateJob",

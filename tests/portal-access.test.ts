@@ -13,6 +13,7 @@ let legalOrdererToken: string;
 let beautyProviderToken: string;
 let beautyOrdererToken: string;
 let recruiterToken: string;
+let legalRecruiterToken: string;
 let genericProviderTokens: Array<[string, string]>;
 const previousOperatorKey = process.env.CMS_OS_OPERATOR_KEY;
 
@@ -24,12 +25,14 @@ before(async () => {
   const beautyProviderLogin = auth.login("beauty@example.com", "demo-password", "beauty", "provider");
   const beautyOrdererLogin = auth.login("orderer@example.com", "demo-password", "beauty", "orderer");
   const recruiterLogin = auth.login("candidate@example.com", "demo-password", "labor-shortage", "recruiter");
-  if (!providerLogin || !ordererLogin || !beautyProviderLogin || !beautyOrdererLogin || !recruiterLogin || !("accessToken" in providerLogin) || !("accessToken" in ordererLogin) || !("accessToken" in beautyProviderLogin) || !("accessToken" in beautyOrdererLogin) || !("accessToken" in recruiterLogin)) throw new Error("テスト用の事業者トークンを作成できません。");
+  const legalRecruiterLogin = auth.login("candidate@example.com", "demo-password", "legal", "recruiter");
+  if (!providerLogin || !ordererLogin || !beautyProviderLogin || !beautyOrdererLogin || !recruiterLogin || !legalRecruiterLogin || !("accessToken" in providerLogin) || !("accessToken" in ordererLogin) || !("accessToken" in beautyProviderLogin) || !("accessToken" in beautyOrdererLogin) || !("accessToken" in recruiterLogin) || !("accessToken" in legalRecruiterLogin)) throw new Error("テスト用の事業者トークンを作成できません。");
   legalProviderToken = providerLogin.accessToken;
   legalOrdererToken = ordererLogin.accessToken;
   beautyProviderToken = beautyProviderLogin.accessToken;
   beautyOrdererToken = beautyOrdererLogin.accessToken;
   recruiterToken = recruiterLogin.accessToken;
+  legalRecruiterToken = legalRecruiterLogin.accessToken;
   genericProviderTokens = [];
   const genericProviderDemos: Array<[CategorySlug, string]> = [
     ["ai-business", "ai-business@example.com"],
@@ -232,6 +235,38 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(mcpCategory.status, 200);
     assert.equal(mcpCategory.body.result.structuredContent.item.experience.role, "orderer");
     assert.ok(mcpCategory.body.result.structuredContent.item.themeOptions.includes("契約書"));
+  });
+
+  it("求人一覧をリクルーターと自社事業者だけに公開する", async () => {
+    const guest = await request("/api/v1/jobs?category=legal");
+    const orderer = await request("/api/v1/jobs?category=legal", {
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+    });
+    const recruiter = await request("/api/v1/jobs?category=legal", {
+      headers: { authorization: `Bearer ${legalRecruiterToken}` },
+    });
+    const provider = await request("/api/v1/jobs?category=legal", {
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+    });
+
+    assert.equal(guest.status, 401);
+    assert.equal(orderer.status, 403);
+    assert.equal(recruiter.status, 200);
+    assert.equal(provider.status, 200);
+    assert.ok(recruiter.body.items.every((job: { providerId: string }) => job.providerId === "非公開"));
+    assert.ok(provider.body.items.every((job: { providerId: string }) => job.providerId === "provider-legal-demo"));
+
+    const mcpDenied = await request("/mcp", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 70,
+        method: "tools/call",
+        params: { name: "job.search", arguments: { category: "legal" } },
+      }),
+    });
+    assert.equal(mcpDenied.status, 200);
+    assert.equal(mcpDenied.body.result.isError, true);
   });
 
   it("MCP Resourceからカテゴリ別・ロール別の表示コンテキストを取得できる", async () => {
@@ -778,13 +813,47 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
   });
 
   it("リクルーターは求人に応募でき、応募情報は本人と事業者に限定される", async () => {
-    const publicJobs = await request("/api/v1/jobs?category=legal");
-    assert.equal(publicJobs.status, 200);
-    assert.equal(publicJobs.body.page.limit, 50);
-    assert.equal(publicJobs.body.items[0].providerId, "非公開");
+    const recruiterJobs = await request("/api/v1/jobs?category=legal", {
+      headers: { authorization: `Bearer ${legalRecruiterToken}` },
+    });
+    assert.equal(recruiterJobs.status, 200);
+    assert.equal(recruiterJobs.body.page.limit, 50);
+    assert.equal(recruiterJobs.body.items[0].providerId, "非公開");
+
+    const recruiterDetail = await request("/api/v1/jobs/job-legal-demo", {
+      headers: { authorization: `Bearer ${legalRecruiterToken}` },
+    });
+    assert.equal(recruiterDetail.status, 200);
+    assert.equal(recruiterDetail.body.item.providerId, "非公開");
+    assert.equal(typeof recruiterDetail.body.item.description, "string");
+
+    const providerDetail = await request("/api/v1/jobs/job-legal-demo", {
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+    });
+    assert.equal(providerDetail.status, 200);
+    assert.equal(providerDetail.body.item.providerId, "provider-legal-demo");
+
+    const ordererDetail = await request("/api/v1/jobs/job-legal-demo", {
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+    });
+    assert.equal(ordererDetail.status, 403);
+
+    const mcpDetail = await request("/mcp", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalRecruiterToken}` },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 71,
+        method: "tools/call",
+        params: { name: "job.get", arguments: { jobId: "job-legal-demo" } },
+      }),
+    });
+    assert.equal(mcpDetail.status, 200);
+    assert.equal(mcpDetail.body.result.structuredContent.providerId, "非公開");
 
     const mcpJobs = await request("/mcp", {
       method: "POST",
+      headers: { authorization: `Bearer ${legalRecruiterToken}` },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 8,
@@ -794,7 +863,9 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(mcpJobs.body.result.structuredContent.page.limit, 1);
 
-    const filteredJobs = await request("/api/v1/jobs?category=legal&location=%E6%9D%B1%E4%BA%AC&sort=location_asc&limit=1");
+    const filteredJobs = await request("/api/v1/jobs?category=legal&location=%E6%9D%B1%E4%BA%AC&sort=location_asc&limit=1", {
+      headers: { authorization: `Bearer ${legalRecruiterToken}` },
+    });
     assert.equal(filteredJobs.status, 200);
     assert.equal(filteredJobs.body.page.limit, 1);
     assert.ok(filteredJobs.body.items.every((item: { location: string }) => item.location.includes("東京")));
@@ -1049,8 +1120,8 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.ok(providerJobs.body.items.some((item: { id: string; status: string }) => item.id === created.body.item.id && item.status === "closed"));
 
-    const publicJobs = await request("/api/v1/jobs?category=legal");
-    assert.ok(!publicJobs.body.items.some((item: { id: string }) => item.id === created.body.item.id));
+    const deniedJobs = await request("/api/v1/jobs?category=legal");
+    assert.equal(deniedJobs.status, 401);
   });
 
   it("MCP縺ｧ莠区･ｭ閠・諠・ｱ縺ｨ豎ゆｺｺ繧貞ｮ溯｡後〒縺阪ｋ", async () => {
