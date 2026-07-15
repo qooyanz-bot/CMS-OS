@@ -85,6 +85,8 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /request-pagination/);
   assert.match(body, /application-pagination/);
   assert.match(body, /job-pagination/);
+  assert.match(body, /job-detail-panel/);
+  assert.match(body, /job-detail-apply/);
   assert.match(body, /aria-live="polite"/);
   assert.match(body, /aria-busy="false"/);
   assert.match(body, /listing-submit-button/);
@@ -153,6 +155,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /contentReviewStatusLabels/);
   assert.match(scriptBody, /api\/v1\/providers\//);
   assert.match(scriptBody, /api\/v1\/jobs/);
+  assert.match(scriptBody, /async function openJobDetail/);
+  assert.match(scriptBody, /job-detail-button/);
+  assert.match(scriptBody, /api\(`\/api\/v1\/jobs\/\$\{encodeURIComponent\(jobId\)\}`\)/);
   assert.match(scriptBody, /job-status-button/);
   assert.match(scriptBody, /api\/v1\/requests/);
   assert.match(scriptBody, /api\/v1\/applications/);
@@ -173,6 +178,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /buildListQuery/);
   assert.match(scriptBody, /reloadProviders/);
   assert.match(scriptBody, /reloadJobs/);
+  assert.match(scriptBody, /jobPanel: document\.querySelector\("#job-panel"\)/);
   assert.match(scriptBody, /reloadRequests/);
   assert.match(scriptBody, /reloadBookings/);
   assert.match(scriptBody, /reloadApplications/);

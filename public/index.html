@@ -262,6 +262,20 @@
             <div id="job-list" class="job-list" aria-live="polite" aria-busy="false"></div>
             <div id="job-list-status" class="list-state" role="status" aria-live="polite" hidden></div>
             <div id="job-pagination" class="list-pagination" aria-live="polite"></div>
+            <section id="job-detail-panel" class="directory-guide-panel" hidden aria-live="polite">
+              <div class="section-kicker">JOB DETAIL</div>
+              <div class="section-heading">
+                <div>
+                  <h2 id="job-detail-title">求人詳細</h2>
+                  <p id="job-detail-status" class="muted">求人を選択すると詳細を表示します。</p>
+                </div>
+                <button id="job-detail-close" class="button ghost" type="button">閉じる</button>
+              </div>
+              <div id="job-detail-meta" class="meta"></div>
+              <p id="job-detail-description" class="muted"></p>
+              <button id="job-detail-apply" class="button primary" type="button" hidden>この求人に応募</button>
+              <p id="job-detail-message" class="message" role="status"></p>
+            </section>
           </div>
           <div id="provider-management-panel" class="card action-card" hidden>
             <div class="section-kicker">PROVIDER PROFILE</div>

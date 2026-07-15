@@ -18,6 +18,7 @@ const state = {
   requests: [],
   bookings: [],
   applications: [],
+  jobDetail: null,
   inquiries: [],
   notifications: [],
   proposals: [],
@@ -226,6 +227,7 @@ const elements = {
   applicationSort: document.querySelector("#application-sort"),
   applicationPagination: document.querySelector("#application-pagination"),
   applicationStatusMessage: document.querySelector("#application-list-status"),
+  jobPanel: document.querySelector("#job-panel"),
   jobs: document.querySelector("#job-list"),
   jobSearch: document.querySelector("#job-search-filter"),
   jobEmployment: document.querySelector("#job-employment-filter"),
@@ -234,6 +236,14 @@ const elements = {
   jobSort: document.querySelector("#job-sort"),
   jobPagination: document.querySelector("#job-pagination"),
   jobStatusMessage: document.querySelector("#job-list-status"),
+  jobDetailPanel: document.querySelector("#job-detail-panel"),
+  jobDetailTitle: document.querySelector("#job-detail-title"),
+  jobDetailStatus: document.querySelector("#job-detail-status"),
+  jobDetailMeta: document.querySelector("#job-detail-meta"),
+  jobDetailDescription: document.querySelector("#job-detail-description"),
+  jobDetailApply: document.querySelector("#job-detail-apply"),
+  jobDetailClose: document.querySelector("#job-detail-close"),
+  jobDetailMessage: document.querySelector("#job-detail-message"),
   contentPanel: document.querySelector("#content-editor-panel"),
   contentForm: document.querySelector("#content-proposal-form"),
   contentMessage: document.querySelector("#content-message"),
@@ -1157,6 +1167,7 @@ async function reloadApplications(cursor = "") {
 }
 
 async function reloadJobs(cursor = "") {
+  clearJobDetail();
   if (elements.jobPanel.hidden) {
     clearJobView();
     return;
@@ -1190,6 +1201,7 @@ async function reloadJobs(cursor = "") {
 
 function clearJobView() {
   invalidateListRequest("jobs", elements.jobs, elements.jobStatusMessage);
+  clearJobDetail();
   elements.jobs.innerHTML = "";
   elements.jobPagination.replaceChildren();
 }
@@ -1437,10 +1449,65 @@ async function reloadProviderManagement() {
   }
 }
 
+function clearJobDetail() {
+  state.jobDetail = null;
+  elements.jobDetailPanel.hidden = true;
+  elements.jobDetailTitle.textContent = "求人詳細";
+  elements.jobDetailStatus.textContent = "求人を選択すると詳細を表示します。";
+  elements.jobDetailMeta.replaceChildren();
+  elements.jobDetailDescription.textContent = "";
+  elements.jobDetailApply.hidden = true;
+  elements.jobDetailApply.dataset.jobId = "";
+  elements.jobDetailMessage.textContent = "";
+}
+
+async function submitApplication(jobId) {
+  if (!jobId) return;
+  const message = window.prompt("応募メッセージを入力してください（10文字以上）");
+  if (!message) return;
+  try {
+    await api(`/api/v1/jobs/${encodeURIComponent(jobId)}/applications`, { method: "POST", body: JSON.stringify({ message }) });
+    elements.jobDetailMessage.textContent = "応募を送信しました。";
+    setMessage("応募を送信しました。");
+  } catch (error) {
+    elements.jobDetailMessage.textContent = error.message;
+    setMessage(error.message);
+  }
+}
+
+async function openJobDetail(jobId) {
+  if (!jobId) return;
+  elements.jobDetailPanel.hidden = false;
+  elements.jobDetailStatus.textContent = "求人詳細を読み込んでいます。";
+  elements.jobDetailDescription.textContent = "";
+  elements.jobDetailMeta.replaceChildren();
+  elements.jobDetailApply.hidden = true;
+  elements.jobDetailMessage.textContent = "";
+  try {
+    const body = await api(`/api/v1/jobs/${encodeURIComponent(jobId)}`);
+    const job = body.item;
+    state.jobDetail = job;
+    elements.jobDetailTitle.textContent = job.title;
+    elements.jobDetailStatus.textContent = job.status === "published" ? "公開中の求人" : "終了した求人";
+    elements.jobDetailMeta.replaceChildren(...[job.employmentType, job.location, job.status === "published" ? "公開中" : "終了"].map((value) => {
+      const item = document.createElement("span");
+      item.textContent = value;
+      return item;
+    }));
+    elements.jobDetailDescription.textContent = job.description;
+    elements.jobDetailApply.hidden = !(state.experience?.allowedActions.includes("application.create") && job.status === "published");
+    elements.jobDetailApply.dataset.jobId = job.id;
+    elements.jobDetailPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (error) {
+    elements.jobDetailStatus.textContent = "求人詳細を表示できませんでした。";
+    elements.jobDetailMessage.textContent = error.message;
+  }
+}
+
 function renderJobs(items, page = {}, cursor = "") {
   const canManageJobs = state.role === "provider" && state.experience?.allowedActions.includes("job.manage");
   elements.jobs.innerHTML = items.length
-    ? items.map((job) => `<article class="job-item"><h3>${escapeHtml(job.title)}</h3><div class="meta"><span>${escapeHtml(job.employmentType)}</span><span>${escapeHtml(job.location)}</span></div>${state.experience?.allowedActions.includes("application.create") ? `<button class="button ghost apply-button" data-job-id="${escapeHtml(job.id)}">この求人に応募</button>` : ""}</article>`).join("")
+    ? items.map((job) => `<article class="job-item"><h3>${escapeHtml(job.title)}</h3><div class="meta"><span>${escapeHtml(job.employmentType)}</span><span>${escapeHtml(job.location)}</span></div><p>${escapeHtml(job.description)}</p><div class="job-actions"><button class="button ghost job-detail-button" data-job-id="${escapeHtml(job.id)}">詳細を見る</button>${state.experience?.allowedActions.includes("application.create") ? `<button class="button ghost apply-button" data-job-id="${escapeHtml(job.id)}">この求人に応募</button>` : ""}</div></article>`).join("")
     : '<p class="empty">公開求人がありません。</p>';
   document.querySelectorAll(".job-item").forEach((item, index) => {
     const job = items[index];
@@ -1476,16 +1543,10 @@ function renderJobs(items, page = {}, cursor = "") {
     });
   });
   document.querySelectorAll(".apply-button").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const message = window.prompt("応募メッセージを入力してください（10文字以上）");
-      if (!message) return;
-      try {
-        await api(`/api/v1/jobs/${button.dataset.jobId}/applications`, { method: "POST", body: JSON.stringify({ message }) });
-        setMessage("応募を送信しました。");
-      } catch (error) {
-        setMessage(error.message);
-      }
-    });
+    button.addEventListener("click", () => void submitApplication(button.dataset.jobId ?? ""));
+  });
+  document.querySelectorAll(".job-detail-button").forEach((button) => {
+    button.addEventListener("click", () => void openJobDetail(button.dataset.jobId ?? ""));
   });
   renderListPagination(elements.jobPagination, page, cursor, reloadJobs, "求人一覧のページ移動");
 }
@@ -1988,6 +2049,8 @@ elements.account.addEventListener("change", () => {
   }
 });
 elements.logout.addEventListener("click", logout);
+elements.jobDetailClose.addEventListener("click", clearJobDetail);
+elements.jobDetailApply.addEventListener("click", () => void submitApplication(elements.jobDetailApply.dataset.jobId ?? ""));
 elements.siteSeoAuditButton.addEventListener("click", () => void runSiteSeoAudit());
 elements.mediaSeoAuditButton.addEventListener("click", () => void runMediaSeoAudit());
 elements.requestForm.addEventListener("submit", async (event) => {
