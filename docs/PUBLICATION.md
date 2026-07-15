@@ -72,6 +72,7 @@ POST /api/v1/publications/{publicationId}/rollback
 | `categories/{category}/themes/{theme}/index.html` | テーマ別の事業者案内 |
 | `categories/{category}/regions/{region}/index.html` | 地域別の事業者案内 |
 | `categories/{category}/providers/index.html` | カテゴリ別事業者一覧 |
+| `categories/{category}/providers/{providerId}/index.html` | 事業者プロフィール、公開求人、関連する公開情報と`Organization`構造化データ |
 | `categories/{category}/jobs/index.html` | カテゴリ別の公開求人一覧 |
 | `categories/{category}/jobs/{jobId}/index.html` | 公開求人の詳細と`JobPosting`構造化データ |
 | `assets/cms-os.css` | 最小表示スタイル |
@@ -89,6 +90,7 @@ POST /api/v1/publications/{publicationId}/rollback
 - `robots`
 - OGPタイトル・説明・URL
 - `application/ld+json`
+- 事業者プロフィールには`Organization`、`@id`、canonical、sitemapリンクを出力し、当該事業者に紐づく公開求人・公開情報へ内部リンクします。関連求人がある場合は、その最新更新日時を事業者URLのsitemap `lastmod`へ反映します。
 - 公開日・更新日
 - 公開求人には`JobPosting`、求人一覧には`CollectionPage`・`ItemList`を出力し、掲載事業者名、掲載日、更新日、勤務地、雇用形態、応募導線を明示します。求人は公開情報として静的生成しますが、応募操作はリクルーター認証後に限定します。
 - 言語属性はコンテンツの `locale` に合わせて出力します。翻訳版は `lang`、`og:locale`、JSON-LD の `inLanguage` を個別に持ちます。

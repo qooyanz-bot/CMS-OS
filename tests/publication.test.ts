@@ -163,7 +163,15 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get(legalThemePath) ?? "", /相続/);
     assert.match(fileMap.get(legalThemePath) ?? "", /<link rel="canonical" href="https:\/\/www\.example\.com\/categories\/legal\/themes\//);
     assert.doesNotMatch(fileMap.get(legalThemePath) ?? "", /%25E7/);
-    assert.match(fileMap.get("categories\/legal\/providers\/provider-legal-demo\/index.html") ?? "", /Organization/);
+    const providerPage = fileMap.get("categories/legal/providers/provider-legal-demo/index.html") ?? "";
+    assert.match(providerPage, /Organization/);
+    assert.match(providerPage, /#organization/);
+    assert.match(providerPage, /<meta property="og:url"/);
+    assert.match(providerPage, /<link rel="sitemap"/);
+    assert.match(providerPage, /公開求人/);
+    assert.match(providerPage, /関連する公開情報/);
+    assert.match(providerPage, /job-legal-demo/);
+    assert.match(providerPage, new RegExp(draft.body.item.slug));
 
     const scheduledFor = new Date(Date.now() + 60_000).toISOString();
     const scheduled = await request("/api/v1/publications/schedules", {

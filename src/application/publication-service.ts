@@ -608,17 +608,20 @@ function jobDetailHtml(category: PublishedCategory, job: JobPosting, baseUrl: st
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(job.title)} | ${escapeHtml(category.label)}の求人 | CMS-OS</title><meta name="description" content="${escapeHtml(job.title)}。${escapeHtml(job.location)}、${escapeHtml(job.employmentType)}の求人詳細です。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(job.title)}"><meta property="og:description" content="${escapeHtml(job.description)}"><meta property="og:url" content="${escapeHtml(canonical)}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li><a href="${escapeHtml(jobsUrl)}">求人一覧</a></li><li aria-current="page">${escapeHtml(job.title)}</li></ol></nav><p class="eyebrow">CMS-OS / Job posting</p><article><header class="article-header"><h1>${escapeHtml(job.title)}</h1><p class="summary">${escapeHtml(job.description)}</p></header><dl class="provider-facts"><dt>カテゴリ</dt><dd>${escapeHtml(category.label)}</dd>${job.providerName ? `<dt>掲載事業者</dt><dd>${escapeHtml(job.providerName)}</dd>` : ""}<dt>雇用形態</dt><dd>${escapeHtml(job.employmentType)}</dd><dt>勤務地</dt><dd>${escapeHtml(job.location)}</dd><dt>掲載日</dt><dd><time datetime="${escapeHtml(job.createdAt)}">${escapeHtml(job.createdAt.slice(0, 10))}</time></dd><dt>更新日</dt><dd><time datetime="${escapeHtml(job.updatedAt)}">${escapeHtml(job.updatedAt.slice(0, 10))}</time></dd></dl><h2>応募について</h2><p>この求人への応募は、CMS-OSポータルでリクルーターとしてログインした後に行えます。応募前に仕事内容と条件をご確認ください。</p><p><a class="directory-link" href="${escapeHtml(jobsUrl)}">${escapeHtml(category.label)}の求人一覧へ戻る</a></p></article></main></body></html>`;
 }
 
-function providerDetailHtml(category: PublishedCategory, provider: VisibleProvider, baseUrl: string): string {
+function providerDetailHtml(category: PublishedCategory, provider: VisibleProvider, relatedContents: ContentRecord[], relatedJobs: JobPosting[], baseUrl: string): string {
   const canonical = absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`);
   const categoryUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`);
+  const providerFacts = visibleProviderFields(provider);
+  const contentLinks = relatedContents.map((content) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(content)}/`))}">${escapeHtml(content.title)}</a><span>${escapeHtml(content.summary)}</span></li>`).join("\n");
+  const jobLinks = relatedJobs.map((job) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`))}">${escapeHtml(job.title)}</a><span>${escapeHtml(job.employmentType)} · ${escapeHtml(job.location)}</span></li>`).join("\n");
   const jsonLd = jsonLdString({
     "@context": "https://schema.org",
     "@graph": [
-      { "@type": "Organization", name: provider.name, url: canonical, address: { "@type": "PostalAddress", addressLocality: provider.location, addressCountry: "JP" }, knowsAbout: provider.themes },
+      { "@type": "Organization", "@id": `${canonical}#organization`, name: provider.name, description: `${provider.name}の${category.label}カテゴリにおける公開プロフィールです。`, url: canonical, mainEntityOfPage: canonical, areaServed: provider.location, address: { "@type": "PostalAddress", addressLocality: provider.location, addressCountry: "JP" }, knowsAbout: provider.themes, subjectOf: relatedContents.map((content) => ({ "@type": "Article", name: content.title, url: absoluteUrl(baseUrl, `/${routeFor(content)}/`) })) },
       breadcrumbJsonLd([{ name: "ホーム", url: absoluteUrl(baseUrl, "/") }, { name: category.label, url: categoryUrl }, { name: provider.name, url: canonical }]),
     ],
   });
-  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(provider.name)} | ${escapeHtml(category.label)} | CMS-OS</title><meta name="description" content="${escapeHtml(provider.name)}の${escapeHtml(category.label)}に関する公開プロフィール、対応テーマ、地域情報です。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><meta property="og:type" content="profile"><meta property="og:title" content="${escapeHtml(provider.name)}"><meta property="og:description" content="${escapeHtml(provider.themes.join("・"))}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li aria-current="page">${escapeHtml(provider.name)}</li></ol></nav><p class="eyebrow">CMS-OS / Provider profile</p><h1>${escapeHtml(provider.name)}</h1><p class="lead-answer">${escapeHtml(provider.name)}は${escapeHtml(category.label)}カテゴリに掲載されている事業者です。対応テーマと公開情報を確認できます。</p><dl class="provider-facts"><dt>対応テーマ</dt><dd>${escapeHtml(provider.themes.join("・"))}</dd><dt>地域</dt><dd>${escapeHtml(provider.location)}</dd></dl>${visibleProviderFields(provider) ? `<h2>公開情報</h2><ul class="provider-facts-list">${visibleProviderFields(provider)}</ul>` : ""}</main></body></html>`;
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(provider.name)} | ${escapeHtml(category.label)} | CMS-OS</title><meta name="description" content="${escapeHtml(provider.name)}の${escapeHtml(category.label)}に関する公開プロフィール、対応テーマ、地域情報です。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><meta property="og:type" content="profile"><meta property="og:title" content="${escapeHtml(provider.name)}"><meta property="og:description" content="${escapeHtml(provider.themes.join("・"))}"><meta property="og:url" content="${escapeHtml(canonical)}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li aria-current="page">${escapeHtml(provider.name)}</li></ol></nav><p class="eyebrow">CMS-OS / Provider profile</p><h1>${escapeHtml(provider.name)}</h1><p class="lead-answer">${escapeHtml(provider.name)}は${escapeHtml(category.label)}カテゴリに掲載されている事業者です。対応テーマと公開情報を確認できます。</p><dl class="provider-facts"><dt>対応テーマ</dt><dd>${escapeHtml(provider.themes.join("・"))}</dd><dt>地域</dt><dd>${escapeHtml(provider.location)}</dd></dl>${providerFacts ? `<h2>公開情報</h2><ul class="provider-facts-list">${providerFacts}</ul>` : ""}${jobLinks ? `<h2>公開求人</h2><ul class="content-index">${jobLinks}</ul>` : ""}${contentLinks ? `<h2>関連する公開情報</h2><ul class="content-index">${contentLinks}</ul>` : ""}</main></body></html>`;
 }
 
 function facetPageHtml(
@@ -674,7 +677,12 @@ function sitemapXml(
       entries.push({ url: absoluteUrl(baseUrl, `/${facetRoute(category.slug, "regions", region)}/`) });
     }
     for (const provider of providers) {
-      entries.push({ url: absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`) });
+      const providerJobs = jobs.filter((job) => job.providerId === provider.id);
+      const providerLastmod = providerJobs.map((job) => job.updatedAt).sort().at(-1);
+      entries.push({
+        url: absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`),
+        ...(providerLastmod ? { lastmod: providerLastmod } : {}),
+      });
     }
     for (const job of jobs) {
       entries.push({ url: absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`), lastmod: job.updatedAt });
@@ -776,7 +784,13 @@ export class PublicationService {
         ...providers.map((provider) => ({
           path: `${providerRoute(category.slug, provider.id)}/index.html`,
           contentType: "text/html; charset=utf-8",
-          content: providerDetailHtml(category, provider, baseUrl),
+          content: providerDetailHtml(
+            category,
+            provider,
+            categoryContents.filter((content) => content.providerId === provider.id),
+            jobs.filter((job) => job.providerId === provider.id),
+            baseUrl,
+          ),
         })),
         ...jobs.map((job) => ({
           path: `${jobRoute(category.slug, job.id)}/index.html`,
