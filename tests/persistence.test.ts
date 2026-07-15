@@ -99,6 +99,29 @@ describe("CMS-OSファイル永続化", () => {
     assert.ok(restoredGuides.some((guide) => guide.id === managedGuide.id));
   });
 
+  it("旧形式の求人ファイルへ掲載日と更新日を補完する", () => {
+    const state = new JsonStateStore(directory);
+    state.save("portal-jobs.json", [{
+      id: "job-legacy-persistence-test",
+      category: "legal",
+      providerId: "provider-legal-demo",
+      title: "旧形式求人",
+      employmentType: "正社員",
+      location: "東京都",
+      description: "旧形式の求人を互換移行できることを確認します。",
+      status: "published",
+    }]);
+
+    const job = new PortalStore(state).getJob("job-legacy-persistence-test");
+    assert.ok(job);
+    assert.match(job.createdAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(job.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+    const persisted = state.load<Array<{ id: string; createdAt?: string; updatedAt?: string }>>("portal-jobs.json", []);
+    const migrated = persisted.find((item) => item.id === job.id);
+    assert.equal(migrated?.createdAt, job.createdAt);
+    assert.equal(migrated?.updatedAt, job.updatedAt);
+  });
+
   it("公開履歴と静的ファイルスナップショットを再起動後に復元できる", () => {
     const state1 = new JsonStateStore(directory);
     const store1 = new PublicationStore(state1);

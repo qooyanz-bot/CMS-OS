@@ -148,7 +148,7 @@ PATCH /api/v1/jobs/{jobId}
 - `PATCH /api/v1/providers/{providerId}` は、対象カテゴリの事業者本人だけが利用できます。名前、テーマ、所在地、公開項目を更新でき、`id`、カテゴリ、ロール別項目、確認状態などの保護項目は更新できません。
 - `POST /api/v1/jobs` と `PATCH /api/v1/jobs/{jobId}` は、事業者本人のカテゴリ・providerIdを検証します。求人状態は `published` または `closed` です。
 - 求人検索はリクルーターだけが利用でき、リクルーターには公開中求人だけを返します。事業者本人は自社求人の状態を含めて取得できます。未ログインのユーザー、発注者、別カテゴリの事業者からの求人一覧取得は許可しません。
-- `GET /api/v1/jobs/{jobId}` / `job.get` は、リクルーターには公開求人の詳細を、事業者には自社求人の詳細を返します。リクルーターへの事業者IDは非公開です。
+- `GET /api/v1/jobs/{jobId}` / `job.get` は、リクルーターには公開求人の詳細を、事業者には自社求人の詳細を返します。リクルーターへの内部事業者IDは非公開ですが、公開掲載中の事業者名は`providerName`として表示します。求人には`createdAt`と`updatedAt`を持たせ、ファイル保存データの旧形式は起動時に自動補完します。
 
 掲載情報の状態は `draft`、`pending_review`、`published`、`suspended` を使います。事業者本人の `listing-submission` は審査待ちへ進め、審査待ちの事業者は公開検索から除外します。運営審査用の `listing-review` は4つのポータルロールとは分離し、`CMS_OS_OPERATOR_KEY` と `x-cms-os-operator-key` ヘッダーで保護します。
 

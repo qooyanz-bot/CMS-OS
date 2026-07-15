@@ -1489,7 +1489,15 @@ async function openJobDetail(jobId) {
     state.jobDetail = job;
     elements.jobDetailTitle.textContent = job.title;
     elements.jobDetailStatus.textContent = job.status === "published" ? "公開中の求人" : "終了した求人";
-    elements.jobDetailMeta.replaceChildren(...[job.employmentType, job.location, job.status === "published" ? "公開中" : "終了"].map((value) => {
+    const detailMeta = [
+      ...(job.providerName ? [`掲載事業者: ${job.providerName}`] : []),
+      `雇用形態: ${job.employmentType}`,
+      `勤務地: ${job.location}`,
+      `掲載日: ${job.createdAt?.slice(0, 10) ?? "未設定"}`,
+      `更新日: ${job.updatedAt?.slice(0, 10) ?? "未設定"}`,
+      job.status === "published" ? "公開中" : "終了",
+    ];
+    elements.jobDetailMeta.replaceChildren(...detailMeta.map((value) => {
       const item = document.createElement("span");
       item.textContent = value;
       return item;
@@ -1507,7 +1515,7 @@ async function openJobDetail(jobId) {
 function renderJobs(items, page = {}, cursor = "") {
   const canManageJobs = state.role === "provider" && state.experience?.allowedActions.includes("job.manage");
   elements.jobs.innerHTML = items.length
-    ? items.map((job) => `<article class="job-item"><h3>${escapeHtml(job.title)}</h3><div class="meta"><span>${escapeHtml(job.employmentType)}</span><span>${escapeHtml(job.location)}</span></div><p>${escapeHtml(job.description)}</p><div class="job-actions"><button class="button ghost job-detail-button" data-job-id="${escapeHtml(job.id)}">詳細を見る</button>${state.experience?.allowedActions.includes("application.create") ? `<button class="button ghost apply-button" data-job-id="${escapeHtml(job.id)}">この求人に応募</button>` : ""}</div></article>`).join("")
+    ? items.map((job) => `<article class="job-item"><h3>${escapeHtml(job.title)}</h3><div class="meta">${job.providerName ? `<span>${escapeHtml(job.providerName)}</span>` : ""}<span>${escapeHtml(job.employmentType)}</span><span>${escapeHtml(job.location)}</span></div><p>${escapeHtml(job.description)}</p><div class="job-actions"><button class="button ghost job-detail-button" data-job-id="${escapeHtml(job.id)}">詳細を見る</button>${state.experience?.allowedActions.includes("application.create") ? `<button class="button ghost apply-button" data-job-id="${escapeHtml(job.id)}">この求人に応募</button>` : ""}</div></article>`).join("")
     : '<p class="empty">公開求人がありません。</p>';
   document.querySelectorAll(".job-item").forEach((item, index) => {
     const job = items[index];

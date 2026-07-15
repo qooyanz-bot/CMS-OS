@@ -10,7 +10,7 @@ describe("CMS-OS OpenAPI契約", () => {
     const specification = JSON.parse(source) as {
       openapi: string;
       paths: Record<string, Record<string, unknown>>;
-      components: { securitySchemes: Record<string, { type: string; scheme?: string }>; schemas: Record<string, { enum?: unknown[]; properties?: Record<string, unknown> }> };
+      components: { securitySchemes: Record<string, { type: string; scheme?: string }>; schemas: Record<string, { enum?: unknown[]; properties?: Record<string, unknown>; required?: string[] }> };
     };
     assert.equal(specification.openapi, "3.1.0");
     const requiredPaths = [
@@ -133,6 +133,13 @@ describe("CMS-OS OpenAPI契約", () => {
     const jobListOperation = specification.paths["/api/v1/jobs"]?.get as { security?: unknown } | undefined;
     assert.ok(jobListOperation);
     assert.deepEqual(jobListOperation.security, [{ BearerAuth: [] }], "/api/v1/jobsはリクルーター認証が必要です。");
+    const jobSchema = specification.components.schemas.Job;
+    assert.ok(jobSchema);
+    assert.ok(jobSchema.properties?.providerName);
+    assert.ok(jobSchema.properties?.createdAt);
+    assert.ok(jobSchema.properties?.updatedAt);
+    assert.ok(jobSchema.required?.includes("createdAt"));
+    assert.ok(jobSchema.required?.includes("updatedAt"));
     assert.deepEqual(specification.components.securitySchemes.BearerAuth, { type: "http", scheme: "bearer", bearerFormat: "opaque-session-token" });
     assert.deepEqual(specification.components.securitySchemes.OperatorKey, { type: "apiKey", in: "header", name: "x-cms-os-operator-key" });
     assert.deepEqual(specification.components.schemas.AuthRole?.enum, ["user", "orderer", "provider", "recruiter"]);

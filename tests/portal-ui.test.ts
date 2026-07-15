@@ -157,6 +157,9 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/jobs/);
   assert.match(scriptBody, /async function openJobDetail/);
   assert.match(scriptBody, /job-detail-button/);
+  assert.match(scriptBody, /job.providerName/);
+  assert.match(scriptBody, /job.createdAt/);
+  assert.match(scriptBody, /job.updatedAt/);
   assert.match(scriptBody, /api\(`\/api\/v1\/jobs\/\$\{encodeURIComponent\(jobId\)\}`\)/);
   assert.match(scriptBody, /job-status-button/);
   assert.match(scriptBody, /api\/v1\/requests/);

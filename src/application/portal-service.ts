@@ -197,6 +197,20 @@ export class PortalService {
     this.store.createNotification(input);
   }
 
+  private publicJobProviderName(job: JobPosting): string | undefined {
+    const provider = this.store.getProvider(job.providerId);
+    return provider && provider.category === job.category && isPublicProvider(provider) ? provider.name : undefined;
+  }
+
+  private projectRecruiterJob(job: JobPosting): JobPosting {
+    const providerName = this.publicJobProviderName(job);
+    return {
+      ...job,
+      providerId: "非公開",
+      ...(providerName ? { providerName } : {}),
+    };
+  }
+
   private paginate<T>(items: T[], limit: number, cursor: number): PortalPage<T> {
     const safeLimit = Math.min(Math.max(Math.trunc(limit) || 50, 1), 100);
     const safeCursor = Math.max(Math.trunc(cursor) || 0, 0);
@@ -879,7 +893,7 @@ export class PortalService {
     }
     const jobs = isOwnProvider
       ? this.store.listJobsForProvider(category, principal.providerId!)
-      : this.store.listJobs(category);
+      : this.store.listJobs(category).filter((job) => Boolean(this.publicJobProviderName(job)));
     const normalizedSearch = normalizeFilterText(filters.search);
     const normalizedEmploymentType = normalizeFilterText(filters.employmentType);
     const normalizedLocation = normalizeFilterText(filters.location);
@@ -897,16 +911,16 @@ export class PortalService {
     if (sort === "location_asc") filteredJobs.sort((left, right) => compareText(left.location, right.location) || compareText(left.title, right.title));
     return filteredJobs.map((job) => {
       if (principal?.role === "provider" && principal.category === category && principal.providerId === job.providerId) return job;
-      return {
-        ...job,
-        providerId: "非公開",
-      };
+      return this.projectRecruiterJob(job);
     });
   }
 
   /** 静的公開ビルド向けに、公開済み求人だけを取得します。認証APIには公開しません。 */
   public listPublishedJobsForPublication(category: CategorySlug): JobPosting[] {
-    return this.store.listJobs(category).map((job) => ({ ...job }));
+    return this.store.listJobs(category).flatMap((job) => {
+      const providerName = this.publicJobProviderName(job);
+      return providerName ? [{ ...job, providerName }] : [];
+    });
   }
 
   public listJobsPage(
@@ -934,8 +948,8 @@ export class PortalService {
       throw new PortalServiceError(404, "指定された求人が見つかりません。");
     }
     this.assertAction(principal, job.category, "job.search");
-    if (job.status !== "published") throw new PortalServiceError(404, "指定された求人が見つかりません。");
-    return { ...job, providerId: "非公開" };
+    if (job.status !== "published" || !this.publicJobProviderName(job)) throw new PortalServiceError(404, "指定された求人が見つかりません。");
+    return this.projectRecruiterJob(job);
   }
 
   public createJob(

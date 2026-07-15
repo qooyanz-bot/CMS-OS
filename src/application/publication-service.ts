@@ -565,9 +565,11 @@ function jobJsonLd(category: PublishedCategory, job: JobPosting, canonical: stri
     description: job.description,
     url: canonical,
     inLanguage: "ja-JP",
+    datePosted: job.createdAt,
+    dateModified: job.updatedAt,
     employmentType: "OTHER",
     occupationalCategory: category.label,
-    hiringOrganization: { "@type": "Organization", name: "掲載事業者" },
+    hiringOrganization: { "@type": "Organization", name: job.providerName ?? "掲載事業者" },
     jobLocation: {
       "@type": "Place",
       name: job.location,
@@ -580,7 +582,7 @@ function jobJsonLd(category: PublishedCategory, job: JobPosting, canonical: stri
 function jobDirectoryHtml(category: PublishedCategory, jobs: JobPosting[], baseUrl: string): string {
   const canonical = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/jobs/`);
   const categoryUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`);
-  const links = jobs.map((job) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`))}">${escapeHtml(job.title)}</a><span>${escapeHtml(job.employmentType)} · ${escapeHtml(job.location)}</span><p>${escapeHtml(job.description)}</p></li>`).join("\n");
+  const links = jobs.map((job) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`))}">${escapeHtml(job.title)}</a><span>${job.providerName ? `${escapeHtml(job.providerName)} · ` : ""}${escapeHtml(job.employmentType)} · ${escapeHtml(job.location)}</span><p>${escapeHtml(job.description)}</p></li>`).join("\n");
   const jsonLd = jsonLdString({
     "@context": "https://schema.org",
     "@graph": [
@@ -603,7 +605,7 @@ function jobDetailHtml(category: PublishedCategory, job: JobPosting, baseUrl: st
       breadcrumbJsonLd([{ name: "ホーム", url: absoluteUrl(baseUrl, "/") }, { name: category.label, url: categoryUrl }, { name: "求人一覧", url: jobsUrl }, { name: job.title, url: canonical }]),
     ],
   });
-  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(job.title)} | ${escapeHtml(category.label)}の求人 | CMS-OS</title><meta name="description" content="${escapeHtml(job.title)}。${escapeHtml(job.location)}、${escapeHtml(job.employmentType)}の求人詳細です。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(job.title)}"><meta property="og:description" content="${escapeHtml(job.description)}"><meta property="og:url" content="${escapeHtml(canonical)}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li><a href="${escapeHtml(jobsUrl)}">求人一覧</a></li><li aria-current="page">${escapeHtml(job.title)}</li></ol></nav><p class="eyebrow">CMS-OS / Job posting</p><article><header class="article-header"><h1>${escapeHtml(job.title)}</h1><p class="summary">${escapeHtml(job.description)}</p></header><dl class="provider-facts"><dt>カテゴリ</dt><dd>${escapeHtml(category.label)}</dd><dt>雇用形態</dt><dd>${escapeHtml(job.employmentType)}</dd><dt>勤務地</dt><dd>${escapeHtml(job.location)}</dd></dl><h2>応募について</h2><p>この求人への応募は、CMS-OSポータルでリクルーターとしてログインした後に行えます。応募前に仕事内容と条件をご確認ください。</p><p><a class="directory-link" href="${escapeHtml(jobsUrl)}">${escapeHtml(category.label)}の求人一覧へ戻る</a></p></article></main></body></html>`;
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(job.title)} | ${escapeHtml(category.label)}の求人 | CMS-OS</title><meta name="description" content="${escapeHtml(job.title)}。${escapeHtml(job.location)}、${escapeHtml(job.employmentType)}の求人詳細です。"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(job.title)}"><meta property="og:description" content="${escapeHtml(job.description)}"><meta property="og:url" content="${escapeHtml(canonical)}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}"><link rel="stylesheet" href="/assets/cms-os.css"><script type="application/ld+json">${jsonLd}</script></head><body><main class="page-shell"><nav class="breadcrumbs" aria-label="パンくず"><ol><li><a href="${escapeHtml(absoluteUrl(baseUrl, "/"))}">ホーム</a></li><li><a href="${escapeHtml(categoryUrl)}">${escapeHtml(category.label)}</a></li><li><a href="${escapeHtml(jobsUrl)}">求人一覧</a></li><li aria-current="page">${escapeHtml(job.title)}</li></ol></nav><p class="eyebrow">CMS-OS / Job posting</p><article><header class="article-header"><h1>${escapeHtml(job.title)}</h1><p class="summary">${escapeHtml(job.description)}</p></header><dl class="provider-facts"><dt>カテゴリ</dt><dd>${escapeHtml(category.label)}</dd>${job.providerName ? `<dt>掲載事業者</dt><dd>${escapeHtml(job.providerName)}</dd>` : ""}<dt>雇用形態</dt><dd>${escapeHtml(job.employmentType)}</dd><dt>勤務地</dt><dd>${escapeHtml(job.location)}</dd><dt>掲載日</dt><dd><time datetime="${escapeHtml(job.createdAt)}">${escapeHtml(job.createdAt.slice(0, 10))}</time></dd><dt>更新日</dt><dd><time datetime="${escapeHtml(job.updatedAt)}">${escapeHtml(job.updatedAt.slice(0, 10))}</time></dd></dl><h2>応募について</h2><p>この求人への応募は、CMS-OSポータルでリクルーターとしてログインした後に行えます。応募前に仕事内容と条件をご確認ください。</p><p><a class="directory-link" href="${escapeHtml(jobsUrl)}">${escapeHtml(category.label)}の求人一覧へ戻る</a></p></article></main></body></html>`;
 }
 
 function providerDetailHtml(category: PublishedCategory, provider: VisibleProvider, baseUrl: string): string {
@@ -675,7 +677,7 @@ function sitemapXml(
       entries.push({ url: absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`) });
     }
     for (const job of jobs) {
-      entries.push({ url: absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`) });
+      entries.push({ url: absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`), lastmod: job.updatedAt });
     }
   }
   entries.push(...contents.map((content) => ({ url: absoluteUrl(baseUrl, `/${routeFor(content)}/`), lastmod: content.updatedAt })));
@@ -695,7 +697,7 @@ function llmsText(contents: ContentRecord[], categories: PublishedCategory[], pr
   const providerPages = categories.flatMap((category) => (providersByCategory.get(category.slug) ?? []).map((provider) => `- [${provider.name}](${absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`)}): ${category.label} / ${provider.location} / ${provider.themes.join("・")}`)).join("\n");
   const jobPages = categories.flatMap((category) => [
     `- [${category.label}の求人一覧](${absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/jobs/`)}): 公開求人の一覧`,
-    ...(jobsByCategory.get(category.slug) ?? []).map((job) => `- [${job.title}](${absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`)}): ${category.label} / ${job.employmentType} / ${job.location}`),
+    ...(jobsByCategory.get(category.slug) ?? []).map((job) => `- [${job.title}](${absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`)}): ${category.label} / ${job.providerName ?? "掲載事業者"} / ${job.employmentType} / ${job.location} / 最終更新: ${job.updatedAt.slice(0, 10)}`),
   ]).join("\n");
   const contentPages = contents.map((content) => `- [${content.title}](${absoluteUrl(baseUrl, `/${routeFor(content)}/`)}): ${content.summary}（最終更新: ${content.updatedAt.slice(0, 10)}）`).join("\n");
   return `# CMS-OS公開コンテンツ\n\n> 承認済みコンテンツ、カテゴリーハブ、テーマ・地域別案内、事業者プロフィール、公開求人の機械可読インデックスです。\n> 情報の利用時は各ページの最終更新日と一次情報を確認してください。求人への応募操作にはリクルーター認証が必要です。\n\n## Categories\n${categoryPages || "- 準備中"}\n\n## Themes and Regions\n${facetPages || "- 準備中"}\n\n## Providers\n${providerPages || "- 準備中"}\n\n## Jobs\n${jobPages || "- 準備中"}\n\n## Pages\n${contentPages || "- 準備中"}\n`;

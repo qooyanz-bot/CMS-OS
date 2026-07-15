@@ -90,7 +90,7 @@ POST /api/v1/publications/{publicationId}/rollback
 - OGPタイトル・説明・URL
 - `application/ld+json`
 - 公開日・更新日
-- 公開求人には`JobPosting`、求人一覧には`CollectionPage`・`ItemList`を出力し、勤務地・雇用形態・応募導線を明示します。求人は公開情報として静的生成しますが、応募操作はリクルーター認証後に限定します。
+- 公開求人には`JobPosting`、求人一覧には`CollectionPage`・`ItemList`を出力し、掲載事業者名、掲載日、更新日、勤務地、雇用形態、応募導線を明示します。求人は公開情報として静的生成しますが、応募操作はリクルーター認証後に限定します。
 - 言語属性はコンテンツの `locale` に合わせて出力します。翻訳版は `lang`、`og:locale`、JSON-LD の `inLanguage` を個別に持ちます。
 - 同じ原文に紐づく翻訳版が同時に公開対象に含まれる場合、各ページに言語別の `hreflang` と `x-default` を出力します。
 

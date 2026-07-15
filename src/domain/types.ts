@@ -330,11 +330,15 @@ export interface JobPosting {
   id: string;
   category: CategorySlug;
   providerId: string;
+  /** リクルーター・静的公開ページへ投影する公開事業者名。内部IDとは別管理です。 */
+  providerName?: string;
   title: string;
   employmentType: string;
   location: string;
   description: string;
   status: JobStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface JobApplication {

@@ -254,6 +254,8 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     assert.equal(recruiter.status, 200);
     assert.equal(provider.status, 200);
     assert.ok(recruiter.body.items.every((job: { providerId: string }) => job.providerId === "非公開"));
+    assert.ok(recruiter.body.items.every((job: { providerName?: string }) => job.providerName === "CMS-OS法律事務所（サンプル）"));
+    assert.ok(recruiter.body.items.every((job: { createdAt: string; updatedAt: string }) => typeof job.createdAt === "string" && typeof job.updatedAt === "string"));
     assert.ok(provider.body.items.every((job: { providerId: string }) => job.providerId === "provider-legal-demo"));
 
     const mcpDenied = await request("/mcp", {
@@ -267,6 +269,20 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(mcpDenied.status, 200);
     assert.equal(mcpDenied.body.result.isError, true);
+  });
+
+  it("掲載停止中の事業者求人をリクルーターと静的公開から除外する", () => {
+    const auth = new InMemoryAuthService();
+    const portal = new PortalService(auth);
+    const providerLogin = auth.login("lawyer@example.com", "demo-password", "legal", "provider");
+    const recruiterLogin = auth.login("candidate@example.com", "demo-password", "legal", "recruiter");
+    if (!providerLogin || !recruiterLogin || !("accessToken" in providerLogin) || !("accessToken" in recruiterLogin)) throw new Error("掲載停止テスト用ログインに失敗しました。");
+
+    portal.submitProviderListing(providerLogin.principal, "provider-legal-demo");
+    portal.reviewProviderListing("provider-legal-demo", "suspended", "掲載情報の確認が必要です。", true);
+    assert.deepEqual(portal.listJobs("legal", recruiterLogin.principal), []);
+    assert.deepEqual(portal.listPublishedJobsForPublication("legal"), []);
+    assert.throws(() => portal.getJob(recruiterLogin.principal, "job-legal-demo"), /指定された求人が見つかりません/);
   });
 
   it("MCP Resourceからカテゴリ別・ロール別の表示コンテキストを取得できる", async () => {
@@ -825,7 +841,10 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(recruiterDetail.status, 200);
     assert.equal(recruiterDetail.body.item.providerId, "非公開");
+    assert.equal(recruiterDetail.body.item.providerName, "CMS-OS法律事務所（サンプル）");
     assert.equal(typeof recruiterDetail.body.item.description, "string");
+    assert.equal(typeof recruiterDetail.body.item.createdAt, "string");
+    assert.equal(typeof recruiterDetail.body.item.updatedAt, "string");
 
     const providerDetail = await request("/api/v1/jobs/job-legal-demo", {
       headers: { authorization: `Bearer ${legalProviderToken}` },
@@ -850,6 +869,7 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(mcpDetail.status, 200);
     assert.equal(mcpDetail.body.result.structuredContent.providerId, "非公開");
+    assert.equal(mcpDetail.body.result.structuredContent.providerName, "CMS-OS法律事務所（サンプル）");
 
     const mcpJobs = await request("/mcp", {
       method: "POST",

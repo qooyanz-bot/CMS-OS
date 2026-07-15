@@ -4,11 +4,17 @@ import { listAllDirectoryGuides } from "./directory-catalog.js";
 import type { BookingStatus, CategorySlug, DirectoryGuide, InquiryStatus, JobApplication, JobPosting, PortalNotification, ProviderFavorite, ProviderInquiry, ProviderListingStatus, ProviderRecord, ServiceBooking, ServiceRequest } from "./types.js";
 import type { StateStore } from "../infrastructure/json-state-store.js";
 
+const defaultJobTimestamps = {
+  createdAt: "2026-07-01T00:00:00.000Z",
+  updatedAt: "2026-07-01T00:00:00.000Z",
+};
+
 const defaultJobs: JobPosting[] = [
   {
     id: "job-legal-demo",
     category: "legal",
     providerId: "provider-legal-demo",
+    ...defaultJobTimestamps,
     title: "弁護士・パラリーガルを募集しています",
     employmentType: "正社員・業務委託",
     location: "東京都・オンライン",
@@ -19,6 +25,7 @@ const defaultJobs: JobPosting[] = [
     id: "job-beauty-demo",
     category: "beauty",
     providerId: "provider-beauty-demo",
+    ...defaultJobTimestamps,
     title: "スタイリスト・アシスタント募集",
     employmentType: "正社員・パート",
     location: "大阪府",
@@ -29,6 +36,7 @@ const defaultJobs: JobPosting[] = [
     id: "job-ai-business-demo",
     category: "ai-business",
     providerId: "provider-ai-business-demo",
+    ...defaultJobTimestamps,
     title: "生成AI活用コンサルタント",
     employmentType: "正社員・業務委託",
     location: "東京・オンライン",
@@ -39,6 +47,7 @@ const defaultJobs: JobPosting[] = [
     id: "job-labor-shortage-demo",
     category: "labor-shortage",
     providerId: "provider-labor-shortage-demo",
+    ...defaultJobTimestamps,
     title: "採用支援プロジェクト担当",
     employmentType: "正社員・業務委託",
     location: "東京・大阪・オンライン",
@@ -49,6 +58,7 @@ const defaultJobs: JobPosting[] = [
     id: "job-tourism-demo",
     category: "tourism",
     providerId: "provider-tourism-demo",
+    ...defaultJobTimestamps,
     title: "観光体験プランナー",
     employmentType: "正社員・契約社員",
     location: "全国・地域拠点",
@@ -59,6 +69,7 @@ const defaultJobs: JobPosting[] = [
     id: "job-mobility-dx-demo",
     category: "mobility-dx",
     providerId: "provider-mobility-dx-demo",
+    ...defaultJobTimestamps,
     title: "モビリティDXプロジェクト担当",
     employmentType: "正社員・業務委託",
     location: "東京・オンライン",
@@ -69,6 +80,7 @@ const defaultJobs: JobPosting[] = [
     id: "job-gx-demo",
     category: "gx",
     providerId: "provider-gx-demo",
+    ...defaultJobTimestamps,
     title: "脱炭素・GXコンサルタント",
     employmentType: "正社員・業務委託",
     location: "東京・オンライン",
@@ -79,6 +91,7 @@ const defaultJobs: JobPosting[] = [
     id: "job-regional-revitalization-demo",
     category: "regional-revitalization",
     providerId: "provider-regional-revitalization-demo",
+    ...defaultJobTimestamps,
     title: "地域プロジェクトコーディネーター",
     employmentType: "正社員・業務委託",
     location: "地域拠点・リモート",
@@ -86,6 +99,15 @@ const defaultJobs: JobPosting[] = [
     status: "published",
   },
 ];
+
+type StoredJobPosting = Omit<JobPosting, "createdAt" | "updatedAt"> & Partial<Pick<JobPosting, "createdAt" | "updatedAt">>;
+
+function normalizeJob(job: StoredJobPosting): JobPosting {
+  const fallbackTimestamp = new Date().toISOString();
+  const createdAt = typeof job.createdAt === "string" && job.createdAt.trim().length > 0 ? job.createdAt : fallbackTimestamp;
+  const updatedAt = typeof job.updatedAt === "string" && job.updatedAt.trim().length > 0 ? job.updatedAt : createdAt;
+  return { ...job, createdAt, updatedAt };
+}
 
 function cloneFields(fields: Record<string, string | string[]>): Record<string, string | string[]> {
   return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
@@ -139,10 +161,13 @@ export class PortalStore {
     this.directoryGuides = (savedDirectoryGuides ?? catalogDirectoryGuides).map(cloneDirectoryGuide);
     this.requests = stateStore?.load<ServiceRequest[]>("portal-requests.json", []) ?? [];
     this.bookings = stateStore?.load<ServiceBooking[]>("portal-bookings.json", []) ?? [];
-    const savedJobs = stateStore?.load<JobPosting[]>("portal-jobs.json", defaultJobs) ?? defaultJobs;
-    const jobsById = new Map(defaultJobs.map((job) => [job.id, job]));
+    const savedJobs = stateStore?.load<StoredJobPosting[]>("portal-jobs.json", defaultJobs) ?? defaultJobs;
+    const jobsById = new Map<string, StoredJobPosting>(defaultJobs.map((job) => [job.id, job]));
     for (const job of savedJobs) jobsById.set(job.id, job);
-    this.jobs = [...jobsById.values()].map((job) => ({ ...job }));
+    const storedJobs = [...jobsById.values()];
+    const needsMigration = storedJobs.some((job) => !job.createdAt || !job.updatedAt);
+    this.jobs = storedJobs.map(normalizeJob);
+    if (needsMigration) this.stateStore?.save("portal-jobs.json", this.jobs);
     this.applications = stateStore?.load<JobApplication[]>("portal-applications.json", []) ?? [];
     this.inquiries = stateStore?.load<ProviderInquiry[]>("portal-inquiries.json", []) ?? [];
     this.notifications = stateStore?.load<PortalNotification[]>("portal-notifications.json", []) ?? [];
@@ -319,8 +344,9 @@ export class PortalStore {
     return this.jobs.find((job) => job.id === jobId);
   }
 
-  public createJob(input: Omit<JobPosting, "id">): JobPosting {
-    const job: JobPosting = { ...input, id: `job-${randomUUID()}` };
+  public createJob(input: Omit<JobPosting, "id" | "createdAt" | "updatedAt">): JobPosting {
+    const now = new Date().toISOString();
+    const job: JobPosting = { ...input, id: `job-${randomUUID()}`, createdAt: now, updatedAt: now };
     this.jobs.push(job);
     this.stateStore?.save("portal-jobs.json", this.jobs);
     return job;
@@ -332,7 +358,7 @@ export class PortalStore {
   ): JobPosting | undefined {
     const job = this.getJob(jobId);
     if (!job) return undefined;
-    Object.assign(job, patch);
+    Object.assign(job, patch, { updatedAt: new Date().toISOString() });
     this.stateStore?.save("portal-jobs.json", this.jobs);
     return job;
   }
