@@ -136,6 +136,7 @@ const elements = {
   category: document.querySelector("#category-select"),
   account: document.querySelector("#account-select"),
   role: document.querySelector("#role-select"),
+  roleDescription: document.querySelector("#role-description"),
   loginForm: document.querySelector("#login-form"),
   email: document.querySelector("#login-email"),
   password: document.querySelector("#login-password"),
@@ -384,6 +385,7 @@ function renderRoleOptions() {
     ?? loginOption?.roles?.map((role) => role.role).filter((role) => labels[role])
     ?? defaultRoleOptions;
   const selectedRole = roles.includes(state.role) ? state.role : roles[0] ?? "user";
+  const selectedRoleOption = loginOption?.roles?.find((role) => role.role === selectedRole);
   elements.role.replaceChildren(...roles.map((role) => {
     const option = document.createElement("option");
     option.value = role;
@@ -392,6 +394,7 @@ function renderRoleOptions() {
   }));
   state.role = selectedRole;
   elements.role.value = selectedRole;
+  elements.roleDescription.textContent = selectedRoleOption?.audience ?? "選択したロールに応じて表示内容と操作範囲が切り替わります。";
 }
 
 function applyPrincipal(principal) {

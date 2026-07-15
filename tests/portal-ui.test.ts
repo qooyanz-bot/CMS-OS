@@ -89,6 +89,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(body, /aria-busy="false"/);
   assert.match(body, /listing-submit-button/);
   assert.match(body, /login-form/);
+  assert.match(body, /role-description/);
   assert.match(body, /mfa-panel/);
   assert.match(body, /value="recruiter"/);
   assert.match(body, /data-category="beauty" data-role="provider"/);
@@ -122,6 +123,7 @@ it("CMS-OS Portalの静的UIを配信する", async () => {
   assert.match(scriptBody, /api\/v1\/auth\/config/);
   assert.match(scriptBody, /api\/v1\/auth\/login-options/);
   assert.match(scriptBody, /function loadLoginOptions/);
+  assert.match(scriptBody, /selectedRoleOption\?\.audience/);
   assert.match(scriptBody, /api\/v1\/auth\/context/);
   assert.match(scriptBody, /clearSessionState/);
   assert.match(scriptBody, /api\/v1\/auth\/oidc\/start/);
