@@ -24,7 +24,7 @@ import { WebhookService, WebhookServiceError, webhookDeliverySortValues, type We
 import { MAX_BATCH_ITEMS, OperationService, OperationServiceError, type ContentCreateBatchInput, type ContentDraftBatchInput, type ContentPolishBatchInput, type ContentPrepareBatchInput, type ContentProposeBatchInput, type OperationSubmitInput } from "../application/operation-service.js";
 import { PortalPlanningService, PortalPlanningServiceError, type PortalPlanCreateInput } from "../application/portal-planning-service.js";
 import { operationTypes, type OperationType } from "../domain/operation-store.js";
-import { applicationStatuses, bookingStatuses as bookingStatusValues, categorySlugs, contentAudiences, contentLocales, contentTypes, contentWorkflowStatuses, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type BookingStatus, type CategorySlug, type ContentJsonLdType, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
+import { applicationStatuses, bookingStatuses as bookingStatusValues, categorySlugs, contentAudiences, contentLocales, contentTypes, contentVisibilityValues, contentWorkflowStatuses, directoryGuideKinds, inquiryStatuses, jobStatuses, mediaRightsStatuses, mediaStatuses, mediaTypes, portalPlanGoals, portalRoles, providerListingStatuses, requestStatuses, webhookDeliveryStatuses, webhookEventTypes, webhookSubscriptionStatuses, type ApplicationStatus, type BookingStatus, type CategorySlug, type ContentJsonLdType, type ContentSeo, type DirectoryGuide, type InquiryStatus, type JobStatus, type MediaAsset, type MediaRightsStatus, type MediaStatus, type MediaTransformSpec, type MediaType, type PortalRole, type PortalPlanGoal, type ContentAudience, type ProviderListingStatus, type RequestStatus, type WebhookDeliveryStatus, type WebhookEventType } from "../domain/types.js";
 import { FixedWindowRateLimiter } from "../security/rate-limit.js";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -428,15 +428,24 @@ function parseWebhookUpdateInput(input: Record<string, unknown>): WebhookSubscri
 }
 
 function parseContentCreateInput(input: Record<string, unknown>): ContentCreateInput {
-  if (!isCategorySlug(input.category) || !isContentType(input.contentType) || !isContentAudience(input.audience) || typeof input.title !== "string" || typeof input.summary !== "string" || typeof input.body !== "string") {
-    throw new Error("category、contentType、audience、title、summary、bodyが必要です。");
+  if (!isCategorySlug(input.category) || !isContentType(input.contentType) || !isContentAudience(input.audience) || typeof input.title !== "string" || typeof input.summary !== "string" || (input.body !== undefined && typeof input.body !== "string") || (input.body === undefined && !Array.isArray(input.blocks))) {
+    throw new Error("category、contentType、audience、title、summary、およびbodyまたはblocksが必要です。");
   }
   if (input.slug !== undefined && typeof input.slug !== "string") throw new Error("slugは文字列で指定してください。");
   if (input.locale !== undefined && !isContentLocale(input.locale)) throw new Error(`localeは${contentLocales.join(", ")}のいずれかを指定してください。`);
   if (input.proposalId !== undefined && typeof input.proposalId !== "string") throw new Error("proposalIdは文字列で指定してください。");
+  const visibility = parseOptionalEnumValue(input.visibility, "visibility", contentVisibilityValues);
+  const tags = parseOptionalStringArray(input.tags, "tags");
+  if (input.series !== undefined && typeof input.series !== "string") throw new Error("seriesは文字列で指定してください。");
+  if (input.featured !== undefined && typeof input.featured !== "boolean") throw new Error("featuredは真偽値で指定してください。");
+  if (input.expiresAt !== undefined && typeof input.expiresAt !== "string") throw new Error("expiresAtは文字列で指定してください。");
+  if (input.authors !== undefined && (!Array.isArray(input.authors) || input.authors.some((author) => !author || typeof author !== "object" || Array.isArray(author) || typeof (author as Record<string, unknown>).name !== "string"))) {
+    throw new Error("authorsはnameを持つオブジェクトの配列で指定してください。");
+  }
   const seo = parseContentSeoPatch(input.seo);
   const mediaIds = parseOptionalStringArray(input.mediaIds, "mediaIds");
   const sourceFacts = parseOptionalStringArray(input.sourceFacts, "sourceFacts");
+  const sourceEvidence = parseOptionalSourceEvidence(input.sourceEvidence);
   return {
     category: input.category,
     contentType: input.contentType,
@@ -444,12 +453,67 @@ function parseContentCreateInput(input: Record<string, unknown>): ContentCreateI
     ...(mediaIds ? { mediaIds } : {}),
     title: input.title,
     summary: input.summary,
-    body: input.body,
+    ...(typeof input.body === "string" ? { body: input.body } : {}),
+    ...(Array.isArray(input.blocks) ? { blocks: input.blocks as ContentCreateInput["blocks"] } : {}),
+    ...(input.structuredData !== undefined ? { structuredData: input.structuredData as ContentCreateInput["structuredData"] } : {}),
+    ...(sourceEvidence ? { sourceEvidence } : {}),
     ...(typeof input.slug === "string" ? { slug: input.slug } : {}),
     ...(isContentLocale(input.locale) ? { locale: input.locale } : {}),
     ...(typeof input.proposalId === "string" ? { proposalId: input.proposalId } : {}),
     ...(sourceFacts ? { sourceFacts } : {}),
+    ...(visibility ? { visibility } : {}),
+    ...(tags ? { tags } : {}),
+    ...(typeof input.series === "string" ? { series: input.series } : {}),
+    ...(Array.isArray(input.authors) ? { authors: input.authors as ContentCreateInput["authors"] } : {}),
+    ...(typeof input.featured === "boolean" ? { featured: input.featured } : {}),
+    ...(typeof input.expiresAt === "string" ? { expiresAt: input.expiresAt } : {}),
     ...(seo ? { seo } : {}),
+  };
+}
+
+function parseContentMetadataPatch(input: Record<string, unknown>): Pick<ContentCreateInput, "visibility" | "tags" | "series" | "authors" | "featured" | "expiresAt"> {
+  const visibility = parseOptionalEnumValue(input.visibility, "visibility", contentVisibilityValues);
+  const tags = parseOptionalStringArray(input.tags, "tags");
+  if (input.series !== undefined && typeof input.series !== "string") throw new Error("seriesは文字列で指定してください。");
+  if (input.featured !== undefined && typeof input.featured !== "boolean") throw new Error("featuredは真偽値で指定してください。");
+  if (input.expiresAt !== undefined && typeof input.expiresAt !== "string") throw new Error("expiresAtは文字列で指定してください。");
+  if (input.authors !== undefined && (!Array.isArray(input.authors) || input.authors.some((author) => !author || typeof author !== "object" || Array.isArray(author) || typeof (author as Record<string, unknown>).name !== "string"))) {
+    throw new Error("authorsはnameを持つオブジェクトの配列で指定してください。");
+  }
+  return {
+    ...(visibility ? { visibility } : {}),
+    ...(tags ? { tags } : {}),
+    ...(typeof input.series === "string" ? { series: input.series } : {}),
+    ...(Array.isArray(input.authors) ? { authors: input.authors as ContentCreateInput["authors"] } : {}),
+    ...(typeof input.featured === "boolean" ? { featured: input.featured } : {}),
+    ...(typeof input.expiresAt === "string" ? { expiresAt: input.expiresAt } : {}),
+  };
+}
+
+function parseOptionalSourceEvidence(value: unknown): ContentCreateInput["sourceEvidence"] {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error("sourceEvidenceは配列で指定してください。");
+  return value as ContentCreateInput["sourceEvidence"];
+}
+
+function parseContentCorrectionInput(input: Record<string, unknown>): {
+  reason: string;
+  body?: string;
+  blocks?: ContentCreateInput["blocks"];
+  structuredData?: ContentCreateInput["structuredData"];
+  sourceEvidence?: ContentCreateInput["sourceEvidence"];
+} {
+  if (typeof input.reason !== "string" || (input.body !== undefined && typeof input.body !== "string") || (input.body === undefined && !Array.isArray(input.blocks))) {
+    throw new Error("reason、および訂正後のbodyまたはblocksが必要です。");
+  }
+  if (input.blocks !== undefined && !Array.isArray(input.blocks)) throw new Error("blocksは配列で指定してください。");
+  const sourceEvidence = parseOptionalSourceEvidence(input.sourceEvidence);
+  return {
+    reason: input.reason,
+    ...(typeof input.body === "string" ? { body: input.body } : {}),
+    ...(Array.isArray(input.blocks) ? { blocks: input.blocks as ContentCreateInput["blocks"] } : {}),
+    ...(input.structuredData !== undefined ? { structuredData: input.structuredData as ContentCreateInput["structuredData"] } : {}),
+    ...(sourceEvidence ? { sourceEvidence } : {}),
   };
 }
 
@@ -588,6 +652,11 @@ function parseContentListQueryFromArguments(argumentsObject: Record<string, unkn
   const audience = parseOptionalEnumValue(argumentsObject.audience, "audience", contentAudiences);
   const contentType = parseOptionalEnumValue(argumentsObject.contentType, "contentType", contentTypes);
   const locale = parseOptionalEnumValue(argumentsObject.locale, "locale", contentLocales);
+  const visibility = parseOptionalEnumValue(argumentsObject.visibility, "visibility", contentVisibilityValues);
+  const tags = parseOptionalStringArray(argumentsObject.tags, "tags");
+  const series = parseOptionalStringValue(argumentsObject.series, "series");
+  const featured = argumentsObject.featured === undefined ? undefined : argumentsObject.featured;
+  if (featured !== undefined && typeof featured !== "boolean") throw new Error("featuredは真偽値で指定してください。");
   const sort = parseOptionalEnumValue(argumentsObject.sort, "sort", contentSortValues);
   return {
     ...parsePaginationArguments(argumentsObject),
@@ -596,6 +665,10 @@ function parseContentListQueryFromArguments(argumentsObject: Record<string, unkn
     ...(audience ? { audience } : {}),
     ...(contentType ? { contentType } : {}),
     ...(locale ? { locale } : {}),
+    ...(visibility ? { visibility } : {}),
+    ...(tags ? { tags } : {}),
+    ...(series ? { series } : {}),
+    ...(featured !== undefined ? { featured } : {}),
     ...(sort ? { sort } : {}),
   };
 }
@@ -606,6 +679,11 @@ function parseContentListQueryFromUrl(url: URL): ContentListQuery {
   const audience = parseOptionalEnumValue(url.searchParams.get("audience"), "audience", contentAudiences);
   const contentType = parseOptionalEnumValue(url.searchParams.get("contentType"), "contentType", contentTypes);
   const locale = parseOptionalEnumValue(url.searchParams.get("locale"), "locale", contentLocales);
+  const visibility = parseOptionalEnumValue(url.searchParams.get("visibility"), "visibility", contentVisibilityValues);
+  const tags = parseOptionalStringArray(url.searchParams.get("tags")?.split(","), "tags");
+  const series = parseQueryString(url, "series");
+  const featuredValue = url.searchParams.get("featured");
+  const featured = featuredValue === null ? undefined : featuredValue === "true" ? true : featuredValue === "false" ? false : (() => { throw new Error("featuredはtrueまたはfalseで指定してください。"); })();
   const sort = parseOptionalEnumValue(url.searchParams.get("sort"), "sort", contentSortValues);
   return {
     ...parsePaginationQuery(url),
@@ -614,6 +692,10 @@ function parseContentListQueryFromUrl(url: URL): ContentListQuery {
     ...(audience ? { audience } : {}),
     ...(contentType ? { contentType } : {}),
     ...(locale ? { locale } : {}),
+    ...(visibility ? { visibility } : {}),
+    ...(tags ? { tags } : {}),
+    ...(series ? { series } : {}),
+    ...(featured !== undefined ? { featured } : {}),
     ...(sort ? { sort } : {}),
   };
 }
@@ -1298,13 +1380,22 @@ async function handleMcp(
                 title: { type: "string" },
                 summary: { type: "string" },
                 body: { type: "string" },
+                blocks: { type: "array", maxItems: 100, items: { type: "object" } },
+                structuredData: { type: "object", additionalProperties: true },
                 slug: { type: "string" },
                 locale: { enum: [...contentLocales] },
+                visibility: { enum: [...contentVisibilityValues] },
+                tags: { type: "array", maxItems: 30, items: { type: "string" } },
+                series: { type: "string" },
+                authors: { type: "array", maxItems: 10, items: { type: "object", required: ["name"], additionalProperties: true } },
+                featured: { type: "boolean" },
+                expiresAt: { type: "string" },
                 proposalId: { type: "string" },
                 sourceFacts: { type: "array", items: { type: "string" } },
+                sourceEvidence: { type: "array", maxItems: 20, items: { type: "object" } },
                 seo: { type: "object", additionalProperties: true },
               },
-              required: ["category", "contentType", "audience", "title", "summary", "body"],
+              required: ["category", "contentType", "audience", "title", "summary"],
             },
           },
           {
@@ -1333,7 +1424,11 @@ async function handleMcp(
                 audience: { type: "string", enum: [...contentAudiences] },
                 contentType: { type: "string", enum: [...contentTypes] },
                 locale: { type: "string", enum: [...contentLocales] },
+                tags: { type: "array", maxItems: 30, items: { type: "string" } },
+                series: { type: "string", maxLength: 120 },
+                featured: { type: "boolean" },
                 sort: { type: "string", enum: [...contentSortValues] },
+                visibility: { type: "string", enum: [...contentVisibilityValues] },
                 limit: { type: "integer", minimum: 1, maximum: 100, default: 50 },
                 cursor: { type: "integer", minimum: 0, default: 0 },
               },
@@ -1343,6 +1438,25 @@ async function handleMcp(
             name: "content.get",
             description: "事業者自身のコンテンツを1件取得します。",
             inputSchema: { type: "object", properties: { contentId: { type: "string" } }, required: ["contentId"] },
+          },
+          {
+            name: "content.editorial_actions",
+            description: "公開済みコンテンツの訂正・撤回履歴を取得します。",
+            inputSchema: { type: "object", properties: { contentId: { type: "string" } }, required: ["contentId"] },
+          },
+          {
+            name: "content.correction",
+            description: "公開済みコンテンツを上書きせず、訂正前後の本文・ブロック・構造化データ・出典を履歴へ記録します。",
+            inputSchema: {
+              type: "object",
+              properties: { contentId: { type: "string" }, reason: { type: "string", minLength: 3, maxLength: 1000 }, body: { type: "string" }, blocks: { type: "array", maxItems: 100, items: { type: "object" } }, structuredData: { type: "object", additionalProperties: true }, sourceEvidence: { type: "array", maxItems: 20, items: { type: "object" } } },
+              required: ["contentId", "reason"],
+            },
+          },
+          {
+            name: "content.withdrawal",
+            description: "公開済みコンテンツを削除せず、撤回理由を履歴へ記録して公開を停止します。",
+            inputSchema: { type: "object", properties: { contentId: { type: "string" }, reason: { type: "string", minLength: 3, maxLength: 1000 } }, required: ["contentId", "reason"] },
           },
           {
             name: "content.versions",
@@ -1378,8 +1492,17 @@ async function handleMcp(
                 title: { type: "string" },
                 summary: { type: "string" },
                 body: { type: "string" },
+                blocks: { type: "array", maxItems: 100, items: { type: "object" } },
+                structuredData: { type: "object", additionalProperties: true },
                 mediaIds: { type: "array", maxItems: 20, items: { type: "string" } },
                 sourceFacts: { type: "array", items: { type: "string" } },
+                sourceEvidence: { type: "array", maxItems: 20, items: { type: "object" } },
+                visibility: { enum: [...contentVisibilityValues] },
+                tags: { type: "array", maxItems: 30, items: { type: "string" } },
+                series: { type: "string" },
+                authors: { type: "array", maxItems: 10, items: { type: "object", required: ["name"], additionalProperties: true } },
+                featured: { type: "boolean" },
+                expiresAt: { type: "string" },
                 seo: { type: "object", additionalProperties: true },
               },
               required: ["contentId"],
@@ -2254,29 +2377,7 @@ async function handleMcp(
     }
 
     if (name === "content.create") {
-      if (!isCategorySlug(argumentsObject.category) || !isContentType(argumentsObject.contentType) || !isContentAudience(argumentsObject.audience) || typeof argumentsObject.title !== "string" || typeof argumentsObject.summary !== "string" || typeof argumentsObject.body !== "string") {
-        throw new Error("category、contentType、audience、title、summary、bodyが必要です。");
-      }
-      if (argumentsObject.slug !== undefined && typeof argumentsObject.slug !== "string") throw new Error("slugは文字列で指定してください。");
-      if (argumentsObject.locale !== undefined && !isContentLocale(argumentsObject.locale)) throw new Error(`localeは${contentLocales.join(", ")}のいずれかを指定してください。`);
-      if (argumentsObject.proposalId !== undefined && typeof argumentsObject.proposalId !== "string") throw new Error("proposalIdは文字列で指定してください。");
-      const seo = parseContentSeoPatch(argumentsObject.seo);
-      const mediaIds = parseOptionalStringArray(argumentsObject.mediaIds, "mediaIds");
-      const sourceFacts = parseOptionalStringArray(argumentsObject.sourceFacts, "sourceFacts");
-      const result = content.createContent(principal, {
-        category: argumentsObject.category,
-        contentType: argumentsObject.contentType,
-        audience: argumentsObject.audience,
-        ...(mediaIds ? { mediaIds } : {}),
-        title: argumentsObject.title,
-        summary: argumentsObject.summary,
-        body: argumentsObject.body,
-        ...(typeof argumentsObject.slug === "string" ? { slug: argumentsObject.slug } : {}),
-        ...(isContentLocale(argumentsObject.locale) ? { locale: argumentsObject.locale } : {}),
-        ...(typeof argumentsObject.proposalId === "string" ? { proposalId: argumentsObject.proposalId } : {}),
-        ...(sourceFacts ? { sourceFacts } : {}),
-        ...(seo ? { seo } : {}),
-      });
+      const result = content.createContent(principal, parseContentCreateInput(argumentsObject));
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
     }
@@ -2310,6 +2411,27 @@ async function handleMcp(
       return;
     }
 
+    if (name === "content.editorial_actions") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = { items: content.listEditorialActions(principal, argumentsObject.contentId) };
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.correction") {
+      if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      const result = content.recordCorrection(principal, argumentsObject.contentId, parseContentCorrectionInput(argumentsObject));
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
+    if (name === "content.withdrawal") {
+      if (typeof argumentsObject.contentId !== "string" || typeof argumentsObject.reason !== "string") throw new Error("contentIdとreasonが必要です。");
+      const result = content.withdrawContent(principal, argumentsObject.contentId, argumentsObject.reason);
+      writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
+      return;
+    }
+
     if (name === "content.version_get") {
       if (typeof argumentsObject.contentId !== "string" || typeof argumentsObject.version !== "number") throw new Error("contentIdとversionが必要です。");
       const result = content.getVersion(principal, argumentsObject.contentId, argumentsObject.version);
@@ -2333,16 +2455,22 @@ async function handleMcp(
 
     if (name === "content.update") {
       if (typeof argumentsObject.contentId !== "string") throw new Error("contentIdが必要です。");
+      if (argumentsObject.blocks !== undefined && !Array.isArray(argumentsObject.blocks)) throw new Error("blocksは配列で指定してください。");
       const seo = parseContentSeoPatch(argumentsObject.seo);
       const mediaIds = parseOptionalStringArray(argumentsObject.mediaIds, "mediaIds");
       const sourceFacts = parseOptionalStringArray(argumentsObject.sourceFacts, "sourceFacts");
+      const sourceEvidence = parseOptionalSourceEvidence(argumentsObject.sourceEvidence);
       const result = content.updateContent(principal, argumentsObject.contentId, {
         ...(typeof argumentsObject.title === "string" ? { title: argumentsObject.title } : {}),
         ...(typeof argumentsObject.summary === "string" ? { summary: argumentsObject.summary } : {}),
         ...(typeof argumentsObject.body === "string" ? { body: argumentsObject.body } : {}),
+        ...(Array.isArray(argumentsObject.blocks) ? { blocks: argumentsObject.blocks as ContentCreateInput["blocks"] } : {}),
+        ...(argumentsObject.structuredData !== undefined ? { structuredData: argumentsObject.structuredData as ContentCreateInput["structuredData"] } : {}),
+        ...(sourceEvidence ? { sourceEvidence } : {}),
         ...(seo ? { seo } : {}),
         ...(mediaIds ? { mediaIds } : {}),
         ...(sourceFacts ? { sourceFacts } : {}),
+        ...parseContentMetadataPatch(argumentsObject),
       });
       writeJson(response, 200, { jsonrpc: "2.0", id, result: { content: [mcpText(result)], structuredContent: result } });
       return;
@@ -3330,8 +3458,8 @@ export function createHttpServer(
 
       if (request.method === "POST" && url.pathname === "/api/v1/content") {
         const body = await readJson(request);
-        if (!isCategorySlug(body.category) || !isContentType(body.contentType) || !isContentAudience(body.audience) || typeof body.title !== "string" || typeof body.summary !== "string" || typeof body.body !== "string") {
-          writeJson(response, 400, { error: "category、contentType、audience、title、summary、bodyが必要です。" });
+        if (!isCategorySlug(body.category) || !isContentType(body.contentType) || !isContentAudience(body.audience) || typeof body.title !== "string" || typeof body.summary !== "string" || (body.body !== undefined && typeof body.body !== "string") || (body.body === undefined && !Array.isArray(body.blocks))) {
+          writeJson(response, 400, { error: "category、contentType、audience、title、summary、およびbodyまたはblocksが必要です。" });
           return;
         }
         if (body.slug !== undefined && typeof body.slug !== "string") {
@@ -3347,23 +3475,7 @@ export function createHttpServer(
           return;
         }
         try {
-          const seo = parseContentSeoPatch(body.seo);
-          const mediaIds = parseOptionalStringArray(body.mediaIds, "mediaIds");
-          const sourceFacts = parseOptionalStringArray(body.sourceFacts, "sourceFacts");
-          const item = content.createContent(principal, {
-            category: body.category,
-            contentType: body.contentType,
-            audience: body.audience,
-            ...(mediaIds ? { mediaIds } : {}),
-            title: body.title,
-            summary: body.summary,
-            body: body.body,
-            ...(typeof body.slug === "string" ? { slug: body.slug } : {}),
-            ...(isContentLocale(body.locale) ? { locale: body.locale } : {}),
-            ...(typeof body.proposalId === "string" ? { proposalId: body.proposalId } : {}),
-            ...(sourceFacts ? { sourceFacts } : {}),
-            ...(seo ? { seo } : {}),
-          });
+          const item = content.createContent(principal, parseContentCreateInput(body));
           writeJson(response, 201, { item });
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを作成できません。" });
@@ -3376,6 +3488,54 @@ export function createHttpServer(
           writeJson(response, 200, content.listContentPage(principal, parseContentListQueryFromUrl(url)));
         } catch (error) {
           writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "コンテンツを取得できません。" });
+        }
+        return;
+      }
+
+      const editorialActionsMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/editorial-actions$/);
+      if (request.method === "GET" && editorialActionsMatch) {
+        const contentId = editorialActionsMatch[1];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          writeJson(response, 200, { items: content.listEditorialActions(principal, contentId) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "訂正・撤回履歴を取得できません。" });
+        }
+        return;
+      }
+
+      const correctionMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/correction$/);
+      if (request.method === "POST" && correctionMatch) {
+        const contentId = correctionMatch[1];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          const body = await readJson(request);
+          writeJson(response, 201, { item: content.recordCorrection(principal, contentId, parseContentCorrectionInput(body)) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "訂正履歴を登録できません。" });
+        }
+        return;
+      }
+
+      const withdrawalMatch = url.pathname.match(/^\/api\/v1\/content\/([^/]+)\/withdrawal$/);
+      if (request.method === "POST" && withdrawalMatch) {
+        const contentId = withdrawalMatch[1];
+        if (!contentId) {
+          writeJson(response, 400, { error: "contentIdが必要です。" });
+          return;
+        }
+        try {
+          const body = await readJson(request);
+          if (typeof body.reason !== "string") throw new ContentServiceError(400, "reasonが必要です。");
+          writeJson(response, 200, { item: content.withdrawContent(principal, contentId, body.reason) });
+        } catch (error) {
+          writeJson(response, serviceErrorStatus(error), { error: error instanceof Error ? error.message : "撤回履歴を登録できません。" });
         }
         return;
       }
@@ -3730,18 +3890,27 @@ export function createHttpServer(
           writeJson(response, 400, { error: "bodyは文字列で指定してください。" });
           return;
         }
+        if (body.blocks !== undefined && !Array.isArray(body.blocks)) {
+          writeJson(response, 400, { error: "blocksは配列で指定してください。" });
+          return;
+        }
         try {
           const seo = parseContentSeoPatch(body.seo);
           const mediaIds = parseOptionalStringArray(body.mediaIds, "mediaIds");
           const sourceFacts = parseOptionalStringArray(body.sourceFacts, "sourceFacts");
+          const sourceEvidence = parseOptionalSourceEvidence(body.sourceEvidence);
           writeJson(response, 200, {
             item: content.updateContent(principal, contentId, {
               ...(typeof body.title === "string" ? { title: body.title } : {}),
               ...(typeof body.summary === "string" ? { summary: body.summary } : {}),
               ...(typeof body.body === "string" ? { body: body.body } : {}),
+              ...(Array.isArray(body.blocks) ? { blocks: body.blocks as ContentCreateInput["blocks"] } : {}),
+              ...(body.structuredData !== undefined ? { structuredData: body.structuredData as ContentCreateInput["structuredData"] } : {}),
+              ...(sourceEvidence ? { sourceEvidence } : {}),
               ...(mediaIds ? { mediaIds } : {}),
               ...(seo ? { seo } : {}),
               ...(sourceFacts ? { sourceFacts } : {}),
+              ...parseContentMetadataPatch(body),
             }),
           });
         } catch (error) {
@@ -4169,12 +4338,6 @@ export function createHttpServer(
 
       if (request.method === "POST" && url.pathname === "/mcp") {
         await handleMcp(request, response, auth, portal, content, publication, media, webhook, operation, portalPlanning, authRateLimiter);
-        return;
-      }
-
-      const categoryCandidate = url.pathname.match(/^\/api\/v1\/categories\/([^/]+)$/)?.[1];
-      if (categoryCandidate && isCategorySlug(categoryCandidate)) {
-        writeJson(response, 404, { error: "カテゴリの操作は未実装です。" });
         return;
       }
 

@@ -17,6 +17,7 @@ describe("CMS-OS OpenAPI契約", () => {
       "/health",
       "/api/v1/auth/login",
       "/api/v1/auth/config",
+      "/api/v1/auth/login-options",
       "/api/v1/auth/oidc/start",
       "/api/v1/auth/oidc/callback",
       "/api/v1/auth/mfa/enroll",
@@ -28,10 +29,14 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/categories",
       "/api/v1/categories/{category}",
       "/api/v1/categories/{category}/experience",
+      "/api/v1/categories/{category}/summary",
       "/api/v1/categories/{category}/directories",
       "/api/v1/portal-plans",
       "/api/v1/portal-plans/{planId}",
       "/api/v1/portal-plans/{planId}/apply",
+      "/api/v1/portal-plans/{planId}/draft",
+      "/api/v1/directories",
+      "/api/v1/directories/{directoryId}",
       "/api/v1/favorites",
       "/api/v1/favorites/{favoriteId}",
       "/api/v1/providers",
@@ -40,10 +45,28 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/providers/{providerId}/listing-submission",
       "/api/v1/providers/{providerId}/listing-review",
       "/api/v1/provider-listing-reviews",
+      "/api/v1/media",
+      "/api/v1/media/seo-audit",
+      "/api/v1/media/{assetId}",
+      "/api/v1/media/{assetId}/transform",
+      "/api/v1/media/{assetId}/seo-audit",
+      "/api/v1/webhooks",
+      "/api/v1/webhooks/deliveries",
+      "/api/v1/webhooks/deliveries/deliver-pending",
+      "/api/v1/webhooks/deliveries/{deliveryId}/retry",
+      "/api/v1/webhooks/deliveries/{deliveryId}/deliver",
+      "/api/v1/webhooks/{subscriptionId}",
+      "/api/v1/operations",
+      "/api/v1/operations/execute-pending",
+      "/api/v1/operations/{operationId}",
+      "/api/v1/operations/{operationId}/execute",
       "/api/v1/content/proposals",
       "/api/v1/content/drafts",
       "/api/v1/content",
       "/api/v1/content/{contentId}",
+      "/api/v1/content/{contentId}/editorial-actions",
+      "/api/v1/content/{contentId}/correction",
+      "/api/v1/content/{contentId}/withdrawal",
       "/api/v1/content/{contentId}/reviews",
       "/api/v1/content/{contentId}/review-request",
       "/api/v1/content/{contentId}/request-changes",
@@ -88,6 +111,11 @@ describe("CMS-OS OpenAPI契約", () => {
         if (typeof operation === "object" && operation !== null) assert.ok("responses" in operation, `${path}のレスポンス定義がありません。`);
       }
     }
+    assert.deepEqual(
+      Object.keys(specification.paths).sort(),
+      [...requiredPaths].sort(),
+      "OpenAPIのパス一覧と契約テストの必須パス一覧が一致していません。",
+    );
     const contentPath = specification.paths["/api/v1/content/{contentId}"];
     assert.ok(contentPath);
     assert.ok(contentPath.patch);
@@ -110,7 +138,11 @@ describe("CMS-OS OpenAPI契約", () => {
     const listQueryParameters: Record<string, string[]> = {
       "/api/v1/providers": ["search", "theme", "location", "sort", "limit", "cursor"],
       "/api/v1/providers/compare": ["ids"],
+      "/api/v1/provider-listing-reviews": ["category", "status", "limit", "cursor"],
       "/api/v1/favorites": ["limit", "cursor"],
+      "/api/v1/media": ["search", "mediaType", "status", "rightsStatus", "sort", "limit", "cursor"],
+      "/api/v1/webhooks/deliveries": ["status", "eventType", "sort", "limit", "cursor"],
+      "/api/v1/operations": ["limit", "cursor"],
       "/api/v1/requests": ["search", "status", "sort", "limit", "cursor"],
       "/api/v1/bookings": ["status", "limit", "cursor"],
       "/api/v1/jobs": ["search", "employmentType", "location", "status", "sort", "limit", "cursor"],
@@ -118,6 +150,7 @@ describe("CMS-OS OpenAPI契約", () => {
       "/api/v1/portal-plans": ["limit", "cursor"],
       "/api/v1/content": ["search", "status", "audience", "contentType", "locale", "sort", "limit", "cursor"],
       "/api/v1/content/proposals": ["search", "audience", "contentType", "sort", "limit", "cursor"],
+      "/api/v1/notifications": ["limit", "cursor"],
     };
     for (const [path, expectedParameters] of Object.entries(listQueryParameters)) {
       const operation = specification.paths[path]?.get as { parameters?: Array<{ name?: string }> } | undefined;
@@ -152,6 +185,19 @@ describe("CMS-OS OpenAPI契約", () => {
     assert.ok(specification.components.schemas.AsyncOperationContentPolishBatchRequest);
     assert.ok(specification.components.schemas.AsyncOperationContentPrepareBatchRequest);
     assert.deepEqual(specification.components.schemas.ContentWorkflowStatus?.enum, ["proposed", "drafted", "polished", "seo_reviewed", "review_requested", "changes_requested", "approved", "published", "archived"]);
+    assert.ok(specification.components.schemas.ContentBlock);
+    assert.ok(specification.components.schemas.ContentBlock?.properties?.type);
+    assert.ok(specification.components.schemas.ContentStructuredData);
+    assert.ok(specification.components.schemas.ContentSourceEvidence);
+    assert.ok(specification.components.schemas.ContentCreateRequest?.properties?.blocks);
+    assert.ok(specification.components.schemas.ContentCreateRequest?.properties?.structuredData);
+    assert.ok(specification.components.schemas.ContentCreateRequest?.properties?.sourceEvidence);
+    assert.ok(!specification.components.schemas.ContentCreateRequest?.required?.includes("body"));
+    assert.ok(specification.components.schemas.ContentUpdateRequest?.properties?.blocks);
+    assert.ok(specification.components.schemas.ContentUpdateRequest?.properties?.structuredData);
+    assert.ok(specification.components.schemas.ContentUpdateRequest?.properties?.sourceEvidence);
+    assert.ok(specification.components.schemas.ContentCorrectionRequest?.properties?.structuredData);
+    assert.ok(specification.components.schemas.ContentEditorialAction?.properties?.afterStructuredData);
     assert.deepEqual(specification.components.schemas.ProposalSort?.enum, ["createdAt_desc", "createdAt_asc", "topic_asc"]);
     assert.deepEqual((specification.paths["/api/v1/publications/schedules/execute"]?.post as { security?: unknown }).security, [{ BearerAuth: [] }, { OperatorKey: [] }]);
     for (const path of [

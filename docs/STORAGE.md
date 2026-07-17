@@ -51,7 +51,7 @@ npm run dev
 
 ## PostgreSQL移行
 
-PostgreSQL向けの正規化スキーマは[`db/migrations/001_initial.sql`](../db/migrations/001_initial.sql)、移行期の状態ストアは[`db/migrations/002_state_store.sql`](../db/migrations/002_state_store.sql)にあります。既存環境向けのカテゴリ拡張は[`003_expand_category_slugs.sql`](../db/migrations/003_expand_category_slugs.sql)、コンテンツのアーカイブ状態は[`004_content_archive_status.sql`](../db/migrations/004_content_archive_status.sql)で更新します。
+PostgreSQL向けの正規化スキーマは[`db/migrations/001_initial.sql`](../db/migrations/001_initial.sql)、移行期の状態ストアは[`db/migrations/002_state_store.sql`](../db/migrations/002_state_store.sql)にあります。既存環境向けのカテゴリ拡張は[`003_expand_category_slugs.sql`](../db/migrations/003_expand_category_slugs.sql)、コンテンツのアーカイブ状態は[`004_content_archive_status.sql`](../db/migrations/004_content_archive_status.sql)、recruiterロール・公開可視性・Blogメタデータ・版管理項目は[`005_content_metadata.sql`](../db/migrations/005_content_metadata.sql)で更新します。
 
 接続モードは次の環境変数で起動します。
 
@@ -68,8 +68,10 @@ npm run dev
 スキーマでは、次の境界を分離します。
 
 - アカウント、ロール割当、セッション
+  - 公開ロールとは別のCMS内部ロール割当（担当カテゴリ・事業者・組織スコープ）
 - カテゴリ別事業者、依頼、求人、応募
 - AI企画案、コンテンツ、コンテンツバージョン
+  - コンテンツのblocks、構造化データ、出典、locale、visibility、タグ、シリーズ、著者、注目表示、読了時間、公開期限、現在版
 - 静的公開ビルド
 - 監査ログ
 

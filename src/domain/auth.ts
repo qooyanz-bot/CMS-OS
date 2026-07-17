@@ -703,6 +703,7 @@ export class InMemoryAuthService implements AuthService {
       role: normalizedRole,
       availableContexts: listAvailableContexts(account),
       ...(account.providerId ? { providerId: account.providerId } : {}),
+      ...(account.internalRoleAssignments ? { internalRoleAssignments: account.internalRoleAssignments.map((assignment) => ({ ...assignment })) } : {}),
     };
   }
 }

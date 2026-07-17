@@ -557,6 +557,13 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(denied.status, 403);
 
+    const crossCategory = await request("/api/v1/favorites", {
+      method: "POST",
+      headers: { authorization: `Bearer ${legalOrdererToken}` },
+      body: JSON.stringify({ providerId: "provider-beauty-demo" }),
+    });
+    assert.equal(crossCategory.status, 404);
+
     const added = await request("/api/v1/favorites", {
       method: "POST",
       headers: { authorization: `Bearer ${legalOrdererToken}` },
@@ -1157,6 +1164,13 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
     });
     assert.equal(protectedUpdate.status, 400);
 
+    const protectedListingMetadataUpdate = await request("/api/v1/providers/provider-legal-demo", {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${legalProviderToken}` },
+      body: JSON.stringify({ publicFields: { listingReviewNote: "審査済みと偽装" } }),
+    });
+    assert.equal(protectedListingMetadataUpdate.status, 400);
+
     const denied = await request("/api/v1/providers/provider-legal-demo", {
       method: "PATCH",
       headers: { authorization: `Bearer ${legalOrdererToken}` },
@@ -1192,6 +1206,13 @@ describe("CMS-OSカテゴリ別アクセス制御", () => {
       headers: { authorization: `Bearer ${legalProviderToken}` },
     });
     assert.ok(providerJobs.body.items.some((item: { id: string; status: string }) => item.id === created.body.item.id && item.status === "closed"));
+
+    const recruiterJobs = await request("/api/v1/jobs?category=legal", {
+      headers: { authorization: `Bearer ${legalRecruiterToken}` },
+    });
+    assert.equal(recruiterJobs.status, 200);
+    assert.ok(recruiterJobs.body.items.every((item: { status: string }) => item.status === "published"));
+    assert.ok(!recruiterJobs.body.items.some((item: { id: string }) => item.id === created.body.item.id));
 
     const deniedJobs = await request("/api/v1/jobs?category=legal");
     assert.equal(deniedJobs.status, 401);

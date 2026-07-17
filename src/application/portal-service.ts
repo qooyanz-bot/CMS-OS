@@ -105,6 +105,13 @@ const protectedPublicFieldKeys = new Set([
   "verificationStatus",
   "lastVerifiedAt",
   "listingStatus",
+  "providerId",
+  "accountId",
+  "ordererId",
+  "candidateId",
+  "listingSubmittedAt",
+  "listingReviewedAt",
+  "listingReviewNote",
   "__proto__",
   "constructor",
   "prototype",
@@ -359,7 +366,7 @@ export class PortalService {
     const visibleJobs = canManageJobs
       ? this.store.listJobsForProvider(category, principal!.providerId!)
       : canSearchJobs
-        ? this.store.listJobs(category).filter((job) => Boolean(this.publicJobProviderName(job)))
+        ? this.store.listJobs(category).filter((job) => job.status === "published" && Boolean(this.publicJobProviderName(job)))
         : [];
     if (canSearchJobs || canManageJobs) {
       addMetric({
@@ -627,6 +634,10 @@ export class PortalService {
   public createFavorite(principal: AuthenticatedPrincipal | null, providerId: string): { item: VisibleProviderFavorite; created: boolean } {
     if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
     this.assertAction(principal, principal.category, "favorite.manage");
+    const target = this.store.getProvider(providerId);
+    if (!target || target.category !== principal.category) {
+      throw new PortalServiceError(404, "お気に入り登録できる事業者が見つかりません。");
+    }
     const provider = this.getProvider(providerId, principal);
     const result = this.store.createFavorite({ accountId: principal.accountId, category: principal.category, providerId: provider.id });
     return {
@@ -817,6 +828,7 @@ export class PortalService {
     if (principal.role !== "orderer" && principal.role !== "provider") {
       throw new PortalServiceError(403, "発注者または事業者だけが依頼を確認できます。");
     }
+    this.assertAction(principal, principal.category, "request.read");
 
     const normalizedSearch = normalizeFilterText(filters.search);
     const status = assertAllowedFilter(filters.status, requestStatuses, "status");
@@ -1114,7 +1126,7 @@ export class PortalService {
     }
     const jobs = isOwnProvider
       ? this.store.listJobsForProvider(category, principal.providerId!)
-      : this.store.listJobs(category).filter((job) => Boolean(this.publicJobProviderName(job)));
+      : this.store.listJobs(category).filter((job) => job.status === "published" && Boolean(this.publicJobProviderName(job)));
     const normalizedSearch = normalizeFilterText(filters.search);
     const normalizedEmploymentType = normalizeFilterText(filters.employmentType);
     const normalizedLocation = normalizeFilterText(filters.location);
@@ -1139,6 +1151,7 @@ export class PortalService {
   /** 静的公開ビルド向けに、公開済み求人だけを取得します。認証APIには公開しません。 */
   public listPublishedJobsForPublication(category: CategorySlug): JobPosting[] {
     return this.store.listJobs(category).flatMap((job) => {
+      if (job.status !== "published") return [];
       const providerName = this.publicJobProviderName(job);
       return providerName ? [{ ...job, providerName }] : [];
     });
@@ -1256,6 +1269,7 @@ export class PortalService {
   ): JobApplication {
     if (!principal) throw new PortalServiceError(401, "ログインが必要です。");
     if (!isRecruiterRole(principal.role)) throw new PortalServiceError(403, "リクルーターだけが求人へ応募できます。");
+    this.assertAction(principal, principal.category, "application.create");
     if (message.trim().length < 10) throw new PortalServiceError(400, "messageは10文字以上で入力してください。");
 
     const job = this.store.getJob(jobId);
@@ -1291,6 +1305,7 @@ export class PortalService {
     if (!isRecruiterRole(principal.role) && principal.role !== "provider") {
       throw new PortalServiceError(403, "リクルーターまたは事業者だけが応募情報を確認できます。");
     }
+    this.assertAction(principal, principal.category, "application.read");
 
     const normalizedSearch = normalizeFilterText(filters.search);
     const normalizedJobId = normalizeFilterText(filters.jobId);

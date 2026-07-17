@@ -36,11 +36,11 @@ Visibility and actions are defined per category. Data belonging to another categ
 ## Content workflow
 
 ```text
-REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
-→ EDITED → APPROVED → PUBLISHED
+PROPOSED → DRAFTED → POLISHED → SEO_REVIEWED
+→ REVIEW_REQUESTED → APPROVED → PUBLISHED
 ```
 
-AI output goes through fact checking, review, and approval before publication. Accuracy-sensitive content such as IR and legal information is designed to retain evidence and verification history.
+`FACT_CHECKED` is not an independent workflow status; the latest fact-check and SEO audit must pass before review and approval. AI output goes through fact checking, review, and approval before publication. Accuracy-sensitive content such as IR and legal information is designed to retain evidence and verification history.
 
 ## API / MCP
 

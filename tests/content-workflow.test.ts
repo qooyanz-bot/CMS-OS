@@ -54,6 +54,8 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(proposal.status, 201);
     assert.equal(proposal.body.item.audience, "candidate");
     assert.ok(proposal.body.item.outline.includes("仕事内容と成長機会"));
+    assert.equal(proposal.body.item.generationAudit.adapterId, "deterministic-content-agent");
+    assert.equal(proposal.body.item.generationAudit.operation, "proposal");
 
     const direct = await request("/api/v1/content", {
       method: "POST",
@@ -94,6 +96,8 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     assert.equal(draft.status, 201);
     assert.equal(draft.body.item.status, "drafted");
     assert.equal(draft.body.item.locale, "ja");
+    assert.equal(draft.body.item.generationAudit.operation, "draft");
+    assert.equal(draft.body.item.generationAudit.model, "deterministic");
     const translation = await request(`/api/v1/content/${draft.body.item.id}/translate`, {
       method: "POST",
       headers: { authorization: `Bearer ${providerToken}` },
@@ -217,6 +221,63 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     });
     assert.equal(restored.status, 200);
     assert.equal(restored.body.item.status, "drafted");
+  });
+
+  it("Blogの著者、シリーズ、タグ、公開メタデータを版管理し、検索条件へ反映する", async () => {
+    const login = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "lawyer@example.com", password: "demo-password", category: "legal", role: "provider" }),
+    });
+    const headers = { authorization: `Bearer ${login.body.accessToken}` };
+    const created = await request("/api/v1/content", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        category: "legal",
+        contentType: "blog",
+        audience: "customer",
+        title: "法律相談の選び方",
+        summary: "相談前に確認すべきポイントを整理します。",
+        body: "# 法律相談の選び方\n\n相談内容と必要な準備を確認します。",
+        tags: ["法律相談", "初心者"],
+        series: "はじめての法律相談",
+        authors: [{ name: "山田 太郎", credentials: ["弁護士"], profileUrl: "/authors/yamada" }],
+        featured: true,
+        visibility: "public",
+        expiresAt: "2099-12-31T00:00:00.000Z",
+        sourceFacts: ["公式案内に基づく検証用情報です。"],
+      }),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.item.visibility, "public");
+    assert.deepEqual(created.body.item.tags, ["法律相談", "初心者"]);
+    assert.equal(created.body.item.series, "はじめての法律相談");
+    assert.equal(created.body.item.authors[0].name, "山田 太郎");
+    assert.equal(created.body.item.featured, true);
+    assert.match(created.body.item.currentVersionId, /^content-version-/);
+    assert.equal(created.body.item.createdBy, "account-legal-provider-demo");
+    assert.ok(created.body.item.readingTimeMinutes >= 1);
+
+    const listed = await request("/api/v1/content?tags=%E6%B3%95%E5%BE%8B%E7%9B%B8%E8%AB%87&series=%E3%81%AF%E3%81%98%E3%82%81%E3%81%A6%E3%81%AE%E6%B3%95%E5%BE%8B%E7%9B%B8%E8%AB%87&featured=true", { headers });
+    assert.equal(listed.status, 200);
+    assert.ok(listed.body.items.some((item: { id: string }) => item.id === created.body.item.id));
+
+    const updated = await request(`/api/v1/content/${created.body.item.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ tags: ["法律相談", "更新"], featured: false, authors: [{ name: "山田 太郎", bio: "公式プロフィール" }] }),
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.item.featured, false);
+    assert.deepEqual(updated.body.item.tags, ["法律相談", "更新"]);
+    assert.equal(updated.body.item.generationAudit, undefined);
+    assert.equal(updated.body.item.version, 2);
+    assert.notEqual(updated.body.item.currentVersionId, created.body.item.currentVersionId);
+
+    const version = await request(`/api/v1/content/${created.body.item.id}/versions/2`, { headers });
+    assert.equal(version.status, 200);
+    assert.deepEqual(version.body.item.tags, ["法律相談", "更新"]);
+    assert.equal(version.body.item.authors[0].bio, "公式プロフィール");
   });
 
   it("ページSEO監査がH1重複、薄い本文、FAQ構造化データ欠落を検出する", async () => {
@@ -582,5 +643,188 @@ describe("CMS-OS AIコンテンツワークフロー", () => {
     });
     assert.equal(changes.body.result.structuredContent.content.status, "changes_requested");
     assert.equal(changes.body.result.structuredContent.review.status, "changes_requested");
+  });
+
+  it("note型ブロックをRESTとMCPで保存し、版履歴から復元できる", async () => {
+    const providerLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "lawyer@example.com", password: "demo-password", category: "legal", role: "provider" }),
+    });
+    const headers = { authorization: `Bearer ${providerLogin.body.accessToken}` };
+    const blocks = [
+      { type: "heading", level: 1, text: "相談前の準備" },
+      { type: "paragraph", text: "相談の目的と期限を先に整理します。" },
+      { type: "table", headers: ["項目", "確認内容"], rows: [["目的", "相談したいこと"], ["期限", "いつまでに必要か"]] },
+      { type: "cta", label: "事業者一覧を見る", url: "/categories/legal/providers/" },
+    ];
+    const created = await request("/api/v1/content", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        category: "legal",
+        contentType: "blog",
+        audience: "beginner",
+        title: "相談前に確認したいこと",
+        summary: "相談前の準備を整理します。",
+        blocks,
+        sourceFacts: ["事業者が確認した一次情報"],
+      }),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.item.blocks.length, 4);
+    assert.match(created.body.item.body, /^# 相談前の準備/m);
+    assert.match(created.body.item.body, /\| 項目 \| 確認内容 \|/);
+
+    const updated = await request(`/api/v1/content/${created.body.item.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ blocks: [{ type: "heading", level: 1, text: "更新後の見出し" }, { type: "paragraph", text: "更新された本文です。" }] }),
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.item.version, 2);
+    assert.match(updated.body.item.body, /^# 更新後の見出し/m);
+
+    const restored = await request(`/api/v1/content/${created.body.item.id}/versions/1/restore`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({}),
+    });
+    assert.equal(restored.status, 200);
+    assert.equal(restored.body.item.version, 3);
+    assert.equal(restored.body.item.blocks[0].text, "相談前の準備");
+    assert.match(restored.body.item.body, /\| 項目 \| 確認内容 \|/);
+
+    const unsafe = await request("/api/v1/content", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        category: "legal",
+        contentType: "blog",
+        audience: "beginner",
+        title: "不正URL",
+        summary: "不正URLの確認",
+        blocks: [{ type: "image", url: "javascript:alert(1)", alt: "危険" }],
+      }),
+    });
+    assert.equal(unsafe.status, 400);
+
+    const mcpCreated = await request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 31,
+        method: "tools/call",
+        params: {
+          name: "content.create",
+          arguments: {
+            category: "legal",
+            contentType: "blog",
+            audience: "beginner",
+            title: "MCPブロック",
+            summary: "MCPから登録",
+            blocks: [{ type: "paragraph", text: "MCPから登録された本文です。" }],
+          },
+        },
+      }),
+    });
+    assert.equal(mcpCreated.status, 200);
+    assert.equal(mcpCreated.body.result.structuredContent.blocks[0].type, "paragraph");
+  });
+
+  it("採用・PR・IRの構造化データをREST/MCPと版履歴で保持する", async () => {
+    const providerLogin = await request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "lawyer@example.com", password: "demo-password", category: "legal", role: "provider" }),
+    });
+    const headers = { authorization: `Bearer ${providerLogin.body.accessToken}` };
+    const created = await request("/api/v1/content", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        category: "legal",
+        contentType: "ir",
+        audience: "investor",
+        title: "2026年3月期 決算説明資料",
+        summary: "投資家向けの決算説明資料を案内します。",
+        body: "# 決算説明資料\n\n確認済みのIR情報です。",
+        structuredData: {
+          type: "ir",
+          publicationDate: "2026-07-16",
+          documentType: "presentation",
+          fiscalPeriod: "2026年3月期",
+          sourceDocumentUrl: "https://example.com/ir/presentation.pdf",
+        },
+        sourceEvidence: [{
+          title: "決算説明資料",
+          url: "https://example.com/ir/presentation.pdf",
+          publisher: "サンプル事業者",
+          checkedAt: "2026-07-16",
+        }],
+        sourceFacts: ["決算資料の公開日を確認しました。"],
+      }),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.item.structuredData.documentType, "presentation");
+    assert.equal(created.body.item.sourceEvidence[0].url, "https://example.com/ir/presentation.pdf");
+
+    const updated = await request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 41,
+        method: "tools/call",
+        params: {
+          name: "content.update",
+          arguments: {
+            contentId: created.body.item.id,
+            structuredData: {
+              type: "ir",
+              publicationDate: "2026-07-16",
+              documentType: "financial_results",
+              fiscalPeriod: "2026年3月期",
+            },
+          },
+        },
+      }),
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.result.structuredContent.structuredData.documentType, "financial_results");
+
+    const version = await request(`/api/v1/content/${created.body.item.id}/versions/1`, { headers });
+    assert.equal(version.status, 200);
+    assert.equal(version.body.item.structuredData.sourceDocumentUrl, "https://example.com/ir/presentation.pdf");
+    assert.equal(version.body.item.sourceEvidence[0].publisher, "サンプル事業者");
+
+    const mismatch = await request("/api/v1/content", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        category: "legal",
+        contentType: "pr",
+        audience: "media",
+        title: "構造化データ不一致",
+        summary: "contentTypeとtypeの不一致を検証します。",
+        body: "# 不一致\n\n検証用本文です。",
+        structuredData: { type: "ir", publicationDate: "2026-07-16", documentType: "notice" },
+      }),
+    });
+    assert.equal(mismatch.status, 400);
+
+    const unsafeEvidence = await request("/api/v1/content", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        category: "legal",
+        contentType: "ir",
+        audience: "investor",
+        title: "出典URL検証",
+        summary: "HTTPS以外の出典を拒否します。",
+        body: "# 出典URL検証\n\n検証用本文です。",
+        sourceEvidence: [{ title: "危険な出典", url: "http://example.com/source", checkedAt: "2026-07-16" }],
+      }),
+    });
+    assert.equal(unsafeEvidence.status, 400);
   });
 });

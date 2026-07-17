@@ -9,14 +9,24 @@ import {
   type AuthenticatedPrincipal,
   type CategorySlug,
   type ContentAudience,
+  type ContentBlock,
+  type ContentEditorialActionRecord,
   type ContentJsonLdType,
   type ContentLocale,
+  type ContentAuthorProfile,
+  type ContentGenerationAudit,
+  type ContentGenerationOperation,
+  type ContentInternalRole,
   type ContentProposal,
   type ContentRecord,
+  type ContentSourceEvidence,
+  type ContentStructuredData,
   type ContentReviewRecord,
   type ContentSeo,
   type ContentType,
+  type ContentVisibility,
   type ContentVersionRecord,
+  contentVisibilityValues,
   contentWorkflowStatuses,
   type ContentWorkflowStatus,
   type FactCheckResult,
@@ -24,6 +34,7 @@ import {
   type SeoAuditResult,
   type SeoSiteAuditResult,
 } from "../domain/types.js";
+import { normalizeContentBlocks, renderContentBlocks } from "../domain/content-blocks.js";
 import type { WebhookService } from "./webhook-service.js";
 import type { MediaService } from "./media-service.js";
 import { DeterministicContentAgentAdapter, type ContentAgentAdapter, type ContentAgentResult } from "../integrations/content-agent-adapter.js";
@@ -42,12 +53,21 @@ export type ContentCreateInput = {
   mediaIds?: string[] | undefined;
   title: string;
   summary: string;
-  body: string;
+  body?: string;
+  blocks?: ContentBlock[] | undefined;
+  structuredData?: ContentStructuredData | undefined;
+  sourceEvidence?: ContentSourceEvidence[] | undefined;
   slug?: string | undefined;
   sourceFacts?: string[] | undefined;
   locale?: ContentLocale | undefined;
   proposalId?: string | undefined;
   seo?: Partial<ContentSeo> | undefined;
+  visibility?: ContentVisibility | undefined;
+  tags?: string[] | undefined;
+  series?: string | undefined;
+  authors?: ContentAuthorProfile[] | undefined;
+  featured?: boolean | undefined;
+  expiresAt?: string | undefined;
 };
 
 export type ContentProposalCreateInput = {
@@ -73,6 +93,10 @@ export type ContentListQuery = {
   audience?: ContentAudience | undefined;
   contentType?: ContentType | undefined;
   locale?: ContentLocale | undefined;
+  visibility?: ContentVisibility | undefined;
+  tags?: string[] | undefined;
+  series?: string | undefined;
+  featured?: boolean | undefined;
   sort?: ContentSort | undefined;
   limit?: number | undefined;
   cursor?: number | undefined;
@@ -143,6 +167,11 @@ const localeLabels: Record<ContentLocale, string> = {
 
 function trimList(values: string[] | undefined): string[] {
   return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))].slice(0, 20);
+}
+
+function readingTimeMinutes(body: string): number {
+  const readableLength = body.replace(/[\s`*_>#\[\](){}`]/g, "").length;
+  return Math.max(1, Math.ceil(readableLength / 500));
 }
 
 function limit(value: string, maxLength: number): string {
@@ -229,17 +258,18 @@ export class ContentService {
       relatedKeywords: this.normalizeAgentList(generated.relatedKeywords, "relatedKeywords"),
       outline,
       rationale: this.normalizeAgentText(generated.rationale, "rationale", 2_000),
+      generationAudit: this.createGenerationAudit("proposal", sourceFacts),
     };
     return this.store.createProposal(proposal);
   }
 
   public listProposals(principal: AuthenticatedPrincipal | null): ContentProposal[] {
-    this.assertProvider(principal, principal?.category);
+    this.assertProvider(principal, principal?.category, "content.read");
     return this.store.listProposals(principal!.category, principal!.providerId!);
   }
 
   public listProposalsPage(principal: AuthenticatedPrincipal | null, query: ContentProposalListQuery = {}): ContentProposalListPage {
-    this.assertProvider(principal, principal?.category);
+    this.assertProvider(principal, principal?.category, "content.read");
     const limitValue = query.limit ?? 50;
     const cursorValue = query.cursor ?? 0;
     if (!Number.isSafeInteger(limitValue) || limitValue < 1 || limitValue > 100) {
@@ -281,9 +311,18 @@ export class ContentService {
     if (!principal || !principal.providerId) throw new ContentServiceError(403, "事業者情報が見つかりません。");
     const title = this.normalizeEditableText(input.title, "title", 160);
     const summary = this.normalizeEditableText(input.summary, "summary", 320);
-    const body = this.normalizeEditableText(input.body, "body", 200_000);
+    const document = this.normalizeBlocksAndBody(input.body, input.blocks);
+    const structuredData = this.normalizeStructuredData(input.contentType, input.structuredData);
+    const sourceEvidence = this.normalizeSourceEvidence(input.sourceEvidence);
     const sourceFacts = trimList(input.sourceFacts);
     const locale = input.locale ?? "ja";
+    const visibility = this.normalizeVisibility(input.visibility);
+    const tags = this.normalizeTags(input.tags);
+    const series = this.normalizeSeries(input.series);
+    const authors = this.normalizeAuthors(input.authors);
+    const expiresAt = this.normalizeExpiresAt(input.expiresAt);
+    const featured = input.featured ?? false;
+    if (typeof featured !== "boolean") throw new ContentServiceError(400, "featuredは真偽値で指定してください。");
     let mediaIds = this.normalizeMediaIds(principal, input.mediaIds);
     let proposal: ContentProposal | undefined;
     if (input.proposalId !== undefined) {
@@ -316,14 +355,25 @@ export class ContentService {
       contentType: input.contentType,
       audience: input.audience,
       ...(mediaIds.length > 0 ? { mediaIds } : {}),
+      ...(document.blocks ? { blocks: document.blocks } : {}),
+      ...(structuredData ? { structuredData } : {}),
+      ...(sourceEvidence ? { sourceEvidence } : {}),
       title,
       slug,
       summary,
-      body,
+      body: document.body,
       seo,
       sourceFacts,
       proposalId: proposal.id,
       locale,
+      visibility,
+      tags,
+      featured,
+      readingTimeMinutes: readingTimeMinutes(document.body),
+      createdBy: principal.accountId,
+      ...(series ? { series } : {}),
+      ...(authors ? { authors } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
       status: "drafted",
     }, { ...(principal.accountId ? { actorId: principal.accountId } : {}) });
     this.emitContentEvent("content.created", created);
@@ -352,6 +402,7 @@ export class ContentService {
       contentType: proposal.contentType,
       audience: proposal.audience,
       ...(mediaIds.length > 0 ? { mediaIds } : {}),
+      ...(generated.structuredData ? { structuredData: this.normalizeStructuredData(proposal.contentType, generated.structuredData) } : {}),
       title,
       slug,
       summary,
@@ -360,6 +411,12 @@ export class ContentService {
       sourceFacts: proposal.sourceFacts,
       proposalId: proposal.id,
       locale: "ja",
+      visibility: "public",
+      tags: this.normalizeTags([proposal.primaryKeyword, ...proposal.relatedKeywords]),
+      featured: false,
+      readingTimeMinutes: readingTimeMinutes(body),
+      createdBy: principal!.accountId,
+      generationAudit: this.createGenerationAudit("draft", [proposal.id, ...proposal.sourceFacts]),
       status: "drafted",
     }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     this.emitContentEvent("content.created", created);
@@ -367,12 +424,12 @@ export class ContentService {
   }
 
   public listContent(principal: AuthenticatedPrincipal | null): ContentRecord[] {
-    this.assertProvider(principal, principal?.category);
+    this.assertProvider(principal, principal?.category, "content.read");
     return this.store.listContent(principal!.category, principal!.providerId!);
   }
 
   public listContentPage(principal: AuthenticatedPrincipal | null, query: ContentListQuery = {}): ContentListPage {
-    this.assertProvider(principal, principal?.category);
+    this.assertProvider(principal, principal?.category, "content.read");
     const limitValue = query.limit ?? 50;
     const cursorValue = query.cursor ?? 0;
     if (!Number.isSafeInteger(limitValue) || limitValue < 1 || limitValue > 100) {
@@ -391,9 +448,13 @@ export class ContentService {
       .filter((content) => !query.audience || content.audience === query.audience)
       .filter((content) => !query.contentType || content.contentType === query.contentType)
       .filter((content) => !query.locale || content.locale === query.locale)
+      .filter((content) => !query.visibility || content.visibility === query.visibility)
+      .filter((content) => !query.tags || query.tags.every((tag) => content.tags.includes(tag)))
+      .filter((content) => !query.series || content.series === query.series)
+      .filter((content) => query.featured === undefined || content.featured === query.featured)
       .filter((content) => {
         if (!normalizedSearch) return true;
-        const searchable = [content.title, content.slug, content.summary, content.seo.description, ...content.seo.keywords].join(" ").toLocaleLowerCase();
+        const searchable = [content.title, content.slug, content.summary, content.seo.description, content.series ?? "", ...content.tags, ...content.seo.keywords].join(" ").toLocaleLowerCase();
         return searchable.includes(normalizedSearch);
       })
       .sort((left, right) => {
@@ -411,7 +472,7 @@ export class ContentService {
   public getContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
     const content = this.store.getContent(contentId);
     if (!content) throw new ContentServiceError(404, "コンテンツが見つかりません。");
-    this.assertProvider(principal, content.category);
+    this.assertProvider(principal, content.category, "content.read");
     if (content.providerId !== principal!.providerId) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     return content;
   }
@@ -486,6 +547,10 @@ export class ContentService {
       contentType: source.contentType,
       audience: source.audience,
       ...(source.mediaIds && source.mediaIds.length > 0 ? { mediaIds: [...source.mediaIds] } : {}),
+      ...(generated.structuredData
+        ? { structuredData: this.normalizeStructuredData(source.contentType, generated.structuredData) }
+        : source.structuredData ? { structuredData: this.cloneStructuredData(source.structuredData) } : {}),
+      ...(source.sourceEvidence ? { sourceEvidence: this.cloneSourceEvidence(source.sourceEvidence) } : {}),
       title,
       slug: `${source.slug}-${localeSegment}`,
       summary,
@@ -499,6 +564,14 @@ export class ContentService {
         sourceVersion: source.version,
         sourceLocale: source.locale,
       },
+      visibility: "private",
+      tags: [...source.tags],
+      featured: false,
+      readingTimeMinutes: readingTimeMinutes(body),
+      createdBy: principal!.accountId,
+      ...(source.series ? { series: source.series } : {}),
+      ...(source.authors ? { authors: this.cloneAuthors(source.authors) } : {}),
+      generationAudit: this.createGenerationAudit("translate", [source.id, `version:${source.version}`]),
       status: "drafted",
     }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     this.emitContentEvent("content.created", created);
@@ -537,6 +610,73 @@ export class ContentService {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "workflow.reviews");
     return this.store.listReviews(content.id);
+  }
+
+  public listEditorialActions(principal: AuthenticatedPrincipal | null, contentId: string): ContentEditorialActionRecord[] {
+    const content = this.getContent(principal, contentId);
+    return this.store.listEditorialActions(content.id);
+  }
+
+  public recordCorrection(
+    principal: AuthenticatedPrincipal | null,
+    contentId: string,
+    input: {
+      reason: string;
+      body?: string;
+      blocks?: ContentBlock[] | undefined;
+      structuredData?: ContentStructuredData | undefined;
+      sourceEvidence?: ContentSourceEvidence[] | undefined;
+    },
+  ): ContentEditorialActionRecord {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "content.update");
+    if (content.status !== "published") throw new ContentServiceError(409, "訂正履歴は公開済みコンテンツに対してのみ登録できます。");
+    const reason = this.normalizeReviewNote(input.reason, true) ?? "訂正理由";
+    const document = this.normalizeBlocksAndBody(input.body, input.blocks);
+    const structuredData = this.normalizeStructuredData(content.contentType, input.structuredData);
+    const sourceEvidence = this.normalizeSourceEvidence(input.sourceEvidence);
+    return this.store.createEditorialAction({
+      contentId: content.id,
+      category: content.category,
+      providerId: content.providerId,
+      contentVersion: content.version,
+      kind: "correction",
+      reason,
+      beforeBody: content.body,
+      ...(content.blocks ? { beforeBlocks: content.blocks } : {}),
+      ...(content.structuredData ? { beforeStructuredData: content.structuredData } : {}),
+      ...(content.sourceEvidence ? { beforeSourceEvidence: content.sourceEvidence } : {}),
+      afterBody: document.body,
+      ...(document.blocks ? { afterBlocks: document.blocks } : {}),
+      ...(structuredData ? { afterStructuredData: structuredData } : {}),
+      ...(sourceEvidence ? { afterSourceEvidence: sourceEvidence } : {}),
+      actorAccountId: principal!.accountId,
+    });
+  }
+
+  public withdrawContent(
+    principal: AuthenticatedPrincipal | null,
+    contentId: string,
+    reason: string,
+  ): { content: ContentRecord; action: ContentEditorialActionRecord } {
+    const content = this.getContent(principal, contentId);
+    this.portal.assertAction(principal, content.category, "publication.unpublish");
+    if (content.status !== "published") throw new ContentServiceError(409, "撤回履歴は公開中コンテンツに対してのみ登録できます。");
+    const unpublished = this.unpublishContent(principal, contentId);
+    const action = this.store.createEditorialAction({
+      contentId: content.id,
+      category: content.category,
+      providerId: content.providerId,
+      contentVersion: content.version,
+      kind: "withdrawal",
+      reason: this.normalizeReviewNote(reason, true) ?? "撤回理由",
+      beforeBody: content.body,
+      ...(content.blocks ? { beforeBlocks: content.blocks } : {}),
+      ...(content.structuredData ? { beforeStructuredData: content.structuredData } : {}),
+      ...(content.sourceEvidence ? { beforeSourceEvidence: content.sourceEvidence } : {}),
+      actorAccountId: principal!.accountId,
+    });
+    return { content: unpublished, action };
   }
 
   public requestReview(
@@ -596,9 +736,18 @@ export class ContentService {
       title?: string;
       summary?: string;
       body?: string;
+      blocks?: ContentBlock[] | undefined;
+      structuredData?: ContentStructuredData | undefined;
+      sourceEvidence?: ContentSourceEvidence[] | undefined;
       seo?: Partial<ContentSeo>;
       sourceFacts?: string[];
       mediaIds?: string[];
+      visibility?: ContentVisibility | undefined;
+      tags?: string[] | undefined;
+      series?: string | undefined;
+      authors?: ContentAuthorProfile[] | undefined;
+      featured?: boolean | undefined;
+      expiresAt?: string | undefined;
     },
   ): ContentRecord {
     const content = this.getContent(principal, contentId);
@@ -610,9 +759,29 @@ export class ContentService {
     const patch: Partial<ContentRecord> = {};
     if (input.title !== undefined) patch.title = this.normalizeEditableText(input.title, "title", 160);
     if (input.summary !== undefined) patch.summary = this.normalizeEditableText(input.summary, "summary", 320);
-    if (input.body !== undefined) patch.body = this.normalizeEditableText(input.body, "body", 200_000);
+    if (input.blocks !== undefined) {
+      const document = this.normalizeBlocksAndBody(undefined, input.blocks);
+      patch.blocks = document.blocks;
+      patch.body = document.body;
+    } else if (input.body !== undefined) {
+      patch.body = this.normalizeEditableText(input.body, "body", 200_000);
+      patch.blocks = undefined;
+    }
+    if (input.structuredData !== undefined) patch.structuredData = this.normalizeStructuredData(content.contentType, input.structuredData);
+    if (input.sourceEvidence !== undefined) patch.sourceEvidence = this.normalizeSourceEvidence(input.sourceEvidence);
     if (input.sourceFacts !== undefined) patch.sourceFacts = trimList(input.sourceFacts);
     if (input.mediaIds !== undefined) patch.mediaIds = this.normalizeMediaIds(principal, input.mediaIds);
+    if (input.visibility !== undefined) patch.visibility = this.normalizeVisibility(input.visibility);
+    if (input.tags !== undefined) patch.tags = this.normalizeTags(input.tags);
+    if (input.series !== undefined) patch.series = this.normalizeSeries(input.series);
+    if (input.authors !== undefined) patch.authors = this.normalizeAuthors(input.authors);
+    if (input.featured !== undefined) {
+      if (typeof input.featured !== "boolean") throw new ContentServiceError(400, "featuredは真偽値で指定してください。");
+      patch.featured = input.featured;
+    }
+    if (input.expiresAt !== undefined) patch.expiresAt = this.normalizeExpiresAt(input.expiresAt);
+    if (input.body !== undefined || input.blocks !== undefined) patch.readingTimeMinutes = readingTimeMinutes(patch.body ?? content.body);
+    if (Object.keys(input).length > 0) patch.generationAudit = undefined;
     if (input.seo !== undefined) {
       const seo: ContentSeo = { ...content.seo, ...input.seo };
       seo.title = this.normalizeEditableText(seo.title, "seo.title", 60);
@@ -642,6 +811,8 @@ export class ContentService {
       contentType: content.contentType,
       audience: content.audience,
       ...(content.mediaIds && content.mediaIds.length > 0 ? { mediaIds: [...content.mediaIds] } : {}),
+      ...(content.structuredData ? { structuredData: this.cloneStructuredData(content.structuredData) } : {}),
+      ...(content.sourceEvidence ? { sourceEvidence: this.cloneSourceEvidence(content.sourceEvidence) } : {}),
       title: `${content.title}（複製）`,
       slug: `${content.slug}-copy-${copySuffix}`,
       summary: content.summary,
@@ -651,6 +822,13 @@ export class ContentService {
       proposalId: content.proposalId,
       locale: content.locale,
       ...(content.translationOf ? { translationOf: { ...content.translationOf } } : {}),
+      visibility: "private",
+      tags: [...content.tags],
+      featured: false,
+      readingTimeMinutes: readingTimeMinutes(content.body),
+      createdBy: principal!.accountId,
+      ...(content.series ? { series: content.series } : {}),
+      ...(content.authors ? { authors: this.cloneAuthors(content.authors) } : {}),
       status: "drafted",
     }, { ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     this.emitContentEvent("content.created", duplicated);
@@ -697,9 +875,10 @@ export class ContentService {
   public markPublished(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "publication.publish");
+    this.assertInternalRole(principal, content.category, "publisher");
     if (content.status === "published") return content;
     if (content.status !== "approved") throw new ContentServiceError(409, "承認済みコンテンツだけを公開できます。");
-    const published = this.store.updateContent(content.id, { status: "published" }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
+    const published = this.store.updateContent(content.id, { status: "published", publishedAt: new Date().toISOString() }, { reason: "workflow", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!published) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     this.emitContentEvent("content.published", published);
     return published;
@@ -717,7 +896,10 @@ export class ContentService {
       title,
       summary,
       body,
+      blocks: undefined,
       status: "polished",
+      generationAudit: this.createGenerationAudit("polish", [content.id, `version:${content.version}`, ...content.sourceFacts]),
+      ...(generated.structuredData ? { structuredData: this.normalizeStructuredData(content.contentType, generated.structuredData) } : {}),
       seo: this.createSeoForContent(content.contentType, title, summary, content.slug, { ...content.seo, ...(generated.seo ?? {}) }),
     }, { reason: "polished", ...(principal?.accountId ? { actorId: principal.accountId } : {}) });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
@@ -728,6 +910,10 @@ export class ContentService {
   public approveContent(principal: AuthenticatedPrincipal | null, contentId: string): ContentRecord {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "workflow.approve");
+    this.assertInternalRole(principal, content.category, "approver");
+    if (content.contentType === "ir" && content.createdBy === principal?.accountId && (principal.internalRoleAssignments?.length ?? 0) > 0) {
+      throw new ContentServiceError(409, "IRは作成者と承認者を分離してください。");
+    }
     if (content.status !== "seo_reviewed" && content.status !== "review_requested") {
       throw new ContentServiceError(409, "SEO監査済みのコンテンツだけを公開承認できます。");
     }
@@ -736,7 +922,11 @@ export class ContentService {
       throw new ContentServiceError(409, "有効なレビュー依頼が見つかりません。");
     }
     this.assertApprovalReady(content);
-    const updated = this.store.updateContent(content.id, { status: "approved" }, { incrementVersion: false });
+    const updated = this.store.updateContent(content.id, {
+      status: "approved",
+      reviewedBy: principal!.accountId,
+      ...(content.generationAudit ? { generationAudit: { ...content.generationAudit, approvedBy: principal!.accountId } } : {}),
+    }, { incrementVersion: false });
     if (!updated) throw new ContentServiceError(404, "コンテンツが見つかりません。");
     if (review) {
       this.store.updateReview(review.id, {
@@ -771,6 +961,15 @@ export class ContentService {
     if (content.seo.description.length < 50 || content.seo.description.length > 160) {
       issues.push({ code: "SEO_DESCRIPTION_LENGTH", severity: "warning", field: "seo.description", message: "メタディスクリプションは50〜160文字を目安にしてください。", recommendation: "読者が得られる情報と次の行動を具体化してください。" });
     }
+    if (content.contentType === "blog" && content.tags.length === 0) {
+      issues.push({ code: "BLOG_TAGS_EMPTY", severity: "warning", field: "tags", message: "Blogにタグが登録されていません。", recommendation: "検索意図と関連記事の分類に使うタグを登録してください。" });
+    }
+    if (content.contentType === "blog" && (!content.authors || content.authors.length === 0)) {
+      issues.push({ code: "BLOG_AUTHOR_EMPTY", severity: "warning", field: "authors", message: "Blogの著者プロフィールが登録されていません。", recommendation: "著者名と専門性を登録し、読者が情報の責任主体を確認できるようにしてください。" });
+    }
+    if (content.expiresAt && Date.parse(content.expiresAt) <= Date.now()) {
+      issues.push({ code: "CONTENT_EXPIRED", severity: "error", field: "expiresAt", message: "公開期限を過ぎています。", recommendation: "期限を更新するか、公開対象から除外してください。" });
+    }
     if (primaryKeyword && !`${content.seo.title}\n${content.body}`.toLocaleLowerCase("ja-JP").includes(normalizedPrimaryKeyword)) {
       issues.push({ code: "PRIMARY_KEYWORD_MISSING", severity: "warning", field: "seo.keywords", message: "主キーワードがタイトルまたは本文に含まれていません。", recommendation: "検索意図を損なわない範囲で自然に追加してください。" });
     }
@@ -792,8 +991,20 @@ export class ContentService {
     if (!content.seo.canonicalPath.startsWith("/")) {
       issues.push({ code: "CANONICAL_INVALID", severity: "error", field: "seo.canonicalPath", message: "canonicalPathはサイト内パスで指定してください。", recommendation: "先頭にスラッシュを付けた正規URLパスを設定してください。" });
     }
-    if (content.sourceFacts.length === 0) {
-      issues.push({ code: "SOURCE_FACTS_EMPTY", severity: "warning", field: "sourceFacts", message: "確認済みの一次情報が登録されていません。", recommendation: "公開前に出典、数値、日付、担当者を登録してください。" });
+    if (content.sourceFacts.length === 0 && (content.sourceEvidence?.length ?? 0) === 0) {
+      issues.push({ code: "SOURCE_FACTS_EMPTY", severity: "warning", field: "sourceFacts", message: "確認済みの一次情報または出典が登録されていません。", recommendation: "公開前に出典URL、数値、日付、担当者を登録してください。" });
+    }
+    if (content.contentType === "company" && content.structuredData?.type !== "company") {
+      issues.push({ code: "COMPANY_STRUCTURED_DATA_MISSING", severity: "warning", field: "structuredData", message: "会社情報の構造化データがありません。", recommendation: "会社名、代表者、所在地、サービスをstructuredDataへ登録してください。" });
+    }
+    if (content.contentType === "job" && content.structuredData?.type !== "job") {
+      issues.push({ code: "JOB_STRUCTURED_DATA_MISSING", severity: "warning", field: "structuredData", message: "求人の構造化データがありません。", recommendation: "職種、勤務地、業務内容、必須条件、募集状態をstructuredDataへ登録してください。" });
+    }
+    if (content.contentType === "pr" && content.structuredData?.type !== "pressRelease") {
+      issues.push({ code: "PR_STRUCTURED_DATA_MISSING", severity: "warning", field: "structuredData", message: "プレスリリースの構造化データがありません。", recommendation: "発表日、発行者、メディア窓口をstructuredDataへ登録してください。" });
+    }
+    if (content.contentType === "ir" && content.structuredData?.type !== "ir") {
+      issues.push({ code: "IR_STRUCTURED_DATA_MISSING", severity: "warning", field: "structuredData", message: "IRの構造化データがありません。", recommendation: "公表日、資料種別、対象期間、原資料URLをstructuredDataへ登録してください。" });
     }
     const result: SeoAuditResult = {
       contentId,
@@ -818,7 +1029,11 @@ export class ContentService {
     this.portal.assertAction(principal, category, "seo.site_audit");
 
     const contents = this.store.listContent(category, providerId);
-    const publicContents = contents.filter((content) => content.status === "approved" || content.status === "published");
+    const publicContents = contents.filter((content) =>
+      (content.status === "approved" || content.status === "published") &&
+      content.visibility === "public" &&
+      (!content.expiresAt || Date.parse(content.expiresAt) > Date.now()),
+    );
     const issues: SeoSiteAuditResult["issues"] = [];
     const canonicalOwners = new Map<string, ContentRecord[]>();
     const titleOwners = new Map<string, ContentRecord[]>();
@@ -991,10 +1206,14 @@ export class ContentService {
     const content = this.getContent(principal, contentId);
     this.portal.assertAction(principal, content.category, "content.fact_check");
     const sourceFacts = content.sourceFacts.filter(Boolean);
-    const items = sourceFacts.length > 0
-      ? sourceFacts.map((claim) => ({ claim, status: "source_registered" as const, note: "事業者が一次情報として登録しています。外部検証は本番アダプターで実行します。" }))
+    const sourceEvidence = content.sourceEvidence ?? [];
+    const items = sourceFacts.length > 0 || sourceEvidence.length > 0
+      ? [
+        ...sourceFacts.map((claim) => ({ claim, status: "source_registered" as const, note: "事業者が一次情報として登録しています。外部検証は本番アダプターで実行します。" })),
+        ...sourceEvidence.map((source) => ({ claim: `${source.title} (${source.url})`, status: "source_registered" as const, note: `最終確認日: ${source.checkedAt}` })),
+      ]
       : [{ claim: "本文に含まれる企業固有情報", status: "source_missing" as const, note: "出典または確認済み情報が登録されていません。" }];
-    const issues = sourceFacts.length > 0 ? [] : ["確認済みの一次情報がありません。公開前に出典を登録してください。"];
+    const issues = sourceFacts.length > 0 || sourceEvidence.length > 0 ? [] : ["確認済みの一次情報がありません。公開前に出典を登録してください。"];
     const result: FactCheckResult = {
       contentId,
       contentVersion: content.version,
@@ -1022,7 +1241,7 @@ export class ContentService {
   private getOwnedProposal(principal: AuthenticatedPrincipal | null, proposalId: string): ContentProposal {
     const proposal = this.store.getProposal(proposalId);
     if (!proposal) throw new ContentServiceError(404, "企画案が見つかりません。");
-    this.assertProvider(principal, proposal.category);
+    this.assertProvider(principal, proposal.category, "content.read");
     if (proposal.providerId !== principal!.providerId) throw new ContentServiceError(404, "企画案が見つかりません。");
     return proposal;
   }
@@ -1031,6 +1250,228 @@ export class ContentService {
     const normalized = value.trim();
     if (!normalized) throw new ContentServiceError(400, `${fieldName}は空にできません。`);
     return limit(normalized, maxLength);
+  }
+
+  private normalizeVisibility(value: ContentVisibility | undefined): ContentVisibility {
+    if (value === undefined) return "public";
+    if (!contentVisibilityValues.includes(value)) throw new ContentServiceError(400, "visibilityが不正です。public、unlisted、private、internalのいずれかを指定してください。");
+    return value;
+  }
+
+  private normalizeTags(value: string[] | undefined): string[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some((tag) => typeof tag !== "string")) throw new ContentServiceError(400, "tagsは文字列配列で指定してください。");
+    return trimList(value).slice(0, 30).map((tag) => limit(tag, 80));
+  }
+
+  private normalizeSeries(value: string | undefined): string | undefined {
+    if (value === undefined) return undefined;
+    const normalized = value.trim();
+    return normalized ? limit(normalized, 120) : undefined;
+  }
+
+  private normalizeAuthors(value: ContentAuthorProfile[] | undefined): ContentAuthorProfile[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.length > 10) throw new ContentServiceError(400, "authorsは10人以内の配列で指定してください。");
+    const authors: ContentAuthorProfile[] = [];
+    for (const [index, item] of value.entries()) {
+      if (!item || typeof item !== "object" || typeof item.name !== "string") throw new ContentServiceError(400, `authors[${index}].nameは必須です。`);
+      const author = item as ContentAuthorProfile;
+      const name = this.normalizeEditableText(author.name, `authors[${index}].name`, 160);
+      const bio = typeof author.bio === "string" && author.bio.trim() ? limit(author.bio.trim(), 1_000) : undefined;
+      const credentials = author.credentials === undefined ? undefined : this.normalizeTags(author.credentials).slice(0, 10);
+      const profileUrl = author.profileUrl?.trim();
+      if (profileUrl !== undefined && profileUrl !== "" && !(profileUrl.startsWith("/") && !profileUrl.startsWith("//"))) {
+        try {
+          if (new URL(profileUrl).protocol !== "https:") throw new Error("unsafe");
+        } catch {
+          throw new ContentServiceError(400, `authors[${index}].profileUrlはサイト内パスまたはHTTPS URLで指定してください。`);
+        }
+      }
+      authors.push({
+        ...(typeof author.id === "string" && author.id.trim() ? { id: limit(author.id.trim(), 160) } : {}),
+        name,
+        ...(bio ? { bio } : {}),
+        ...(credentials && credentials.length > 0 ? { credentials } : {}),
+        ...(profileUrl ? { profileUrl: limit(profileUrl, 2_000) } : {}),
+      });
+    }
+    return authors;
+  }
+
+  private normalizeExpiresAt(value: string | undefined): string | undefined {
+    if (value === undefined) return undefined;
+    const normalized = value.trim();
+    if (!normalized || !/^\d{4}-\d{2}-\d{2}(?:T[^\s]+)?$/.test(normalized) || !Number.isFinite(Date.parse(normalized))) {
+      throw new ContentServiceError(400, "expiresAtはISO 8601形式で指定してください。");
+    }
+    return normalized;
+  }
+
+  private normalizeBlocksAndBody(body: string | undefined, blocksInput: unknown): { body: string; blocks?: ContentBlock[] } {
+    let blocks: ContentBlock[] | undefined;
+    try {
+      blocks = normalizeContentBlocks(blocksInput);
+    } catch (error) {
+      throw new ContentServiceError(400, error instanceof Error ? error.message : "blocksが不正です。");
+    }
+    if (blocks) {
+      const rendered = renderContentBlocks(blocks);
+      return { body: this.normalizeEditableText(rendered, "body", 200_000), blocks };
+    }
+    if (body === undefined) throw new ContentServiceError(400, "bodyまたはblocksが必要です。");
+    return { body: this.normalizeEditableText(body, "body", 200_000) };
+  }
+
+  private normalizeStructuredData(contentType: ContentType, input: ContentStructuredData | undefined): ContentStructuredData | undefined {
+    if (input === undefined) return undefined;
+    if (!input || typeof input !== "object" || typeof input.type !== "string") {
+      throw new ContentServiceError(400, "structuredDataの形式が不正です。typeを指定してください。");
+    }
+    const text = (value: unknown, field: string, maxLength: number, required = true): string | undefined => {
+      if (value === undefined && !required) return undefined;
+      if (typeof value !== "string") throw new ContentServiceError(400, `structuredData.${field}は文字列で指定してください。`);
+      const normalized = value.trim();
+      if (!normalized && required) throw new ContentServiceError(400, `structuredData.${field}は必須です。`);
+      return normalized ? limit(normalized, maxLength) : undefined;
+    };
+    const list = (value: unknown, field: string, required = false): string[] | undefined => {
+      if (value === undefined && !required) return undefined;
+      if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+        throw new ContentServiceError(400, `structuredData.${field}は文字列配列で指定してください。`);
+      }
+      const normalized = trimList(value).slice(0, 50);
+      if (required && normalized.length === 0) throw new ContentServiceError(400, `structuredData.${field}は1件以上必要です。`);
+      return normalized;
+    };
+    const date = (value: unknown, field: string, required = true): string | undefined => {
+      const normalized = text(value, field, 40, required);
+      if (normalized === undefined) return undefined;
+      if (!/^\d{4}-\d{2}-\d{2}(?:T[^\s]+)?$/.test(normalized) || !Number.isFinite(Date.parse(normalized))) {
+        throw new ContentServiceError(400, `structuredData.${field}はISO 8601形式で指定してください。`);
+      }
+      return normalized;
+    };
+    const url = (value: unknown, field: string): string | undefined => {
+      const normalized = text(value, field, 2_000, false);
+      if (normalized === undefined) return undefined;
+      if (normalized.startsWith("/") && !normalized.startsWith("//")) return normalized;
+      try {
+        const parsed = new URL(normalized);
+        if (parsed.protocol === "https:") return normalized;
+      } catch {
+        // 下の統一エラーへ進めます。
+      }
+      throw new ContentServiceError(400, `structuredData.${field}はサイト内パスまたはHTTPS URLで指定してください。`);
+    };
+
+    if (contentType === "company" && input.type === "company") {
+      return {
+        type: "company",
+        companyName: text(input.companyName, "companyName", 160)!,
+        ...(text(input.representative, "representative", 160, false) ? { representative: text(input.representative, "representative", 160, false) } : {}),
+        ...(text(input.address, "address", 320, false) ? { address: text(input.address, "address", 320, false) } : {}),
+        ...(list(input.services, "services") ? { services: list(input.services, "services") } : {}),
+      };
+    }
+    if (contentType === "job" && input.type === "job") {
+      const status = input.status;
+      if (status !== "open" && status !== "closed") throw new ContentServiceError(400, "structuredData.statusはopenまたはclosedで指定してください。");
+      return {
+        type: "job",
+        jobTitle: text(input.jobTitle, "jobTitle", 160)!,
+        employmentType: text(input.employmentType, "employmentType", 120)!,
+        locations: list(input.locations, "locations", true)!,
+        responsibilities: list(input.responsibilities, "responsibilities", true)!,
+        requirements: list(input.requirements, "requirements", true)!,
+        ...(text(input.salary, "salary", 160, false) ? { salary: text(input.salary, "salary", 160, false) } : {}),
+        ...(list(input.preferredQualifications, "preferredQualifications") ? { preferredQualifications: list(input.preferredQualifications, "preferredQualifications") } : {}),
+        ...(list(input.benefits, "benefits") ? { benefits: list(input.benefits, "benefits") } : {}),
+        ...(list(input.selectionProcess, "selectionProcess") ? { selectionProcess: list(input.selectionProcess, "selectionProcess") } : {}),
+        ...(url(input.applicationUrl, "applicationUrl") ? { applicationUrl: url(input.applicationUrl, "applicationUrl") } : {}),
+        ...(date(input.openingDate, "openingDate", false) ? { openingDate: date(input.openingDate, "openingDate", false) } : {}),
+        ...(date(input.closingDate, "closingDate", false) ? { closingDate: date(input.closingDate, "closingDate", false) } : {}),
+        status,
+      };
+    }
+    if (contentType === "pr" && input.type === "pressRelease") {
+      return {
+        type: "pressRelease",
+        releaseDate: date(input.releaseDate, "releaseDate")!,
+        issuer: text(input.issuer, "issuer", 160)!,
+        ...(text(input.mediaContact, "mediaContact", 320, false) ? { mediaContact: text(input.mediaContact, "mediaContact", 320, false) } : {}),
+        ...(date(input.eventDate, "eventDate", false) ? { eventDate: date(input.eventDate, "eventDate", false) } : {}),
+      };
+    }
+    if (contentType === "ir" && input.type === "ir") {
+      const documentTypes = ["financial_results", "presentation", "notice", "shareholder", "calendar", "other"] as const;
+      if (!documentTypes.includes(input.documentType)) throw new ContentServiceError(400, "structuredData.documentTypeが不正です。");
+      if (input.withdrawn !== undefined && typeof input.withdrawn !== "boolean") throw new ContentServiceError(400, "structuredData.withdrawnは真偽値で指定してください。");
+      return {
+        type: "ir",
+        publicationDate: date(input.publicationDate, "publicationDate")!,
+        documentType: input.documentType,
+        ...(text(input.fiscalPeriod, "fiscalPeriod", 120, false) ? { fiscalPeriod: text(input.fiscalPeriod, "fiscalPeriod", 120, false) } : {}),
+        ...(url(input.sourceDocumentUrl, "sourceDocumentUrl") ? { sourceDocumentUrl: url(input.sourceDocumentUrl, "sourceDocumentUrl") } : {}),
+        ...(text(input.correctionOfContentId, "correctionOfContentId", 160, false) ? { correctionOfContentId: text(input.correctionOfContentId, "correctionOfContentId", 160, false) } : {}),
+        ...(input.withdrawn !== undefined ? { withdrawn: input.withdrawn } : {}),
+      };
+    }
+    throw new ContentServiceError(400, `structuredData.type「${input.type}」はcontentType「${contentType}」と一致しません。`);
+  }
+
+  private cloneStructuredData(data: ContentStructuredData): ContentStructuredData {
+    return JSON.parse(JSON.stringify(data)) as ContentStructuredData;
+  }
+
+  private normalizeSourceEvidence(input: ContentSourceEvidence[] | undefined): ContentSourceEvidence[] | undefined {
+    if (input === undefined) return undefined;
+    if (!Array.isArray(input)) throw new ContentServiceError(400, "sourceEvidenceは配列で指定してください。");
+    if (input.length > 20) throw new ContentServiceError(400, "sourceEvidenceは20件以内で指定してください。");
+    const normalized: ContentSourceEvidence[] = [];
+    for (const [index, item] of input.entries()) {
+      if (!item || typeof item !== "object") throw new ContentServiceError(400, `sourceEvidence[${index}]はオブジェクトで指定してください。`);
+      const candidate = item as unknown as Record<string, unknown>;
+      if (typeof candidate.title !== "string" || !candidate.title.trim()) throw new ContentServiceError(400, `sourceEvidence[${index}].titleは必須です。`);
+      if (typeof candidate.url !== "string" || !candidate.url.trim()) throw new ContentServiceError(400, `sourceEvidence[${index}].urlは必須です。`);
+      const title = limit(candidate.title.trim(), 200);
+      const url = candidate.url.trim();
+      if (!(url.startsWith("/") && !url.startsWith("//"))) {
+        try {
+          const parsed = new URL(url);
+          if (parsed.protocol !== "https:") throw new Error("unsafe");
+        } catch {
+          throw new ContentServiceError(400, `sourceEvidence[${index}].urlはサイト内パスまたはHTTPS URLで指定してください。`);
+        }
+      }
+      const checkedAt = typeof candidate.checkedAt === "string" ? candidate.checkedAt.trim() : "";
+      if (!/^\d{4}-\d{2}-\d{2}(?:T[^\s]+)?$/.test(checkedAt) || !Number.isFinite(Date.parse(checkedAt))) {
+        throw new ContentServiceError(400, `sourceEvidence[${index}].checkedAtはISO 8601形式で指定してください。`);
+      }
+      const publisher = typeof candidate.publisher === "string" && candidate.publisher.trim() ? limit(candidate.publisher.trim(), 160) : undefined;
+      const note = typeof candidate.note === "string" && candidate.note.trim() ? limit(candidate.note.trim(), 1_000) : undefined;
+      if (!normalized.some((source) => source.url === url)) {
+        normalized.push({
+          title,
+          url,
+          checkedAt,
+          ...(publisher ? { publisher } : {}),
+          ...(note ? { note } : {}),
+        });
+      }
+    }
+    return normalized;
+  }
+
+  private cloneSourceEvidence(evidence: ContentSourceEvidence[]): ContentSourceEvidence[] {
+    return evidence.map((item) => ({ ...item }));
+  }
+
+  private cloneAuthors(authors: ContentAuthorProfile[]): ContentAuthorProfile[] {
+    return authors.map((author) => ({
+      ...author,
+      ...(author.credentials ? { credentials: [...author.credentials] } : {}),
+    }));
   }
 
   private normalizeAgentText(value: unknown, fieldName: string, maxLength: number): string {
@@ -1069,6 +1510,28 @@ export class ContentService {
       const detail = error instanceof Error ? ` ${error.message}` : "";
       throw new ContentServiceError(502, `AIエージェントの${stage}に失敗しました。${detail}`.trim());
     }
+  }
+
+  private createGenerationAudit(operation: ContentGenerationOperation, inputSources: string[]): ContentGenerationAudit {
+    const normalizedSources = [...new Set(inputSources.map((source) => source.trim()).filter(Boolean))].slice(0, 50);
+    return {
+      operation,
+      adapterId: this.agent.id,
+      ...(this.agent.model ? { model: this.agent.model } : {}),
+      inputSources: normalizedSources,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  private assertInternalRole(principal: AuthenticatedPrincipal | null, category: CategorySlug, requiredRole: ContentInternalRole): void {
+    const assignments = principal?.internalRoleAssignments ?? [];
+    if (assignments.length === 0) return;
+    const allowed = assignments.some((assignment) =>
+      assignment.role === requiredRole &&
+      (assignment.category === "*" || assignment.category === category) &&
+      (!assignment.providerId || assignment.providerId === principal?.providerId),
+    );
+    if (!allowed) throw new ContentServiceError(403, `内部ロール${requiredRole}の権限が必要です。`);
   }
 
   private normalizeSlug(value: string): string {
@@ -1122,10 +1585,11 @@ export class ContentService {
     return limit(normalized, 1000);
   }
 
-  private assertProvider(principal: AuthenticatedPrincipal | null, category: CategorySlug | undefined): void {
+  private assertProvider(principal: AuthenticatedPrincipal | null, category: CategorySlug | undefined, action?: "content.read"): void {
     if (!principal) throw new ContentServiceError(401, "ログインが必要です。");
     if (principal.role !== "provider" || !principal.providerId) throw new ContentServiceError(403, "事業者だけがコンテンツを管理できます。");
     if (category && principal.category !== category) throw new ContentServiceError(403, "現在のカテゴリコンテキストが一致しません。");
+    if (action) this.portal.assertAction(principal, principal.category, action);
   }
 }
 

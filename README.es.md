@@ -36,11 +36,11 @@ La visibilidad y los permisos se definen por categoría. No se exponen datos de 
 ## Flujo de contenido
 
 ```text
-REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
-→ EDITED → APPROVED → PUBLISHED
+PROPOSED → DRAFTED → POLISHED → SEO_REVIEWED
+→ REVIEW_REQUESTED → APPROVED → PUBLISHED
 ```
 
-El contenido generado por IA pasa por verificación, revisión y aprobación antes de publicarse. La información sensible, como IR y asuntos legales, conserva sus fuentes y el historial de verificación.
+`FACT_CHECKED` no es un estado independiente; la verificación factual y la auditoría SEO más recientes deben aprobarse antes de la revisión y la aprobación. El contenido generado por IA pasa por verificación, revisión y aprobación antes de publicarse. La información sensible, como IR y asuntos legales, conserva sus fuentes y el historial de verificación.
 
 ## API / MCP
 

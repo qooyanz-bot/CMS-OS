@@ -36,11 +36,11 @@ CMS-OS는 현재 오픈 소스로 개발 중입니다.
 ## 콘텐츠 워크플로
 
 ```text
-REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
-→ EDITED → APPROVED → PUBLISHED
+PROPOSED → DRAFTED → POLISHED → SEO_REVIEWED
+→ REVIEW_REQUESTED → APPROVED → PUBLISHED
 ```
 
-AI 결과는 사실 확인, 검토, 승인을 거친 뒤 공개합니다. IR과 법률 등 정확성이 중요한 정보는 근거와 확인 이력을 보존합니다.
+`FACT_CHECKED`는 독립된 상태가 아니며, 최신 사실 확인과 SEO 감사를 통과해야 검토와 승인으로 진행할 수 있습니다. AI 결과는 사실 확인, 검토, 승인을 거친 뒤 공개합니다. IR과 법률 등 정확성이 중요한 정보는 근거와 확인 이력을 보존합니다.
 
 ## API / MCP
 

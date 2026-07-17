@@ -6,6 +6,7 @@ import type {
   ContentProposal,
   ContentRecord,
   ContentSeo,
+  ContentStructuredData,
   ContentType,
   PortalPlanGap,
   PortalPlanGoal,
@@ -52,6 +53,7 @@ export type ContentAgentDraftOutput = {
   title: string;
   summary: string;
   body: string;
+  structuredData?: ContentStructuredData;
   seo?: Partial<ContentSeo>;
 };
 
@@ -65,6 +67,7 @@ export type ContentAgentPolishOutput = {
   body: string;
   title?: string;
   summary?: string;
+  structuredData?: ContentStructuredData;
   seo?: Partial<ContentSeo>;
 };
 
@@ -80,6 +83,7 @@ export type ContentAgentTranslateOutput = {
   title: string;
   summary: string;
   body: string;
+  structuredData?: ContentStructuredData;
   seo?: Partial<ContentSeo>;
 };
 
@@ -124,6 +128,7 @@ export type ContentAgentResult<T> = T | PromiseLike<T>;
  */
 export interface ContentAgentAdapter {
   readonly id: string;
+  readonly model?: string | undefined;
   propose(input: ContentAgentProposalInput): ContentAgentResult<ContentAgentProposalOutput>;
   draft(input: ContentAgentDraftInput): ContentAgentResult<ContentAgentDraftOutput>;
   polish(input: ContentAgentPolishInput): ContentAgentResult<ContentAgentPolishOutput>;
@@ -168,6 +173,7 @@ function trimList(values: string[]): string[] {
  */
 export class DeterministicContentAgentAdapter implements ContentAgentAdapter {
   public readonly id = "deterministic-content-agent";
+  public readonly model = "deterministic";
 
   public propose(input: ContentAgentProposalInput): ContentAgentProposalOutput {
     return {
@@ -244,7 +250,7 @@ export class HttpContentAgentAdapter implements ContentAgentAdapter {
   public readonly id = "http-content-agent";
   private readonly endpoint: string;
   private readonly apiKey: string | undefined;
-  private readonly model: string | undefined;
+  public readonly model: string | undefined;
   private readonly timeoutMs: number;
   private readonly maxRequestBytes: number;
   private readonly maxResponseBytes: number;

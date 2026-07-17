@@ -36,11 +36,11 @@ Sichtbarkeit und Aktionen werden pro Kategorie definiert. Daten anderer Kategori
 ## Content-Workflow
 
 ```text
-REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
-→ EDITED → APPROVED → PUBLISHED
+PROPOSED → DRAFTED → POLISHED → SEO_REVIEWED
+→ REVIEW_REQUESTED → APPROVED → PUBLISHED
 ```
 
-KI-Ausgaben durchlaufen Faktenprüfung, Review und Freigabe vor der Veröffentlichung. Für IR- und Rechtsinhalte bleiben Quellen und Prüfverlauf erhalten.
+`FACT_CHECKED` ist kein eigenständiger Workflow-Status; die aktuelle Faktenprüfung und das SEO-Audit müssen vor Review und Freigabe erfolgreich sein. KI-Ausgaben durchlaufen Faktenprüfung, Review und Freigabe vor der Veröffentlichung. Für IR- und Rechtsinhalte bleiben Quellen und Prüfverlauf erhalten.
 
 ## API / MCP
 

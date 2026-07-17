@@ -36,11 +36,11 @@ CMS-OS 目前作为开源项目开发中。
 ## 内容工作流
 
 ```text
-REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
-→ EDITED → APPROVED → PUBLISHED
+PROPOSED → DRAFTED → POLISHED → SEO_REVIEWED
+→ REVIEW_REQUESTED → APPROVED → PUBLISHED
 ```
 
-AI 生成内容在事实核查、审核和审批后发布。对于 IR 和法律等高准确性内容，系统保留依据和核查历史。
+`FACT_CHECKED`不是独立的工作流状态；最新的事实核查和 SEO 审计通过后，才能进入审核和审批。AI 生成内容在事实核查、审核和审批后发布。对于 IR 和法律等高准确性内容，系统保留依据和核查历史。
 
 ## API / MCP
 

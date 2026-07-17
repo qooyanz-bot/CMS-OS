@@ -50,18 +50,18 @@ function normalizeMarkdownHref(value: string): string | undefined {
 }
 
 function renderInlineMarkdown(value: string): string {
-  const pattern = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  const pattern = /(!?)\[([^\]]+)\]\(([^)\s]+)\)/g;
   let output = "";
   let cursor = 0;
   for (const match of value.matchAll(pattern)) {
     const fullMatch = match[0] ?? "";
-    const label = match[1] ?? "";
-    const href = normalizeMarkdownHref(match[2] ?? "");
+    const label = match[2] ?? "";
+    const href = normalizeMarkdownHref(match[3] ?? "");
     const matchIndex = match.index ?? 0;
     output += escapeHtml(value.slice(cursor, matchIndex));
-    output += href
-      ? `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`
-      : escapeHtml(fullMatch);
+    if (href && match[1] === "!") output += `<img src="${escapeHtml(href)}" alt="${escapeHtml(label)}" loading="lazy">`;
+    else if (href) output += `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
+    else output += escapeHtml(fullMatch);
     cursor = matchIndex + fullMatch.length;
   }
   return `${output}${escapeHtml(value.slice(cursor))}`;
@@ -282,7 +282,13 @@ function jsonLdString(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
-function articleJsonLd(content: ContentRecord, categoryLabel: string, canonical: string): Record<string, unknown> {
+function articleJsonLd(content: ContentRecord, categoryLabel: string, canonical: string, authorName?: string): Record<string, unknown> {
+  const structured = content.structuredData;
+  const issuer = structured?.type === "pressRelease" ? structured.issuer : undefined;
+  const author = authorName ?? issuer ?? "CMS-OS編集チーム";
+  const authorEntity: unknown = content.authors && content.authors.length > 0
+    ? content.authors.map((profile) => ({ "@type": "Person", name: profile.name, ...(profile.profileUrl ? { url: profile.profileUrl } : {}), ...(profile.credentials && profile.credentials.length > 0 ? { knowsAbout: profile.credentials } : {}) }))
+    : { "@type": "Organization", name: author };
   if (content.seo.jsonLdType === "FAQPage") {
     return {
       "@type": "FAQPage",
@@ -291,6 +297,8 @@ function articleJsonLd(content: ContentRecord, categoryLabel: string, canonical:
       description: content.summary,
       url: canonical,
       inLanguage: localeTag(content),
+      dateModified: content.updatedAt,
+      author: authorEntity,
       mainEntity: content.seo.faq.map((item) => ({
         "@type": "Question",
         name: item.question,
@@ -308,23 +316,34 @@ function articleJsonLd(content: ContentRecord, categoryLabel: string, canonical:
       url: canonical,
       inLanguage: localeTag(content),
       knowsAbout: content.seo.keywords,
+      ...(structured?.type === "company" ? { legalName: structured.companyName } : {}),
+      dateModified: content.updatedAt,
+      author: authorEntity,
     };
   }
 
   if (content.seo.jsonLdType === "JobPosting") {
+    const jobData = structured?.type === "job" ? structured : undefined;
     return {
       "@type": "JobPosting",
       "@id": `${canonical}#job`,
       title: content.title,
       description: content.summary,
       url: canonical,
-      datePosted: content.createdAt,
+      datePosted: jobData?.openingDate ?? content.createdAt,
+      dateModified: content.updatedAt,
+      ...(jobData?.closingDate ? { validThrough: jobData.closingDate } : {}),
       inLanguage: localeTag(content),
-      employmentType: "OTHER",
-      hiringOrganization: { "@type": "Organization", name: "掲載事業者" },
-      jobLocation: { "@type": "Place", address: { "@type": "PostalAddress", addressCountry: "JP" } },
+      employmentType: jobData?.employmentType ?? "OTHER",
+      hiringOrganization: { "@type": "Organization", name: author },
+      jobLocation: jobData?.locations.map((location) => ({ "@type": "Place", name: location, address: { "@type": "PostalAddress", addressCountry: "JP" } })) ?? [{ "@type": "Place", address: { "@type": "PostalAddress", addressCountry: "JP" } }],
+      ...(jobData?.applicationUrl ? { directApply: true } : {}),
     };
   }
+
+  const publicationDate = content.publishedAt ?? (structured?.type === "pressRelease"
+    ? structured.releaseDate
+    : structured?.type === "ir" ? structured.publicationDate : content.createdAt);
 
   const article: Record<string, unknown> = {
     "@type": content.seo.jsonLdType,
@@ -334,15 +353,17 @@ function articleJsonLd(content: ContentRecord, categoryLabel: string, canonical:
     description: content.summary,
     url: canonical,
     mainEntityOfPage: canonical,
-    datePublished: content.createdAt,
+    datePublished: publicationDate,
     dateModified: content.updatedAt,
     inLanguage: localeTag(content),
     articleSection: categoryLabel,
     keywords: content.seo.keywords,
     isAccessibleForFree: true,
-    author: { "@type": "Organization", name: "CMS-OS編集チーム" },
+    author: authorEntity,
     publisher: { "@type": "Organization", name: "CMS-OS" },
   };
+  if (structured?.type === "pressRelease") article.publisher = { "@type": "Organization", name: structured.issuer };
+  if (structured?.type === "ir" && structured.sourceDocumentUrl) article.isBasedOn = structured.sourceDocumentUrl;
   return article;
 }
 
@@ -369,13 +390,76 @@ function mediaHtml(mediaAssets: MediaAsset[]): string {
   }).join("")}</section>`;
 }
 
-function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], allContents: ContentRecord[], categoryLabel: string, mediaAssets: MediaAsset[], baseUrl: string): string {
+function structuredDataHtml(content: ContentRecord): string {
+  const structured = content.structuredData;
+  if (!structured) return "";
+  const rows: Array<[string, string]> = [];
+  const add = (label: string, value: string | undefined): void => {
+    if (value?.trim()) rows.push([label, value.trim()]);
+  };
+  const addList = (label: string, values: string[] | undefined): void => add(label, values?.join("、"));
+  if (structured.type === "company") {
+    add("会社名", structured.companyName);
+    add("代表者", structured.representative);
+    add("所在地", structured.address);
+    addList("サービス", structured.services);
+  } else if (structured.type === "job") {
+    add("職種", structured.jobTitle);
+    add("雇用形態", structured.employmentType);
+    addList("勤務地", structured.locations);
+    addList("業務内容", structured.responsibilities);
+    addList("必須条件", structured.requirements);
+    add("給与", structured.salary);
+    addList("歓迎条件", structured.preferredQualifications);
+    addList("福利厚生", structured.benefits);
+    addList("選考フロー", structured.selectionProcess);
+    add("募集開始日", structured.openingDate);
+    add("募集終了日", structured.closingDate);
+    add("募集状態", structured.status === "open" ? "募集中" : "募集終了");
+  } else if (structured.type === "pressRelease") {
+    add("発表日", structured.releaseDate);
+    add("発行者", structured.issuer);
+    add("メディア窓口", structured.mediaContact);
+    add("関連イベント日", structured.eventDate);
+  } else {
+    add("公表日", structured.publicationDate);
+    add("資料種別", structured.documentType);
+    add("対象期間", structured.fiscalPeriod);
+    add("訂正対象", structured.correctionOfContentId);
+    add("原資料", structured.sourceDocumentUrl);
+    add("公開状態", structured.withdrawn ? "撤回済み" : "公開情報");
+  }
+  if (rows.length === 0) return "";
+  return `<section class="structured-facts" aria-labelledby="structured-facts-heading"><h2 id="structured-facts-heading">構造化された公開情報</h2><dl class="provider-facts">${rows.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("")}</dl></section>`;
+}
+
+function sourceFactsHtml(content: ContentRecord): string {
+  if (content.sourceFacts.length === 0) return "";
+  return `<section class="source-facts" aria-labelledby="source-facts-heading"><h2 id="source-facts-heading">確認済みの一次情報</h2><ul class="provider-facts-list">${content.sourceFacts.map((fact) => `<li>${escapeHtml(fact)}</li>`).join("")}</ul></section>`;
+}
+
+function sourceEvidenceHtml(content: ContentRecord): string {
+  const evidence = content.sourceEvidence ?? [];
+  if (evidence.length === 0) return "";
+  const links = evidence.map((source) => {
+    const href = normalizeMarkdownHref(source.url);
+    const title = escapeHtml(source.title);
+    const checkedAt = escapeHtml(source.checkedAt);
+    return `<li>${href ? `<a href="${escapeHtml(href)}" rel="nofollow noopener">${title}</a>` : title}<span>${source.publisher ? `${escapeHtml(source.publisher)} · ` : ""}確認日: <time datetime="${checkedAt}">${checkedAt.slice(0, 10)}</time>${source.note ? ` · ${escapeHtml(source.note)}` : ""}</span></li>`;
+  }).join("");
+  return `<section class="source-evidence" aria-labelledby="source-evidence-heading"><h2 id="source-evidence-heading">参照した出典</h2><ul class="provider-facts-list">${links}</ul></section>`;
+}
+
+function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], allContents: ContentRecord[], categoryLabel: string, mediaAssets: MediaAsset[], baseUrl: string, providerName?: string): string {
   const canonical = absoluteUrl(baseUrl, `/${routeFor(content)}/`);
   const categoryUrl = absoluteUrl(baseUrl, `/${categoryRoute(content.category)}/`);
   const alternates = translationAlternates(content, allContents);
   const defaultAlternate = alternates.find((item) => (item.locale || "ja") === "ja") ?? content;
   const alternateLinks = alternates.map((item) => `<link rel="alternate" hreflang="${escapeHtml(localeTag(item))}" href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(item)}/`))}">`).join("\n    ");
-  const article = articleJsonLd(content, categoryLabel, canonical);
+  const article = articleJsonLd(content, categoryLabel, canonical, providerName);
+  const displayAuthor = content.authors?.map((profile) => profile.name).join("、") || providerName || (content.structuredData?.type === "pressRelease" ? content.structuredData.issuer : "CMS-OS編集チーム");
+  const tagLinks = content.tags.map((tag) => `<span class="content-tag">${escapeHtml(tag)}</span>`).join(" ");
+  const seriesLabel = content.series ? `<span>シリーズ: ${escapeHtml(content.series)}</span> · ` : "";
   const imageUrls = mediaAssets.filter((asset) => asset.mediaType === "image" && asset.publicUrl).map((asset) => asset.publicUrl as string);
   if (imageUrls.length > 0) article.image = imageUrls;
   const graph: Record<string, unknown>[] = [
@@ -411,7 +495,7 @@ function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], allC
     <title>${escapeHtml(content.seo.title)}</title>
     <meta name="description" content="${escapeHtml(content.seo.description)}">
     <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
-    <meta name="author" content="CMS-OS編集チーム">
+    <meta name="author" content="${escapeHtml(displayAuthor)}">
     <meta property="og:site_name" content="CMS-OS">
     <meta property="og:locale" content="${escapeHtml(ogLocaleTag(content))}">
     <link rel="canonical" href="${escapeHtml(canonical)}">
@@ -436,10 +520,14 @@ function pageHtml(content: ContentRecord, relatedContents: ContentRecord[], allC
         <header class="article-header">
           <h1>${escapeHtml(content.title)}</h1>
           <p class="summary">${escapeHtml(content.summary)}</p>
-          <p class="meta"><time datetime="${escapeHtml(content.updatedAt)}">最終更新日: ${escapeHtml(content.updatedAt.slice(0, 10))}</time> · ${escapeHtml(categoryLabel)}</p>
+          <p class="meta">${content.publishedAt ? `<time datetime="${escapeHtml(content.publishedAt)}">公開日: ${escapeHtml(content.publishedAt.slice(0, 10))}</time> · ` : ""}<time datetime="${escapeHtml(content.updatedAt)}">最終更新日: ${escapeHtml(content.updatedAt.slice(0, 10))}</time> · ${seriesLabel}読了目安: ${content.readingTimeMinutes}分 · 著者: ${escapeHtml(displayAuthor)} · ${escapeHtml(categoryLabel)}</p>
+          ${tagLinks ? `<p class="content-tags" aria-label="タグ">${tagLinks}</p>` : ""}
         </header>
         ${mediaHtml(mediaAssets)}
+        ${structuredDataHtml(content)}
         <div class="article-body">${renderMarkdown(content.body)}</div>
+        ${sourceFactsHtml(content)}
+        ${sourceEvidenceHtml(content)}
         ${faqHtml}
       </article>
       ${relatedContents.length > 0 ? `<section class="related-section" aria-labelledby="related-heading"><h2 id="related-heading">関連する公開情報</h2><ul class="content-index">${relatedLinks}</ul></section>` : ""}
@@ -453,18 +541,23 @@ interface PublishedCategory {
   label: string;
 }
 
+function orderContents(contents: ContentRecord[]): ContentRecord[] {
+  return [...contents].sort((left, right) => Number(right.featured) - Number(left.featured) || (right.publishedAt ?? right.updatedAt).localeCompare(left.publishedAt ?? left.updatedAt) || left.title.localeCompare(right.title, "ja"));
+}
+
 function rootHtml(contents: ContentRecord[], categories: PublishedCategory[], baseUrl: string): string {
+  const orderedContents = orderContents(contents);
   const categoryLinks = categories.map((category) => {
     const url = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`);
     return `<li><a href="${escapeHtml(url)}">${escapeHtml(category.label)}</a><span>カテゴリ別の公開情報・事業者案内</span></li>`;
   }).join("\n");
-  const contentLinks = contents.map((content) => {
+  const contentLinks = orderedContents.map((content) => {
     const url = absoluteUrl(baseUrl, `/${routeFor(content)}/`);
     return `<li><a href="${escapeHtml(url)}">${escapeHtml(content.title)}</a><span>${escapeHtml(content.summary)}</span></li>`;
   }).join("\n");
   const itemList = [
     ...categories.map((category) => ({ name: category.label, url: absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`) })),
-    ...contents.map((content) => ({ name: content.title, url: absoluteUrl(baseUrl, `/${routeFor(content)}/`) })),
+    ...orderedContents.map((content) => ({ name: content.title, url: absoluteUrl(baseUrl, `/${routeFor(content)}/`) })),
   ];
   const jsonLd = jsonLdString({
     "@context": "https://schema.org",
@@ -490,6 +583,7 @@ function rootHtml(contents: ContentRecord[], categories: PublishedCategory[], ba
     <link rel="alternate" hreflang="ja" href="${escapeHtml(`${baseUrl}/`)}">
     <link rel="alternate" hreflang="x-default" href="${escapeHtml(`${baseUrl}/`)}">
     <link rel="sitemap" type="application/xml" href="${escapeHtml(absoluteUrl(baseUrl, "/sitemap.xml"))}">
+    <link rel="alternate" type="application/rss+xml" title="CMS-OS公開コンテンツ" href="${escapeHtml(absoluteUrl(baseUrl, "/rss.xml"))}">
     <link rel="stylesheet" href="/assets/cms-os.css">
     <script type="application/ld+json">${jsonLd}</script>
   </head>
@@ -508,16 +602,17 @@ function rootHtml(contents: ContentRecord[], categories: PublishedCategory[], ba
 }
 
 function categoryHtml(category: PublishedCategory, contents: ContentRecord[], providers: VisibleProvider[], guides: DirectoryGuide[], jobs: JobPosting[], baseUrl: string): string {
+  const orderedContents = orderContents(contents);
   const canonical = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/`);
   const providerUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/providers/`);
   const jobsUrl = absoluteUrl(baseUrl, `/${categoryRoute(category.slug)}/jobs/`);
-  const contentLinks = contents.map((content) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(content)}/`))}">${escapeHtml(content.title)}</a><span>${escapeHtml(content.summary)}</span></li>`).join("\n");
+  const contentLinks = orderedContents.map((content) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${routeFor(content)}/`))}">${escapeHtml(content.title)}</a><span>${escapeHtml(content.summary)}</span></li>`).join("\n");
   const providerLinks = providers.slice(0, 8).map((provider) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`))}">${escapeHtml(provider.name)}</a><span>${escapeHtml(provider.location)} · ${escapeHtml(provider.themes.join("・"))}</span></li>`).join("\n");
   const jobLinks = jobs.slice(0, 8).map((job) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`))}">${escapeHtml(job.title)}</a><span>${escapeHtml(job.employmentType)} · ${escapeHtml(job.location)}</span></li>`).join("\n");
   const guideLinks = guides.map((guide) => `<li><a href="${escapeHtml(guide.url)}" rel="nofollow noopener noreferrer">${escapeHtml(guide.name)}</a><span>${escapeHtml(guide.description)}</span></li>`).join("\n");
   const themeLinks = uniqueThemeValues(providers).map((theme) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${facetRoute(category.slug, "themes", theme)}/`))}">${escapeHtml(theme)}</a><span>${escapeHtml(theme)}に対応する公開事業者</span></li>`).join("\n");
   const regionLinks = uniqueFacetValues(providers, (provider) => provider.location).map((region) => `<li><a href="${escapeHtml(absoluteUrl(baseUrl, `/${facetRoute(category.slug, "regions", region)}/`))}">${escapeHtml(region)}</a><span>${escapeHtml(region)}の公開事業者</span></li>`).join("\n");
-  const itemList = [...contents.map((content) => absoluteUrl(baseUrl, `/${routeFor(content)}/`)), ...providers.map((provider) => absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`)), ...jobs.map((job) => absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`))];
+  const itemList = [...orderedContents.map((content) => absoluteUrl(baseUrl, `/${routeFor(content)}/`)), ...providers.map((provider) => absoluteUrl(baseUrl, `/${providerRoute(category.slug, provider.id)}/`)), ...jobs.map((job) => absoluteUrl(baseUrl, `/${jobRoute(category.slug, job.id)}/`))];
   const jsonLd = jsonLdString({
     "@context": "https://schema.org",
     "@graph": [
@@ -669,7 +764,7 @@ function facetPageHtml(
 }
 
 const mediaCss = ".media-gallery{border-top:1px solid var(--line);display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:40px 0;padding-top:20px}.media-gallery h2{grid-column:1/-1;margin:0}.media-gallery figure{background:#fff;border:1px solid var(--line);margin:0;padding:12px}.media-gallery img,.media-gallery video{display:block;height:auto;max-width:100%;width:100%}.media-gallery figcaption{color:var(--muted);font-size:.9rem;margin-top:8px} .media-gallery p{margin:0}";
-const css = `:root{color-scheme:light;--ink:#17202a;--muted:#64748b;--line:#dbe3ea;--accent:#0f766e}*{box-sizing:border-box}body{margin:0;background:#f8fafc;color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.8}.page-shell{max-width:860px;margin:0 auto;padding:48px 24px}.eyebrow{color:var(--accent);font-size:.8rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.breadcrumbs{color:var(--muted);font-size:.82rem;margin-bottom:28px}.breadcrumbs ol{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}.breadcrumbs li:not(:last-child)::after{content:"/";margin-left:8px;color:#94a3b8}.breadcrumbs a{color:var(--accent)}.article-header{border-bottom:1px solid var(--line);margin-bottom:32px;padding-bottom:24px}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.2;margin:0 0 16px}h2{margin-top:40px;line-height:1.3}.lead-answer{background:#ecfdf5;border-left:4px solid var(--accent);margin:20px 0;padding:16px 18px}.summary{color:#334155;font-size:1.12rem}.meta{color:var(--muted);font-size:.86rem}.article-body h2{border-left:4px solid var(--accent);padding-left:12px;margin-top:40px}.article-body h3{margin-top:28px}.article-body a{color:var(--accent);text-decoration:underline;text-underline-offset:.15em}.article-body blockquote{border-left:3px solid var(--line);color:var(--muted);margin:24px 0;padding-left:16px}.article-body li{margin:6px 0}.table-wrap{overflow-x:auto;margin:24px 0}.article-body table{border-collapse:collapse;min-width:620px;width:100%}.article-body th,.article-body td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}.article-body th{background:#ecfdf5}.content-index{list-style:none;margin:20px 0;padding:0}.content-index li{border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px;padding:18px 0}.content-index a{color:var(--accent);font-size:1.15rem;font-weight:700}.content-index span{color:var(--muted)}.related-section,.faq-section{border-top:1px solid var(--line);margin-top:40px;padding-top:10px}.faq-item{border-bottom:1px solid var(--line);padding:8px 0}.faq-item h3{font-size:1.05rem}.faq-item p{color:#334155}.directory-link{color:var(--accent);font-weight:700}.provider-facts{background:#fff;border:1px solid var(--line);display:grid;gap:8px;grid-template-columns:10rem 1fr;padding:18px}.provider-facts dt{color:var(--muted);font-weight:700}.provider-facts dd{margin:0}.provider-facts-list{list-style:none;padding:0}.provider-facts-list li{border-bottom:1px solid var(--line);padding:10px 0}`;
+const css = `:root{color-scheme:light;--ink:#17202a;--muted:#64748b;--line:#dbe3ea;--accent:#0f766e}*{box-sizing:border-box}body{margin:0;background:#f8fafc;color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.8}.page-shell{max-width:860px;margin:0 auto;padding:48px 24px}.eyebrow{color:var(--accent);font-size:.8rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.breadcrumbs{color:var(--muted);font-size:.82rem;margin-bottom:28px}.breadcrumbs ol{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}.breadcrumbs li:not(:last-child)::after{content:"/";margin-left:8px;color:#94a3b8}.breadcrumbs a{color:var(--accent)}.article-header{border-bottom:1px solid var(--line);margin-bottom:32px;padding-bottom:24px}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.2;margin:0 0 16px}h2{margin-top:40px;line-height:1.3}.lead-answer{background:#ecfdf5;border-left:4px solid var(--accent);margin:20px 0;padding:16px 18px}.summary{color:#334155;font-size:1.12rem}.meta{color:var(--muted);font-size:.86rem}.content-tags{display:flex;flex-wrap:wrap;gap:6px}.content-tag{background:#e2e8f0;border-radius:999px;color:#334155;font-size:.78rem;padding:2px 10px}.article-body h2{border-left:4px solid var(--accent);padding-left:12px;margin-top:40px}.article-body h3{margin-top:28px}.article-body a{color:var(--accent);text-decoration:underline;text-underline-offset:.15em}.article-body blockquote{border-left:3px solid var(--line);color:var(--muted);margin:24px 0;padding-left:16px}.article-body li{margin:6px 0}.table-wrap{overflow-x:auto;margin:24px 0}.article-body table{border-collapse:collapse;min-width:620px;width:100%}.article-body th,.article-body td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}.article-body th{background:#ecfdf5}.content-index{list-style:none;margin:20px 0;padding:0}.content-index li{border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px;padding:18px 0}.content-index a{color:var(--accent);font-size:1.15rem;font-weight:700}.content-index span{color:var(--muted)}.related-section,.faq-section{border-top:1px solid var(--line);margin-top:40px;padding-top:10px}.faq-item{border-bottom:1px solid var(--line);padding:8px 0}.faq-item h3{font-size:1.05rem}.faq-item p{color:#334155}.directory-link{color:var(--accent);font-weight:700}.provider-facts{background:#fff;border:1px solid var(--line);display:grid;gap:8px;grid-template-columns:10rem 1fr;padding:18px}.provider-facts dt{color:var(--muted);font-weight:700}.provider-facts dd{margin:0}.provider-facts-list{list-style:none;padding:0}.provider-facts-list li{border-bottom:1px solid var(--line);padding:10px 0}`;
 
 function sitemapXml(
   contents: ContentRecord[],
@@ -708,6 +803,20 @@ function sitemapXml(
   entries.push(...contents.map((content) => ({ url: absoluteUrl(baseUrl, `/${routeFor(content)}/`), lastmod: content.updatedAt })));
   const urls = entries.map((entry) => `  <url><loc>${escapeHtml(entry.url)}</loc>${entry.lastmod ? `<lastmod>${escapeHtml(entry.lastmod)}</lastmod>` : ""}</url>`).join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+}
+
+function rssXml(contents: ContentRecord[], baseUrl: string): string {
+  const items = contents
+    .filter((content) => content.visibility === "public")
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .map((content) => {
+      const url = absoluteUrl(baseUrl, `/${routeFor(content)}/`);
+      const publishedAt = content.publishedAt ?? content.updatedAt;
+      const categories = content.tags.map((tag) => `<category>${escapeHtml(tag)}</category>`).join("");
+      return `    <item><title>${escapeHtml(content.title)}</title><link>${escapeHtml(url)}</link><guid isPermaLink="true">${escapeHtml(url)}</guid><description>${escapeHtml(content.summary)}</description><pubDate>${escapeHtml(new Date(publishedAt).toUTCString())}</pubDate>${categories}</item>`;
+    })
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0"><channel><title>CMS-OS公開コンテンツ</title><link>${escapeHtml(absoluteUrl(baseUrl, "/"))}</link><description>CMS-OSで管理された公開コンテンツの更新情報です。</description>\n${items}\n</channel></rss>\n`;
 }
 
 function llmsText(contents: ContentRecord[], categories: PublishedCategory[], providersByCategory: Map<CategorySlug, VisibleProvider[]>, jobsByCategory: Map<CategorySlug, JobPosting[]>, baseUrl: string): string {
@@ -779,6 +888,12 @@ export class PublicationService {
       if (item.status !== "approved" && item.status !== "published") {
         throw new PublicationServiceError(409, `コンテンツ「${item.title}」は承認前のため公開できません。`);
       }
+      if (item.visibility !== "public") {
+        throw new PublicationServiceError(409, `コンテンツ「${item.title}」は公開可視性ではありません。公開にはvisibility=publicが必要です。`);
+      }
+      if (item.expiresAt && Date.parse(item.expiresAt) <= Date.now()) {
+        throw new PublicationServiceError(409, `コンテンツ「${item.title}」は公開期限を過ぎています。`);
+      }
     }
 
     const providerDirectoryFiles = publishedCategories.flatMap((category) => {
@@ -827,6 +942,14 @@ export class PublicationService {
       `Sitemap: ${baseUrl}/sitemap.xml`,
       "",
     ].join("\n");
+    const headers = [
+      "/*",
+      "  X-Content-Type-Options: nosniff",
+      "  Referrer-Policy: strict-origin-when-cross-origin",
+      "  Permissions-Policy: camera=(), microphone=(), geolocation=()",
+      "  Content-Security-Policy: default-src 'self'; img-src 'self' https: data:; media-src 'self' https:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https:; object-src 'none'; base-uri 'self'; form-action 'self'",
+      "",
+    ].join("\n");
     const files = [
       { path: "index.html", contentType: "text/html; charset=utf-8", content: rootHtml(contents, publishedCategories, baseUrl) },
       { path: "assets/cms-os.css", contentType: "text/css; charset=utf-8", content: `${css}${mediaCss}` },
@@ -834,11 +957,21 @@ export class PublicationService {
       ...contents.map((content) => ({
         path: `${routeFor(content)}/index.html`,
         contentType: "text/html; charset=utf-8",
-        content: pageHtml(content, relatedContentsFor(content, contents), contents, categoryLabelBySlug.get(content.category) ?? content.category, mediaByContent.get(content.id) ?? [], baseUrl),
+        content: pageHtml(
+          content,
+          relatedContentsFor(content, contents),
+          contents,
+          categoryLabelBySlug.get(content.category) ?? content.category,
+          mediaByContent.get(content.id) ?? [],
+          baseUrl,
+          providersByCategory.get(content.category)?.find((provider) => provider.id === content.providerId)?.name,
+        ),
       })),
       { path: "sitemap.xml", contentType: "application/xml; charset=utf-8", content: sitemapXml(contents, publishedCategories, providersByCategory, jobsByCategory, baseUrl) },
+      { path: "rss.xml", contentType: "application/rss+xml; charset=utf-8", content: rssXml(contents, baseUrl) },
       { path: "robots.txt", contentType: "text/plain; charset=utf-8", content: robots },
       { path: "llms.txt", contentType: "text/plain; charset=utf-8", content: llmsText(contents, publishedCategories, providersByCategory, jobsByCategory, baseUrl) },
+      { path: "_headers", contentType: "text/plain; charset=utf-8", content: headers },
     ];
 
     const publication: PublicationBuildResult = {

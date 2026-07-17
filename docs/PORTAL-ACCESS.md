@@ -80,7 +80,6 @@ POST /api/v1/auth/mfa/enroll
 POST /api/v1/auth/mfa/confirm
 POST /api/v1/auth/mfa/complete
 GET  /api/v1/categories                     # カテゴリ別テーマ候補とナビゲーションを取得
-カテゴリ文脈の`visibleModules`と`navigation`はカテゴリ・ロールごとに異なります。`ai-business`はAI活用、`labor-shortage`は採用支援、`tourism`は観光体験、`mobility-dx`はフリート、`gx`は脱炭素、`regional-revitalization`は地域プロジェクトの専用モジュールを、ユーザー・発注者・事業者・リクルーターのロール別に投影します。ユーザーには公開導線、発注者には依頼・予約導線、事業者には管理導線、リクルーターには求人・応募導線だけを返します。`GET /api/v1/categories`とカテゴリ文脈の`themeOptions`には、そのカテゴリの標準テーマと公開事業者が実際に掲載しているテーマを統合して返します。
 GET  /api/v1/categories/{category}
 GET  /api/v1/categories/{category}/experience
 GET  /api/v1/categories/{category}/summary
@@ -88,7 +87,6 @@ GET  /api/v1/categories/{category}/directories
 POST /api/v1/directories                  # 運営キーで外部案内を追加
 PATCH /api/v1/directories/{directoryId}   # 運営キーで外部案内を更新
 DELETE /api/v1/directories/{directoryId}  # 運営キーで外部案内を削除
-外部案内は運営キーを持つAPI/MCP連携だけが追加・更新・削除できます。閲覧時はカテゴリと現在のロールに応じて対象案内を投影します。
 GET  /api/v1/providers?category=beauty&theme=カラー
 GET  /api/v1/providers/compare?category=beauty&ids=provider-beauty-demo,provider-beauty-support-demo
 GET  /api/v1/providers/{providerId}
@@ -116,10 +114,12 @@ PATCH /api/v1/jobs/{jobId}
 POST /api/v1/jobs/{jobId}/applications
 GET  /api/v1/applications
 PATCH /api/v1/applications/{applicationId}
-GET  /api/v1/notifications?limit=50&cursor=0
-PATCH /api/v1/notifications/{notificationId}
 POST /mcp
 ```
+
+外部案内は運営キーを持つAPI/MCP連携だけが追加・更新・削除できます。閲覧時はカテゴリと現在のロールに応じて対象案内を投影します。
+
+カテゴリ文脈の`visibleModules`と`navigation`はカテゴリ・ロールごとに異なります。`ai-business`はAI活用、`labor-shortage`は採用支援、`tourism`は観光体験、`mobility-dx`はフリート、`gx`は脱炭素、`regional-revitalization`は地域プロジェクトの専用モジュールを、ユーザー・発注者・事業者・リクルーターのロール別に投影します。ユーザーには公開導線、発注者には依頼・予約導線、事業者には管理導線、リクルーターには求人・応募導線だけを返します。`GET /api/v1/categories`とカテゴリ文脈の`themeOptions`には、そのカテゴリの標準テーマと公開事業者が実際に掲載しているテーマを統合して返します。
 
 ## 事業者掲載情報・求人管理
 

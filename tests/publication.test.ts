@@ -66,6 +66,26 @@ describe("CMS-OS承認済み静的公開", () => {
       body: JSON.stringify({ proposalId: proposal.body.item.id }),
     });
 
+    const structured = await request(`/api/v1/content/${draft.body.item.id}`, {
+      method: "PATCH",
+      headers: authHeaders,
+      body: JSON.stringify({
+        structuredData: {
+          type: "pressRelease",
+          releaseDate: "2026-07-16",
+          issuer: "CMS-OS法律事務所（サンプル）",
+          mediaContact: "media@example.com",
+        },
+        sourceEvidence: [{
+          title: "新サービス公式発表",
+          url: "https://example.com/news/service-launch",
+          publisher: "CMS-OS法律事務所（サンプル）",
+          checkedAt: "2026-07-16",
+        }],
+      }),
+    });
+    assert.equal(structured.status, 200);
+
     const beforeApproval = await request("/api/v1/publications/build", {
       method: "POST",
       headers: authHeaders,
@@ -119,8 +139,10 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.ok(fileMap.has("index.html"));
     assert.ok(fileMap.has(pagePath));
     assert.ok(fileMap.has("sitemap.xml"));
+    assert.ok(fileMap.has("rss.xml"));
     assert.ok(fileMap.has("robots.txt"));
     assert.ok(fileMap.has("llms.txt"));
+    assert.ok(fileMap.has("_headers"));
     assert.ok(fileMap.has("categories/legal/index.html"));
     assert.ok(fileMap.has("categories/legal/providers/index.html"));
     assert.ok(fileMap.has("categories/legal/providers/provider-legal-demo/index.html"));
@@ -138,6 +160,12 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get(pagePath) ?? "", /FAQPage/);
     assert.match(fileMap.get(pagePath) ?? "", /BreadcrumbList/);
     assert.match(fileMap.get(pagePath) ?? "", /<link rel="canonical"/);
+    assert.match(fileMap.get(pagePath) ?? "", /構造化された公開情報/);
+    assert.match(fileMap.get(pagePath) ?? "", /確認済みの一次情報/);
+    assert.match(fileMap.get(pagePath) ?? "", /参照した出典/);
+    assert.match(fileMap.get(pagePath) ?? "", /新サービス公式発表/);
+    assert.match(fileMap.get(pagePath) ?? "", /CMS-OS法律事務所（サンプル）/);
+    assert.match(fileMap.get(pagePath) ?? "", /2026-07-16/);
     assert.match(fileMap.get(pagePath) ?? "", /hreflang="ja"/);
     assert.match(fileMap.get("sitemap.xml") ?? "", /https:\/\/www\.example\.com/);
     assert.match(fileMap.get("sitemap.xml") ?? "", /categories\/legal\/providers\/provider-legal-demo/);
@@ -147,6 +175,9 @@ describe("CMS-OS承認済み静的公開", () => {
     assert.match(fileMap.get("robots.txt") ?? "", /Sitemap: https:\/\/www\.example\.com\/sitemap\.xml/);
     assert.match(fileMap.get("robots.txt") ?? "", /GPTBot/);
     assert.match(fileMap.get("robots.txt") ?? "", /Disallow: \/api\//);
+    assert.match(fileMap.get("rss.xml") ?? "", /<rss version="2\.0">/);
+    assert.match(fileMap.get("rss.xml") ?? "", /新サービスのお知らせ|新サービス/);
+    assert.match(fileMap.get("_headers") ?? "", /Content-Security-Policy/);
     assert.match(fileMap.get("llms.txt") ?? "", /Provider/);
     assert.match(fileMap.get("llms.txt") ?? "", /Jobs/);
     assert.match(fileMap.get("llms.txt") ?? "", /CMS-OS法律事務所（サンプル）/);

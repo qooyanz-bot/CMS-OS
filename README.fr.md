@@ -36,11 +36,11 @@ La visibilité et les actions sont définies par catégorie. Les données d’un
 ## Workflow de contenu
 
 ```text
-REQUESTED → PROPOSED → DRAFTED → FACT_CHECKED → SEO_REVIEWED
-→ EDITED → APPROVED → PUBLISHED
+PROPOSED → DRAFTED → POLISHED → SEO_REVIEWED
+→ REVIEW_REQUESTED → APPROVED → PUBLISHED
 ```
 
-Les contenus générés par IA passent par la vérification des faits, la relecture et la validation avant publication. Les contenus sensibles, notamment IR et juridiques, conservent leurs sources et leur historique de vérification.
+`FACT_CHECKED` n’est pas un état indépendant ; la vérification des faits et l’audit SEO les plus récents doivent être réussis avant la relecture et la validation. Les contenus générés par IA passent par la vérification des faits, la relecture et la validation avant publication. Les contenus sensibles, notamment IR et juridiques, conservent leurs sources et leur historique de vérification.
 
 ## API / MCP
 

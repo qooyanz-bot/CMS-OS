@@ -41,6 +41,17 @@ export interface RoleAssignment {
   organizationId?: string;
 }
 
+/** 公開ログインロールとは分離した、CMS編集・承認・公開の内部ロールです。 */
+export const contentInternalRoles = ["enterprise_admin", "tenant_admin", "editor", "hr", "pr", "ir", "legal_reviewer", "approver", "publisher", "partner_editor", "partner_viewer"] as const;
+export type ContentInternalRole = (typeof contentInternalRoles)[number];
+
+export interface ContentInternalRoleAssignment {
+  role: ContentInternalRole;
+  category: CategorySlug | "*";
+  providerId?: string;
+  organizationId?: string;
+}
+
 export interface AuthContextOption {
   category: CategorySlug;
   roles: ContextRole[];
@@ -52,6 +63,7 @@ export interface Account {
   passwordHash?: string;
   displayName: string;
   assignments: RoleAssignment[];
+  internalRoleAssignments?: ContentInternalRoleAssignment[];
   providerId?: string;
   oidcIssuer?: string;
   oidcSubject?: string;
@@ -66,6 +78,7 @@ export interface AuthenticatedPrincipal {
   category: CategorySlug;
   role: PortalRole;
   availableContexts: AuthContextOption[];
+  internalRoleAssignments?: ContentInternalRoleAssignment[];
   providerId?: string;
 }
 
@@ -503,6 +516,99 @@ export const contentWorkflowStatuses = ["proposed", "drafted", "polished", "seo_
 export type ContentWorkflowStatus = (typeof contentWorkflowStatuses)[number];
 export type ContentJsonLdType = "Organization" | "Article" | "BlogPosting" | "JobPosting" | "NewsArticle" | "FAQPage";
 
+export const contentVisibilityValues = ["public", "unlisted", "private", "internal"] as const;
+export type ContentVisibility = (typeof contentVisibilityValues)[number];
+
+export const contentGenerationOperations = ["proposal", "draft", "polish", "translate", "portal_plan"] as const;
+export type ContentGenerationOperation = (typeof contentGenerationOperations)[number];
+
+export interface ContentGenerationAudit {
+  operation: ContentGenerationOperation;
+  adapterId: string;
+  model?: string | undefined;
+  inputSources: string[];
+  generatedAt: string;
+  approvedBy?: string | undefined;
+}
+
+export interface ContentAuthorProfile {
+  id?: string | undefined;
+  name: string;
+  bio?: string | undefined;
+  credentials?: string[] | undefined;
+  profileUrl?: string | undefined;
+}
+
+/**
+ * 採用・会社情報・PR・IRで再利用する、コンテンツ種別ごとの構造化項目です。
+ * 本文の代替ではなく、検索・配信・AIエージェントが安全に参照する正規データです。
+ */
+export type ContentStructuredData =
+  | {
+    type: "company";
+    companyName: string;
+    representative?: string | undefined;
+    address?: string | undefined;
+    services?: string[] | undefined;
+  }
+  | {
+    type: "job";
+    jobTitle: string;
+    employmentType: string;
+    locations: string[];
+    responsibilities: string[];
+    requirements: string[];
+    salary?: string | undefined;
+    preferredQualifications?: string[] | undefined;
+    benefits?: string[] | undefined;
+    selectionProcess?: string[] | undefined;
+    applicationUrl?: string | undefined;
+    openingDate?: string | undefined;
+    closingDate?: string | undefined;
+    status: "open" | "closed";
+  }
+  | {
+    type: "pressRelease";
+    releaseDate: string;
+    issuer: string;
+    mediaContact?: string | undefined;
+    eventDate?: string | undefined;
+  }
+  | {
+    type: "ir";
+    publicationDate: string;
+    documentType: "financial_results" | "presentation" | "notice" | "shareholder" | "calendar" | "other";
+    fiscalPeriod?: string | undefined;
+    sourceDocumentUrl?: string | undefined;
+    correctionOfContentId?: string | undefined;
+    withdrawn?: boolean | undefined;
+  };
+
+export interface ContentSourceEvidence {
+  title: string;
+  url: string;
+  publisher?: string | undefined;
+  checkedAt: string;
+  note?: string | undefined;
+}
+
+export type ContentBlock =
+  | { type: "heading"; level: 1 | 2 | 3; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "image"; url: string; alt: string; caption?: string | undefined }
+  | { type: "gallery"; items: Array<{ url: string; alt: string; caption?: string | undefined }>; caption?: string | undefined }
+  | { type: "video"; url: string; title?: string | undefined; caption?: string | undefined }
+  | { type: "quote"; text: string; attribution?: string | undefined }
+  | { type: "table"; headers: string[]; rows: string[][] }
+  | { type: "file"; url: string; label: string; description?: string | undefined }
+  | { type: "embed"; url: string; title?: string | undefined }
+  | { type: "cta"; label: string; url: string; description?: string | undefined }
+  | { type: "jobCard"; contentId: string; title: string; url?: string | undefined }
+  | { type: "pressReleaseCard"; contentId: string; title: string; url?: string | undefined }
+  | { type: "irDocumentCard"; contentId: string; title: string; url?: string | undefined }
+  | { type: "relatedContent"; contentIds: string[]; title?: string | undefined }
+  | { type: "companyCard"; providerId: string; name: string; url?: string | undefined; description?: string | undefined };
+
 export interface ContentProposal {
   id: string;
   category: CategorySlug;
@@ -518,6 +624,7 @@ export interface ContentProposal {
   outline: string[];
   sourceFacts: string[];
   rationale: string;
+  generationAudit?: ContentGenerationAudit | undefined;
   createdAt: string;
 }
 
@@ -539,6 +646,9 @@ export interface ContentTranslationOrigin {
 }
 
 export interface ContentRecord {
+  blocks?: ContentBlock[] | undefined;
+  structuredData?: ContentStructuredData | undefined;
+  sourceEvidence?: ContentSourceEvidence[] | undefined;
   id: string;
   category: CategorySlug;
   providerId: string;
@@ -555,6 +665,18 @@ export interface ContentRecord {
   proposalId: string;
   locale: ContentLocale;
   translationOf?: ContentTranslationOrigin;
+  visibility: ContentVisibility;
+  tags: string[];
+  featured: boolean;
+  readingTimeMinutes: number;
+  createdBy: string;
+  currentVersionId: string;
+  series?: string | undefined;
+  authors?: ContentAuthorProfile[] | undefined;
+  publishedAt?: string | undefined;
+  expiresAt?: string | undefined;
+  reviewedBy?: string | undefined;
+  generationAudit?: ContentGenerationAudit | undefined;
   status: ContentWorkflowStatus;
   lastSeoAudit?: SeoAuditResult;
   lastFactCheck?: FactCheckResult;
@@ -566,6 +688,9 @@ export interface ContentRecord {
 export type ContentVersionReason = "created" | "updated" | "polished" | "workflow" | "restored" | "migrated";
 
 export interface ContentVersionRecord {
+  blocks?: ContentBlock[] | undefined;
+  structuredData?: ContentStructuredData | undefined;
+  sourceEvidence?: ContentSourceEvidence[] | undefined;
   id: string;
   contentId: string;
   version: number;
@@ -577,6 +702,17 @@ export interface ContentVersionRecord {
   sourceFacts: string[];
   locale: ContentLocale;
   translationOf?: ContentTranslationOrigin;
+  visibility: ContentVisibility;
+  tags: string[];
+  featured: boolean;
+  readingTimeMinutes: number;
+  createdBy: string;
+  series?: string | undefined;
+  authors?: ContentAuthorProfile[] | undefined;
+  publishedAt?: string | undefined;
+  expiresAt?: string | undefined;
+  reviewedBy?: string | undefined;
+  generationAudit?: ContentGenerationAudit | undefined;
   status: ContentWorkflowStatus;
   reason: ContentVersionReason;
   actorId?: string;
@@ -601,6 +737,29 @@ export interface ContentReviewRecord {
   reviewedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export const contentEditorialActionKinds = ["correction", "withdrawal"] as const;
+export type ContentEditorialActionKind = (typeof contentEditorialActionKinds)[number];
+
+export interface ContentEditorialActionRecord {
+  id: string;
+  contentId: string;
+  category: CategorySlug;
+  providerId: string;
+  contentVersion: number;
+  kind: ContentEditorialActionKind;
+  reason: string;
+  beforeBody: string;
+  beforeBlocks?: ContentBlock[] | undefined;
+  beforeStructuredData?: ContentStructuredData | undefined;
+  beforeSourceEvidence?: ContentSourceEvidence[] | undefined;
+  afterBody?: string | undefined;
+  afterBlocks?: ContentBlock[] | undefined;
+  afterStructuredData?: ContentStructuredData | undefined;
+  afterSourceEvidence?: ContentSourceEvidence[] | undefined;
+  actorAccountId: string;
+  createdAt: string;
 }
 
 export type SeoIssueSeverity = "error" | "warning" | "info";
