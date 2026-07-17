@@ -29,6 +29,7 @@ async function createStateStore(): Promise<StateStore | undefined> {
 
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? "8787");
+  const host = process.env.HOST ?? "127.0.0.1";
   const stateStore = await createStateStore();
   const auth = new InMemoryAuthService(stateStore, authOptionsFromEnvironment());
   const portal = new PortalService(auth, new PortalStore(stateStore));
@@ -58,8 +59,8 @@ async function main(): Promise<void> {
   process.once("SIGINT", handleSignal);
   process.once("SIGTERM", handleSignal);
 
-  server.listen(port, () => {
-    console.log(`CMS-OS API/MCP server listening on http://localhost:${port}`);
+  server.listen(port, host, () => {
+    console.log(`CMS-OS API/MCP server listening on http://${host}:${port}`);
   });
 }
 
