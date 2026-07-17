@@ -23,9 +23,19 @@ CREATE TABLE IF NOT EXISTS cms_providers (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE cms_accounts
-  ADD CONSTRAINT cms_accounts_provider_fk
-  FOREIGN KEY (provider_id) REFERENCES cms_providers(id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conrelid = 'cms_accounts'::regclass
+       AND conname = 'cms_accounts_provider_fk'
+  ) THEN
+    ALTER TABLE cms_accounts
+      ADD CONSTRAINT cms_accounts_provider_fk
+      FOREIGN KEY (provider_id) REFERENCES cms_providers(id);
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS cms_role_assignments (
   account_id TEXT NOT NULL REFERENCES cms_accounts(id) ON DELETE CASCADE,

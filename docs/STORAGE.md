@@ -63,6 +63,14 @@ npm run dev
 
 `PostgresStateStore`は起動時に`cms_os_state`をロードし、ドメインストアの書き込みを直列化してJSONBへ保存します。移行期間中もAPI/MCPの契約と所有者チェックを維持できます。正規化した各テーブルへ直接読み書きするリポジトリは、データ量とクエリパターンを確認したうえで段階的に切り替えます。
 
+マイグレーションは次のコマンドで適用します。
+
+```powershell
+npm run db:migrate
+```
+
+`db:migrate`は`cms_os_schema_migrations`にファイル名とSHA-256チェックサムを保存し、PostgreSQL Advisory Lockで同時実行を直列化します。適用済みファイルは再実行せず、内容が変更されていた場合は停止します。接続先は`DATABASE_URL`または`CMS_OS_DATABASE_URL`から取得し、値は対象環境のシークレットストアだけで管理してください。
+
 接続に失敗した場合、PostgreSQLモードからメモリモードへフォールバックしません。誤って揮発性ストレージで起動することを防ぎます。
 
 スキーマでは、次の境界を分離します。
